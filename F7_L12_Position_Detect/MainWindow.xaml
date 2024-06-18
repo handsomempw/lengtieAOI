@@ -1,0 +1,275 @@
+﻿<p:WindowX x:Class="F7_L12_Position_Detect.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:F7_L12_Position_Detect"
+        xmlns:p="https://opensource.panuon.com/wpf-ui"
+           xmlns:ctr="clr-namespace:F7_L12_Position_Detect.Control"
+        xmlns:halcon="clr-namespace:HalconDotNet;assembly=halcondotnet"
+        mc:Ignorable="d"
+        xmlns:C="clr-namespace:Camera;assembly=Camera"        
+        Title="法拉电子联动线上料视觉定位系统" Height="850" Width="1200"
+        p:WindowXCaption.Background="Orange"
+        p:WindowXCaption.Foreground="White"
+        p:WindowXCaption.Height="60"
+               WindowStartupLocation="CenterScreen" WindowState="Maximized"
+           Loaded="WindowX_Loaded"
+           Closing="WindowX_Closing"
+          FontSize="16"
+        >
+    <p:WindowX.DataContext>
+        <Binding Source="{StaticResource Locator}" Path="Main"/>
+    </p:WindowX.DataContext>
+    <p:WindowXCaption.HeaderTemplate>
+        <DataTemplate >
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition/>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition Width="auto"/>
+                </Grid.ColumnDefinitions>
+                <Menu p:WindowX.IsDragMoveArea="False" FontSize="20"   VerticalAlignment="Center" Margin="20,0,0,0" Background="Transparent" BorderThickness="0">
+                    <MenuItem Header="法拉电子-上料视觉定位系统" p:MenuItemHelper.HoverBackground="Transparent" Background="Transparent" Foreground="WhiteSmoke" BorderThickness="0">
+                        <MenuItem Header="新建工程" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"  Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter}}" Command="{Binding Source={StaticResource Locator},Path=Main.NEW_PRJCMD}"/>
+                        <MenuItem Header="保存工程" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"                                                                                           Command="{Binding Source={StaticResource Locator},Path=Main.SAVE_PRJCMD}"/>
+                        <!--<MenuItem Header="注册主控" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"  Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter}}" Command="{Binding Source={StaticResource Locator},Path=Main.REGISTER_MAIN_CMD}" />
+                        <MenuItem Header="添加主控" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"  Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter}}" Command="{Binding Source={StaticResource Locator},Path=Main.ADD_MAIN_CMD}"/>-->
+                        <!--<MenuItem Header="开始点检" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"  Click="Button_Click_4"/>-->
+                    </MenuItem>
+                </Menu>
+                <TextBlock FontSize="20" Grid.Column="1" Text="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.Name}" VerticalAlignment="Center" Margin="0" Foreground="WhiteSmoke"/>
+
+
+                <!--<Button p:WindowX.IsDragMoveArea="False" Grid.Column="4" Margin="5" p:ButtonHelper.CornerRadius="50" Background="#101010" Foreground="WhiteSmoke" Click="Button_Click"
+                        Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter}}"
+                        Height="30" Width="30" FontSize="18"
+                        FontFamily="{StaticResource PanuonIconFont}"
+                        Content="&#xe9AD;"  ToolTip="手动测试" 
+                        />-->
+
+                <!--<Button p:WindowX.IsDragMoveArea="False" Grid.Column="5" Margin="5" p:ButtonHelper.CornerRadius="50" Background="#101010" Foreground="WhiteSmoke" Click="Button_Click_2"
+                    Height="30" Width="30" FontSize="18"
+                   FontFamily="{StaticResource PanuonIconFont}"
+                   Content="&#xe98A;" ToolTip="触发一次"
+                        ></Button>
+                <Button p:WindowX.IsDragMoveArea="False" Grid.Column="6" Margin="5" p:ButtonHelper.CornerRadius="50" Background="#101010" Foreground="WhiteSmoke" Click="Button_Click_1"
+                   FontFamily="{StaticResource PanuonIconFont}"
+                    Height="30" Width="30" FontSize="18"
+                   Content="&#xe95c;" ToolTip="相机"
+                        ></Button>-->
+                <!--<Button p:WindowX.IsDragMoveArea="False" Grid.Column="7" Margin="5" p:ButtonHelper.CornerRadius="50" Background="#101010" Foreground="WhiteSmoke"  Name="SettingBtn" Click="SettingBtn_Click"
+                   FontFamily="{StaticResource PanuonIconFont}"
+                    Height="30" Width="30" FontSize="18"
+                    Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter} }"
+                   Content="&#xe98f;" ToolTip="设置"
+                        ></Button>-->
+                <Button p:WindowX.IsDragMoveArea="False" Grid.Column="8" Margin="5" p:ButtonHelper.CornerRadius="50" Background="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.permission,Converter={StaticResource Bool2SolidColor_Converter}}" 
+                   Foreground="WhiteSmoke"  Name="permissionbtn" Click="permissionbtn_Click"
+                   Height="30" Width="30" FontSize="18"
+                   FontFamily="{StaticResource PanuonIconFont}"
+                   Content="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.permission,Converter={StaticResource permission2lockorunlock_Converter }}" ToolTip="权限"
+                    ></Button>
+
+            </Grid>
+        </DataTemplate>
+    </p:WindowXCaption.HeaderTemplate>
+    <!--<p:WindowXCaption.MinimizeButtonStyle>
+        <Style TargetType="Button"
+               BasedOn="{StaticResource {ComponentResourceKey ResourceId=MinimizeButtonStyle, TypeInTargetAssembly={x:Type p:WindowXCaption}}}">
+            <Setter Property="VerticalAlignment"
+                    Value="Center" />
+            <Setter Property="Background"
+                    Value="{x:Null}" />
+            <Setter Property="Foreground"
+                    Value="#E8E8E8" />
+            <Setter Property="p:ButtonHelper.HoverForeground"
+                    Value="#E1E1E1" />
+            <Setter Property="p:ButtonHelper.HoverBackground"
+                    Value="#99999999" />
+        </Style>
+    </p:WindowXCaption.MinimizeButtonStyle>
+    <p:WindowXCaption.MaximizeButtonStyle>
+        <Style TargetType="Button"
+               BasedOn="{StaticResource {ComponentResourceKey ResourceId=MaximizeButtonStyle  , TypeInTargetAssembly={x:Type p:WindowXCaption}}}">
+            <Setter Property="VerticalAlignment"
+                    Value="Center" />
+            <Setter Property="Background"
+                    Value="{x:Null}" />
+            <Setter Property="Foreground"
+                    Value="#E8E8E8" />
+            <Setter Property="p:ButtonHelper.HoverForeground"
+                    Value="#E1E1E1" />
+            <Setter Property="p:ButtonHelper.HoverBackground"
+                    Value="#99999999" />
+        </Style>
+    </p:WindowXCaption.MaximizeButtonStyle>
+    <p:WindowXCaption.CloseButtonStyle>
+        <Style TargetType="Button"
+               BasedOn="{StaticResource {ComponentResourceKey ResourceId=CloseButtonStyle, TypeInTargetAssembly={x:Type p:WindowXCaption}}}">
+            <Setter Property="VerticalAlignment"
+                    Value="Center" />
+            <Setter Property="Background"
+                    Value="#88D7000F" />
+            <Setter Property="Foreground"
+                    Value="#E8E8E8" />
+            <Setter Property="p:ButtonHelper.HoverForeground"
+                    Value="#E1E1E1" />
+            <Setter Property="p:ButtonHelper.HoverBackground"
+                    Value="#FFD7000F" />
+        </Style>
+    </p:WindowXCaption.CloseButtonStyle>-->
+
+
+    <Grid Margin="3">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto" MaxHeight="160" MinHeight="100"/>
+            <RowDefinition/>
+            <RowDefinition Height="auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition/>
+            <ColumnDefinition Width="auto" />
+            <ColumnDefinition Width="auto" />
+        </Grid.ColumnDefinitions>
+        <Grid Grid.Row="0" Grid.ColumnSpan="2" MinHeight="30" Margin="5" >
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition />
+                <ColumnDefinition Width="auto" MinWidth="100"/>
+                <ColumnDefinition Width="auto" />
+                <ColumnDefinition Width="auto" />
+                <ColumnDefinition Width="auto" />
+                <ColumnDefinition Width="auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="5">工程名称</TextBlock>
+            <ComboBox Grid.Column="1" IsEditable="False" SelectedIndex="{Binding DataModel.Settingmodel .prjselected,UpdateSourceTrigger=PropertyChanged}"  p:ComboBoxHelper.CornerRadius="15,0,0,15" Padding="15,0" ItemsSource="{Binding DataModel.Settingmodel.Prjs}" />
+            <Button Grid.Column="2" x:Name="ChangePrj" p:ButtonHelper.CornerRadius="0,15,15,0" Background="#101010" Foreground="WhiteSmoke"  Click="ChangePrj_Click" >切换工程</Button>
+
+
+        </Grid>
+        <ListBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" p:ListBoxHelper.CornerRadius="5"
+                 BorderBrush="#55222222" Background="Gray"
+                 p:ListBoxHelper.ItemsSelectedBackground="#55FF0000" 
+                 SelectionChanged="ListBox_SelectionChanged"
+                 SelectedIndex="{Binding DataModel.Processmodel.selectedindex}"  
+                 MouseDoubleClick="ListBox_MouseDoubleClick"
+                     ItemsSource="{Binding DataModel.Processmodel.Tools}" >
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel  Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <ctr:Toolcontrol MinHeight="140" MinWidth="140" DataContext="{Binding}"/>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <!--<Button Grid.Row="1" Grid.Column="1" Click="Button_Click">设置</Button>-->
+        <Grid Grid.Row="1" Grid.Column="2"  >
+            <!--<Grid Grid.Row="1" Grid.Column="1" Visibility="{Binding DataModel.Settingmodel.permission ,Converter={StaticResource Bool2Visible_Converter}}" >-->
+            <Grid.RowDefinitions>
+                <RowDefinition/>
+                <RowDefinition/>
+                <RowDefinition/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Button   Grid.Row="0" Grid.Column="0"   Background="#101010" Foreground="White"  Command="{Binding AddToolCMD}"    p:ButtonHelper.CornerRadius="15,0,0,0">追加</Button>
+            <Button   Grid.Row="0" Grid.Column="1"   Background="#101010" Foreground="White"  Command="{Binding InsertToolCMD}" >插入</Button>
+            <Button   Grid.Row="1" Grid.Column="0"   Background="#101010" Foreground="White"  Command="{Binding CopyToolCMD}" Grid.ColumnSpan="2"  >复制</Button>
+            <Button   Grid.Row="2" Grid.Column="0"   Background="#101010" Foreground="White"  Command="{Binding DeleteToolCMD}" >删除</Button>
+            <Button   Grid.Row="2" Grid.Column="1"   Background="#101010" Foreground="White"  Command="{Binding ClearToolCMD}"  p:ButtonHelper.CornerRadius="0,0,15,0">清空</Button>
+        </Grid>
+        <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="auto"/>
+                <RowDefinition/>
+            </Grid.RowDefinitions>
+
+            <GroupBox>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
+                    </Grid.RowDefinitions>
+
+                    <WrapPanel>
+                        <TextBlock Text="{Binding DataModel.Processmodel.tool.Index}"/>
+                        <TextBlock Text="{Binding DataModel.Processmodel.tool.Name}"/>
+                    </WrapPanel>
+                    <Grid Grid.Row="1"   Visibility="{Binding DataModel.Processmodel.tool.DecodeBarcode,Converter={StaticResource Bool2Visible_Converter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="{Binding DataModel.Processmodel.tool.DecodeBarcode,Converter={StaticResource Bool2Visible_Converter}}">二维码内容:</TextBlock>
+
+                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding DataModel.Processmodel.tool.BarcodeStr}" />
+                    </Grid>
+
+                    <Grid Grid.Row="2"  Visibility="{Binding DataModel.Processmodel.tool.PositionDetect,Converter={StaticResource Bool2Visible_Converter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X偏移:</TextBlock>
+                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">Y偏移:</TextBlock>
+                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">分值:</TextBlock>
+
+                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding DataModel.Processmodel.tool.DeltaX}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding DataModel.Processmodel.tool.DeltaY}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding DataModel.Processmodel.tool.ActualScore}"/>
+
+                    </Grid>
+                </Grid>
+            </GroupBox>
+
+            <DataGrid ItemsSource="{Binding DataModel.Recordmodel.workLog}" AutoGenerateColumns="False" Grid.Row="1" >
+                <DataGrid.Columns>
+                    <DataGridTextColumn Binding="{Binding}" FontSize="12" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+
+        </Grid>
+        <halcon:HWindowControlWPF Grid.Row="2" Name="Hwindow" Visibility="Hidden" />
+        <C:CameraControl Grid.Row="2" Name="cameractr" DataContext="{Binding DataModel.Settingmodel.camedata}"/>
+
+        <WrapPanel Grid.Row="4" HorizontalAlignment="Center" Grid.ColumnSpan="3" >
+            <TextBlock>机器人连接:</TextBlock>
+            <TextBlock Text="{Binding DataModel.Settingmodel.RobotConnect.IsConnected}" Margin="0,0,20,0" />
+            <TextBlock>PC连接:</TextBlock>
+            <TextBlock Text="{Binding DataModel.Settingmodel.SoftConnect.IsConnected}" />
+
+            <Button Name="Send2Soft_btn" Click="Send2Soft_btn_Click" >发送测试Soft</Button>
+            <Button Name="Send2Robot_btn" Click="Send2Robot_btn_Click" >发送测试Robot</Button>
+            <Button Name="Barcodetest_btn"  Click="Barcodetest_btn_Click" >二维码识别测试</Button>
+        </WrapPanel>
+    </Grid>
+</p:WindowX>
