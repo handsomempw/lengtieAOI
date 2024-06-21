@@ -6,6 +6,7 @@ using Panuon.WPF.UI;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -124,6 +125,26 @@ namespace F7_L12_Position_Detect.View
 
             }
             catch (Exception ex) { }
+        }
+
+        private void loadshmfromfile_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string shmfilename = $"{vml.Main.DataModel.Settingmodel.Prjdir}\\{vml.Main.DataModel.Settingmodel.Name}\\Tool{vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.tool.Index - 1].Index}.shm";
+
+                if (File.Exists(shmfilename))
+                {
+                    vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.tool.Index - 1].ShapeMatch.init(shmfilename);
+                }
+                else
+                {
+                    vml.Main.writeLog($"模型文件不存在:{vml.Main.DataModel.Settingmodel.Name}\\Tool{vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.tool.Index - 1].Index}.shm");
+                }
+                vml.Main.DataModel.Processmodel.tool.ShapeMatch.init(shmfilename);
+            }
+            catch (Exception ex) { }
+
         }
     }
 }

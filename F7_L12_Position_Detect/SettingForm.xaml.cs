@@ -277,15 +277,18 @@ namespace F7_L12_Position_Detect
 
         private void ApplyAll_Click(object sender, RoutedEventArgs e)
         {
-            for (int i = 0; i < vml.Main.DataModel.Processmodel.Tools.Count; i++)
+            if (MessageBoxX.Show("是否确定应用并更新所有配置?", "提示", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
             {
-                try
+                for (int i = 0; i < vml.Main.DataModel.Processmodel.Tools.Count; i++)
                 {
-                    vml.Main.DataModel.Processmodel.Tools[i].MinScore = vml.Main.DataModel.Processmodel.tool.MinScore;
-                    vml.Main.DataModel.Processmodel.Tools[i].K = vml.Main.DataModel.Processmodel.tool.K;
-                    vml.Main.DataModel.Processmodel.Tools[i].Allow_Delta = vml.Main.DataModel.Processmodel.tool.Allow_Delta;
+                    try
+                    {
+                        vml.Main.DataModel.Processmodel.Tools[i].MinScore = vml.Main.DataModel.Processmodel.tool.MinScore;
+                        vml.Main.DataModel.Processmodel.Tools[i].K = vml.Main.DataModel.Processmodel.tool.K;
+                        vml.Main.DataModel.Processmodel.Tools[i].Allow_Delta = vml.Main.DataModel.Processmodel.tool.Allow_Delta;
+                    }
+                    catch { }
                 }
-                catch { }
             }
         }
 

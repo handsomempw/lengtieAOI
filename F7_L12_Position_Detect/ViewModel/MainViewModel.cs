@@ -778,6 +778,7 @@ namespace F7_L12_Position_Detect.ViewModel
             t.InvertXY = tool.InvertXY;
             t.SendStatus = tool.SendStatus;
             t.InvertResult = tool.InvertResult;
+            t.Allow_Delta= tool.Allow_Delta;
             //t.StatusColor = tool.StatusColor;
             t.PositionROI = New_ROI(tool.PositionROI);
             return t;
@@ -856,6 +857,7 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             DataModel.Settingmodel.Name = PrjName;
             Load_Prj();
+
         }
 
         /// <summary>
@@ -1219,8 +1221,8 @@ namespace F7_L12_Position_Detect.ViewModel
 
 
                 #region 读取位置
-
-                bool checkpositon = false;
+                /// -1:NG  -2:NG2 位置超过设定偏差范围  0:OK
+                int  checkpositon = -1;
                 if (tool.PositionDetect)
                 {
                     try
@@ -1250,11 +1252,19 @@ namespace F7_L12_Position_Detect.ViewModel
 
                             if (tool.ActualScore >= tool.MinScore)
                             {
-                                if (!tool.SendStatus)
+                                if (Math.Abs(tool.DeltaX) < tool.Allow_Delta && Math.Abs(tool.DeltaY) < tool.Allow_Delta)
                                 {
-                                    SendMsgRobot($"{sendstr}");
+                                    if (!tool.SendStatus)
+                                    {
+                                        SendMsgRobot($"{sendstr}");
+                                    }
+                                    checkpositon = 0;
                                 }
-                                checkpositon = true;
+                                else
+                                {
+                                    checkpositon = -2;
+                                }
+                                
                             }
 
                             //NoticeBox.Show("")
@@ -1272,13 +1282,13 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
                 else
                 {
-                    checkpositon = true;
+                    checkpositon = 0;
                 }
                 #endregion
 
 
                 if (((!tool.DecodeBarcode) || barcodelist.Count > 0)
-                    && (checkpositon)
+                    && (checkpositon==0)
 
                     )
                 {
@@ -1306,7 +1316,14 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
                 else
                 {
-                    tool.ToolStatus = ToolStatus.NG;
+                    if(checkpositon==-2)
+                    {
+                        tool.ToolStatus = ToolStatus.NG2;
+                    }
+                    else
+                    {
+                        tool.ToolStatus = ToolStatus.NG;
+                    }
 
                     if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
                     {

@@ -101,7 +101,8 @@ namespace F7_L12_Position_Detect
                 //vml.Main.DataModel.Processmodel.tool = @vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
                 SettingForm settingForm = new SettingForm();
                 //settingForm.Topmost = true;
-                 settingForm.ShowDialog();
+                settingForm.ShowDialog();
+
                 //settingForm.Show();
             }
         }
@@ -111,6 +112,9 @@ namespace F7_L12_Position_Detect
             try
             {
                 vml.Main.Load_Prj(vml.Main.DataModel.Settingmodel.Prjs[vml.Main.DataModel.Settingmodel.prjselected]);
+                vml.Main.InitHwindow(cameractr.GetHwindow().HalconWindow);
+                vml.Main.InitShm();
+
             }
             catch (Exception ex)
             {
@@ -187,6 +191,6 @@ namespace F7_L12_Position_Detect
 
         }
 
-        
+
     }
 }

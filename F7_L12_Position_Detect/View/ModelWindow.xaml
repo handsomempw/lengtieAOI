@@ -23,9 +23,11 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition/>
                 <ColumnDefinition/>
+                <ColumnDefinition/>
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0"  Margin="5" Padding="5" Background="Orange" Foreground="White" p:ButtonHelper.CornerRadius="10" Name="getinitpositionbymodelimage" Click="getinitpositionbymodelimage_Click">从模板提取基准点</Button>
-            <Button Grid.Column="1"  Margin="5" Padding="5" Background="Black"  Foreground="White" p:ButtonHelper.CornerRadius="10" Name="getinitpositonfromimagefile" Click="getinitpositonfromimagefile_Click">从图片提取基准点</Button>
+            <Button Grid.Column="0"  Margin="5" Padding="5" Background="OrangeRed" Foreground="White" p:ButtonHelper.CornerRadius="10" Name="loadshmfromfile" Click="loadshmfromfile_Click">重载模型</Button>
+            <Button Grid.Column="1"  Margin="5" Padding="5" Background="Orange" Foreground="White" p:ButtonHelper.CornerRadius="10" Name="getinitpositionbymodelimage" Click="getinitpositionbymodelimage_Click">从模板提取基准点</Button>
+            <Button Grid.Column="2"  Margin="5" Padding="5" Background="Black"  Foreground="White" p:ButtonHelper.CornerRadius="10" Name="getinitpositonfromimagefile" Click="getinitpositonfromimagefile_Click">从图片提取基准点</Button>
 
         </Grid>
     </Grid>
