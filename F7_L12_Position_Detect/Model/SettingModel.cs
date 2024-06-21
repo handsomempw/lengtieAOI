@@ -21,6 +21,10 @@ namespace F7_L12_Position_Detect.Model
         public Camera.DATA camedata { set; get; } = new Camera.DATA();
 
 
+        [XmlElement("照片保存设置")]
+        public ImageSaveSetting ImageSaveSetting { get; set; }=new ImageSaveSetting();  
+
+
 
         #region 工程配置
         [XmlElement("工程路径")]
@@ -46,10 +50,13 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("上位机")]
         public TcpSetting SoftConnect { set; get; } = new TcpSetting();
 
+        //[XmlIgnore]
+        //public TcpClientHelper.TcpClientH TcpClientH { set; get; } = new TcpClientHelper.TcpClientH();
+ 
         [XmlIgnore]
-        public TcpClientHelper.TcpClientH TcpClientH { set; get; } = new TcpClientHelper.TcpClientH();
+        public TcpServerHelper.TCPServerH TcpServerRobot { set; get; } = new TcpServerHelper.TCPServerH();
         [XmlIgnore]
-        public TcpServerHelper.TCPServerH TcpServerH { set; get; } = new TcpServerHelper.TCPServerH();
+        public TcpServerHelper.TCPServerH TcpServerSoft { set; get; } = new TcpServerHelper.TCPServerH();
 
         #endregion
 

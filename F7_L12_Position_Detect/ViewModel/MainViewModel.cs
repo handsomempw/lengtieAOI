@@ -23,6 +23,7 @@ using HalconDotNet;
 using QRCode;
 using PositionDetect;
 using Camera;
+using System.Collections.Generic;
 
 namespace F7_L12_Position_Detect.ViewModel
 {
@@ -103,24 +104,24 @@ namespace F7_L12_Position_Detect.ViewModel
         #region 机器人
         public void SendMsgRobot(string cmd)
         {
-            DataModel.Settingmodel.TcpServerH.SendMessage(cmd);
+            DataModel.Settingmodel.TcpServerRobot.SendMessage(cmd);
             writeLog($"视觉->机器人:{cmd}");
         }
 
         public void InitRobotServer()
         {
 
-            DataModel.Settingmodel.TcpServerH = new TCPServerH();
+            DataModel.Settingmodel.TcpServerRobot = new TCPServerH();
 
 
-            DataModel.Settingmodel.TcpServerH.ClientConnected += RobotTcpServer_ClientConnected;
-            DataModel.Settingmodel.TcpServerH.ClientDisconnected += RobotTcpServer_ClientDisconnected;
-            DataModel.Settingmodel.TcpServerH.MessageReceived += RobotTcpServer_MessageReceived;
+            DataModel.Settingmodel.TcpServerRobot.ClientConnected += RobotTcpServer_ClientConnected;
+            DataModel.Settingmodel.TcpServerRobot.ClientDisconnected += RobotTcpServer_ClientDisconnected;
+            DataModel.Settingmodel.TcpServerRobot.MessageReceived += RobotTcpServer_MessageReceived;
             new Thread(() =>
             {
                 try
                 {
-                    DataModel.Settingmodel.TcpServerH.StartListener(DataModel.Settingmodel.RobotConnect.LocalIP, DataModel.Settingmodel.RobotConnect.LocalPort);
+                    DataModel.Settingmodel.TcpServerRobot.StartListener(DataModel.Settingmodel.RobotConnect.LocalIP, DataModel.Settingmodel.RobotConnect.LocalPort);
                     writeLog("TCP服务端启动侦听[等待机器人连线]");
                 }
                 catch (Exception ex2)
@@ -137,6 +138,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 TCPevent TCPevent = (TCPevent)e;
                 if (TCPevent.Msg == "客户端连接")
                 {
+
                     writeLog("机器人已经连接");
                     DataModel.Settingmodel.RobotConnect.IsConnected = true;
                 }
@@ -189,7 +191,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     if (DataModel.Processmodel.Tools[i].Command == cmd)
                     {
-                        DataModel.Processmodel.ToolIndex = i;
+                        DataModel.Processmodel.ToolIndex = i + 1;
+
+                        DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
+
 
                         //ToolModel tool = DataModel.Processmodel.Tools[i];
                         //ClearTool(tool);
@@ -200,7 +205,13 @@ namespace F7_L12_Position_Detect.ViewModel
                         //    ofd.Filter = "*.jpg;*.bmp|*.jpg;*.bmp";
                         //    if (ofd.ShowDialog() == true)
                         //    {
+
+
                         //        #region 读取二维码
+                        //        List<Reg.Barcode> barcodelist = null;
+                        //        ShapeMatch.Result shapmatchresult = new ShapeMatch.Result();
+
+
                         //        if (tool.DecodeBarcode)
                         //        {
                         //            try
@@ -208,18 +219,21 @@ namespace F7_L12_Position_Detect.ViewModel
                         //                HObject ho_Image;
                         //                HOperatorSet.GenEmptyObj(out ho_Image);
                         //                HOperatorSet.ReadImage(out ho_Image, ofd.FileName);
-                        //                var r = tool.Reg.ReadBarcode(ho_Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
-                        //                if (r.Count > 0)
+                        //                barcodelist = tool.Reg.ReadBarcode(ho_Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
+                        //                if (barcodelist.Count > 0)
                         //                {
-                        //                    tool.BarcodeStr = r[0].codestr;
-                        //                    NoticeBox.Show(r[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
-                        //                    SendMsgPC(tool.BarcodeStr);
-                        //                    writeLog($"二维码读取成功:{r[0].codestr}");
+                        //                    tool.BarcodeStr = barcodelist[0].codestr;
+                        //                    NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
+                        //                    if (!tool.SendStatus)
+                        //                    {
+                        //                        SendMsgSoft(tool.BarcodeStr);
+                        //                    }
+                        //                    writeLog($"二维码读取成功:{barcodelist[0].codestr}");
                         //                }
                         //                else
                         //                {
                         //                    tool.BarcodeStr = string.Empty;
-                        //                    writeLog($"二维码读取失败:{r[0].codestr}");
+                        //                    writeLog($"二维码读取失败:{barcodelist[0].codestr}");
                         //                }
                         //            }
                         //            catch
@@ -229,21 +243,32 @@ namespace F7_L12_Position_Detect.ViewModel
                         //        }
                         //        #endregion
 
+
+                        //        #region 读取位置
+
+                        //        bool checkpositon = false;
                         //        if (tool.PositionDetect)
                         //        {
-                        //            #region 读取位置
                         //            try
                         //            {
                         //                HObject ho_Image;
                         //                HOperatorSet.GenEmptyObj(out ho_Image);
                         //                HOperatorSet.ReadImage(out ho_Image, ofd.FileName);
-                        //                var r = tool.ShapeMatch.Match(ho_Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2);
-                        //                var Result_Data = tool.ShapeMatch.Analysis_Result(r);
+                        //                tool.ShapeMatch.BasicData.matchcenter_X = tool.InitX;
+                        //                tool.ShapeMatch.BasicData.matchcenter_Y = tool.InitY;
+                        //                tool.ShapeMatch.BasicData.matchcenterX_Basic = tool.InitX;
+                        //                tool.ShapeMatch.BasicData.matchcenterY_Basic = tool.InitY;
+                        //                tool.ShapeMatch.BasicData.productcenter_X = tool.InitX;
+                        //                tool.ShapeMatch.BasicData.productcenter_Y = tool.InitY;
+                        //                shapmatchresult = tool.ShapeMatch.Match(ho_Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2);
+                        //                var Result_Data = tool.ShapeMatch.Analysis_Result(shapmatchresult);
                         //                if (Result_Data != null)
                         //                {
+                        //                    tool.ActualX = Result_Data.X_actual;
+                        //                    tool.ActualY = Result_Data.Y_actual;
                         //                    tool.ActualScore = Result_Data.score;
-                        //                    tool.DeltaX = Result_Data.deltaX_actual;
-                        //                    tool.DeltaY = Result_Data.deltaY_actual;
+                        //                    tool.DeltaX = Result_Data.deltaX_actual * tool.K / 1000;
+                        //                    tool.DeltaY = Result_Data.deltaY_actual * tool.K / 1000;
 
                         //                    string sendstr = $"{(tool.DirectX ? -tool.DeltaX : tool.DeltaX).ToString("F2")},{(tool.DirectY ? -tool.DeltaY : tool.DeltaY).ToString("F2")},0.00";
                         //                    if (tool.InvertXY)
@@ -251,7 +276,14 @@ namespace F7_L12_Position_Detect.ViewModel
                         //                        sendstr = $"{(tool.DirectY ? -tool.DeltaY : tool.DeltaY).ToString("F2")},{(tool.DirectX ? -tool.DeltaX : tool.DeltaX).ToString("F2")},0.00";
                         //                    }
 
-                        //                    SendMsgRobot($"{sendstr}");
+                        //                    if (tool.ActualScore >= tool.MinScore)
+                        //                    {
+                        //                        if (!tool.SendStatus)
+                        //                        {
+                        //                            SendMsgRobot($"{sendstr}");
+                        //                        }
+                        //                        checkpositon = true;
+                        //                    }
 
                         //                    //NoticeBox.Show("")
                         //                }
@@ -260,9 +292,35 @@ namespace F7_L12_Position_Detect.ViewModel
                         //            {
                         //                ;
                         //            }
-                        //            #endregion
 
+                        //            if (tool.DecodeBarcode)
+                        //            {
+                        //                tool.Reg.RefreshResult(barcodelist);
+                        //            }
                         //        }
+                        //        else
+                        //        {
+                        //            checkpositon = true;
+                        //        }
+                        //        #endregion
+
+                        //        if (tool.SendStatus)
+                        //        {
+                        //            if (((!tool.DecodeBarcode) || barcodelist.Count > 0)
+                        //                && (checkpositon)
+
+                        //                )
+                        //            {
+
+                        //                SendMsgRobot($"OK");
+                        //            }
+                        //            else
+                        //            {
+                        //                SendMsgRobot($"NG");
+
+                        //            }
+                        //        }
+
                         //    }
                         //}
                         break;
@@ -282,6 +340,149 @@ namespace F7_L12_Position_Detect.ViewModel
             tool.ActualY = 0;
 
         }
+
+
+
+        #endregion
+
+
+        #region Soft
+        public void SendMsgSoft(string cmd)
+        {
+            DataModel.Settingmodel.TcpServerSoft.SendMessage(cmd);
+            writeLog($"视觉->上位机:{cmd}");
+        }
+
+        public void InitSoftServer()
+        {
+
+            DataModel.Settingmodel.TcpServerSoft = new TCPServerH();
+
+
+            DataModel.Settingmodel.TcpServerSoft.ClientConnected += SoftTcpServer_ClientConnected;
+            DataModel.Settingmodel.TcpServerSoft.ClientDisconnected += SoftTcpServer_ClientDisconnected;
+            DataModel.Settingmodel.TcpServerSoft.MessageReceived += SoftTcpServer_MessageReceived;
+            new Thread(() =>
+            {
+                try
+                {
+                    DataModel.Settingmodel.TcpServerSoft.StartListener(DataModel.Settingmodel.SoftConnect.LocalIP, DataModel.Settingmodel.SoftConnect.LocalPort);
+                    writeLog("TCP服务端启动侦听[等待上位机连线]");
+                }
+                catch (Exception ex2)
+                {
+                    writeError(ex2.Message + Environment.NewLine + ex2.StackTrace);
+                }
+            }).Start(); ;
+
+        }
+        private void SoftTcpServer_ClientConnected(TCPServerH sender, object e)
+        {
+            try
+            {
+                TCPevent TCPevent = (TCPevent)e;
+                if (TCPevent.Msg == "客户端连接")
+                {
+                    writeLog("上位机已经连接");
+                    DataModel.Settingmodel.SoftConnect.IsConnected = true;
+                }
+                else if (TCPevent.Msg == "客户端重新连接")
+                {
+                    writeLog("上位机重新连接");
+                    DataModel.Settingmodel.SoftConnect.IsConnected = true;
+                }
+
+
+
+            }
+            catch (Exception ex) {; }
+        }
+
+        private void SoftTcpServer_ClientDisconnected(TCPServerH sender, object e)
+        {
+            try
+            {
+                TCPevent TCPevent = (TCPevent)e;
+                if (TCPevent.Msg == "客户端掉线")
+                {
+                    writeLog("上位机已经离线");
+                    DataModel.Settingmodel.SoftConnect.IsConnected = false;
+                }
+                else if (TCPevent.Msg == "发送失败，客户端掉线")
+                {
+                    writeLog("发送失败，客户端掉线");
+                    DataModel.Settingmodel.SoftConnect.IsConnected = false;
+                }
+                else
+                {
+                    writeLog(TCPevent.Msg);
+                    DataModel.Settingmodel.SoftConnect.IsConnected = false;
+                }
+            }
+            catch (Exception ex) {; }
+        }
+
+        private void SoftTcpServer_MessageReceived(TCPServerH sender, object e)
+        {
+            try
+            {
+                TCPevent TCPevent = (TCPevent)e;
+                string cmd = (string)TCPevent.Msg;
+                writeLog($"上位机->视觉:{cmd}");
+                NoticeBox.Show((string)TCPevent.Msg, "接收上位机信息", MessageBoxIcon.Info, true, 3000);
+                //DataModel.Processmodel.ToolIndex = -1;
+                //for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+                //{
+                //    if (DataModel.Processmodel.Tools[i].Command == cmd)
+                //    {
+                //        DataModel.Processmodel.ToolIndex = i;
+
+                //        break;
+                //    }
+                //}
+            }
+            catch (Exception ex) {; }
+        }
+
+        //public void ClearTool(ToolModel tool)
+        //{
+        //    tool.BarcodeStr = string.Empty;
+        //    tool.DeltaX = 0;
+        //    tool.DeltaY = 0;
+        //    tool.ActualScore = 0;
+        //    tool.ActualX = 0;
+        //    tool.ActualY = 0;
+
+        //}
+
+
+
+        #endregion
+
+
+        //#region PC
+        //public bool ConnectPC()
+        //{
+        //    bool r = DataModel.Settingmodel.TcpClientH.Connect(DataModel.Settingmodel.SoftConnect.RemoteIP, DataModel.Settingmodel.SoftConnect.RemotePort);
+        //    DataModel.Settingmodel.SoftConnect.IsConnected = r;
+        //    return r;
+        //}
+
+        //public void DisconnectPC()
+        //{
+        //    DataModel.Settingmodel.TcpClientH.DisConnect();
+        //}
+
+        //public bool SendMsgPC(string cmd)
+        //{
+        //    bool r = DataModel.Settingmodel.TcpClientH.SendMsg(cmd);
+        //    writeLog($"视觉->软件:{cmd}");
+        //    return r;
+
+        //}
+
+        //#endregion
+
 
         #region 通用数据日志
         private object writeLog_Locker = new object();
@@ -357,31 +558,6 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
             }
         }
-        #endregion
-
-        #endregion
-
-        #region PC
-        public bool ConnectPC()
-        {
-            bool r = DataModel.Settingmodel.TcpClientH.Connect(DataModel.Settingmodel.SoftConnect.RemoteIP, DataModel.Settingmodel.SoftConnect.RemotePort);
-            DataModel.Settingmodel.SoftConnect.IsConnected = r;
-            return r;
-        }
-
-        public void DisconnectPC()
-        {
-            DataModel.Settingmodel.TcpClientH.DisConnect();
-        }
-
-        public bool SendMsgPC(string cmd)
-        {
-            bool r = DataModel.Settingmodel.TcpClientH.SendMsg(cmd);
-            writeLog($"视觉->软件:{cmd}");
-            return r;
-
-        }
-
         #endregion
         #endregion
 
@@ -601,7 +777,8 @@ namespace F7_L12_Position_Detect.ViewModel
             t.DirectY = tool.DirectY;
             t.InvertXY = tool.InvertXY;
             t.SendStatus = tool.SendStatus;
-            t.StatusColor = tool.StatusColor;
+            t.InvertResult = tool.InvertResult;
+            //t.StatusColor = tool.StatusColor;
             t.PositionROI = New_ROI(tool.PositionROI);
             return t;
         }
@@ -933,10 +1110,14 @@ namespace F7_L12_Position_Detect.ViewModel
                         tool.Index = (index++) + 1;
                         DataModel.Processmodel.Tools.Add(tool);
                         string jpgfilename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index}.jpg";
-
+                        #region 加载模型图片
+                        HOperatorSet.GenEmptyObj(out tool.Image);
+                        HOperatorSet.ReadImage(out tool.Image, jpgfilename);
+                        #endregion
                         using (Bitmap bmp = (Bitmap)Bitmap.FromFile(jpgfilename))
                         {
                             tool.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+
                         }
                     }
                     GC.Collect();
@@ -989,36 +1170,44 @@ namespace F7_L12_Position_Detect.ViewModel
 
             //myEventArgs.Image
 
+
+
             HWindow hwindow = DataModel.Settingmodel.HWindow;
             hwindow.ClearWindow();
             hwindow.SetPart(0, 0, myEventArgs.Height - 1, myEventArgs.Width - 1);
             hwindow.DispObj(myEventArgs.Image);
 
-
-            ToolModel tool = DataModel.Processmodel.Tools[DataModel.Processmodel.ToolIndex];
+            ToolModel tool = DataModel.Processmodel.Tools[DataModel.Processmodel.ToolIndex - 1];
             ClearTool(tool);
+            tool.ToolStatus = ToolStatus.识别;
             bool result = true;
             if (tool.DecodeBarcode || tool.PositionDetect)
             {
 
                 #region 读取二维码
+                List<Reg.Barcode> barcodelist = null;
+                ShapeMatch.Result shapmatchresult = new ShapeMatch.Result();
+
                 if (tool.DecodeBarcode)
                 {
                     try
                     {
-                      
-                        var r = tool.Reg.ReadBarcode(myEventArgs.Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
-                        if (r.Count > 0)
+
+                        barcodelist = tool.Reg.ReadBarcode(myEventArgs.Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
+                        if (barcodelist.Count > 0)
                         {
-                            tool.BarcodeStr = r[0].codestr;
-                            NoticeBox.Show(r[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
-                            SendMsgPC(tool.BarcodeStr);
-                            writeLog($"二维码读取成功:{r[0].codestr}");
+                            tool.BarcodeStr = barcodelist[0].codestr;
+                            NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
+                            if (!tool.SendStatus)
+                            {
+                                SendMsgSoft(tool.BarcodeStr);
+                            }
+                            writeLog($"二维码读取成功:{barcodelist[0].codestr}");
                         }
                         else
                         {
                             tool.BarcodeStr = string.Empty;
-                            writeLog($"二维码读取失败:{r[0].codestr}");
+                            writeLog($"二维码读取失败:{barcodelist[0].codestr}");
                         }
                     }
                     catch
@@ -1027,19 +1216,31 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                 }
                 #endregion
-                #region 检测位置
+
+
+                #region 读取位置
+
+                bool checkpositon = false;
                 if (tool.PositionDetect)
                 {
-                    #region 读取位置
                     try
                     {
-                        var r = tool.ShapeMatch.Match(myEventArgs.Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2);
-                        var Result_Data = tool.ShapeMatch.Analysis_Result(r);
+
+                        tool.ShapeMatch.BasicData.matchcenter_X = tool.InitX;
+                        tool.ShapeMatch.BasicData.matchcenter_Y = tool.InitY;
+                        tool.ShapeMatch.BasicData.matchcenterX_Basic = tool.InitX;
+                        tool.ShapeMatch.BasicData.matchcenterY_Basic = tool.InitY;
+                        tool.ShapeMatch.BasicData.productcenter_X = tool.InitX;
+                        tool.ShapeMatch.BasicData.productcenter_Y = tool.InitY;
+                        shapmatchresult = tool.ShapeMatch.Match(myEventArgs.Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2);
+                        var Result_Data = tool.ShapeMatch.Analysis_Result(shapmatchresult);
                         if (Result_Data != null)
                         {
+                            tool.ActualX = Result_Data.X_actual;
+                            tool.ActualY = Result_Data.Y_actual;
                             tool.ActualScore = Result_Data.score;
-                            tool.DeltaX = Result_Data.deltaX_actual;
-                            tool.DeltaY = Result_Data.deltaY_actual;
+                            tool.DeltaX = Result_Data.deltaX_actual * tool.K / 1000;
+                            tool.DeltaY = Result_Data.deltaY_actual * tool.K / 1000;
 
                             string sendstr = $"{(tool.DirectX ? -tool.DeltaX : tool.DeltaX).ToString("F2")},{(tool.DirectY ? -tool.DeltaY : tool.DeltaY).ToString("F2")},0.00";
                             if (tool.InvertXY)
@@ -1047,7 +1248,14 @@ namespace F7_L12_Position_Detect.ViewModel
                                 sendstr = $"{(tool.DirectY ? -tool.DeltaY : tool.DeltaY).ToString("F2")},{(tool.DirectX ? -tool.DeltaX : tool.DeltaX).ToString("F2")},0.00";
                             }
 
-                            SendMsgRobot($"{sendstr}");
+                            if (tool.ActualScore >= tool.MinScore)
+                            {
+                                if (!tool.SendStatus)
+                                {
+                                    SendMsgRobot($"{sendstr}");
+                                }
+                                checkpositon = true;
+                            }
 
                             //NoticeBox.Show("")
                         }
@@ -1056,12 +1264,145 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         ;
                     }
-                    #endregion
 
+                    if (tool.DecodeBarcode)
+                    {
+                        tool.Reg.RefreshResult(barcodelist);
+                    }
+                }
+                else
+                {
+                    checkpositon = true;
                 }
                 #endregion
 
+
+                if (((!tool.DecodeBarcode) || barcodelist.Count > 0)
+                    && (checkpositon)
+
+                    )
+                {
+                    if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
+                    {
+                        string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                        string dir = Path.GetDirectoryName(savefilename);
+                        if (!Directory.Exists(dir))
+                        { Directory.CreateDirectory(dir); }
+                        HOperatorSet.WriteImage(myEventArgs.Image, "jpg", 0, savefilename);
+
+                    }
+                    tool.ToolStatus = ToolStatus.OK;
+                    if (tool.SendStatus)
+                    {
+                        if (!tool.InvertResult)
+                        {
+                            SendMsgRobot($"OK");
+                        }
+                        else
+                        {
+                            SendMsgRobot($"NG");
+                        }
+                    }
+                }
+                else
+                {
+                    tool.ToolStatus = ToolStatus.NG;
+
+                    if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
+                    {
+                        string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+
+                        string dir = Path.GetDirectoryName(savefilename);
+                        if (!Directory.Exists(dir))
+                        { Directory.CreateDirectory(dir); }
+                        HOperatorSet.WriteImage(myEventArgs.Image, "jpg", 0, savefilename);
+
+                    }
+
+                    if (tool.SendStatus)
+                    {
+                        if (!tool.InvertResult)
+                        {
+                            SendMsgRobot($"NG");
+                        }
+                        else
+                        {
+                            SendMsgRobot($"OK");
+                        }
+                    }
+                }
+
+
             }
+
+            //ToolModel tool = DataModel.Processmodel.Tools[DataModel.Processmodel.ToolIndex];
+            //ClearTool(tool);
+            //bool result = true;
+            //if (tool.DecodeBarcode || tool.PositionDetect)
+            //{
+
+            //    #region 读取二维码
+            //    if (tool.DecodeBarcode)
+            //    {
+            //        try
+            //        {
+
+            //            var r = tool.Reg.ReadBarcode(myEventArgs.Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
+            //            if (r.Count > 0)
+            //            {
+            //                tool.BarcodeStr = r[0].codestr;
+            //                NoticeBox.Show(r[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
+            //                //SendMsgPC(tool.BarcodeStr);
+            //                SendMsgSoft(tool.BarcodeStr);
+            //                writeLog($"二维码读取成功:{r[0].codestr}");
+            //            }
+            //            else
+            //            {
+            //                tool.BarcodeStr = string.Empty;
+            //                writeLog($"二维码读取失败:{r[0].codestr}");
+            //            }
+            //        }
+            //        catch
+            //        {
+            //            ;
+            //        }
+            //    }
+            //    #endregion
+            //    #region 检测位置
+            //    if (tool.PositionDetect)
+            //    {
+            //        #region 读取位置
+            //        try
+            //        {
+            //            var r = tool.ShapeMatch.Match(myEventArgs.Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2);
+            //            var Result_Data = tool.ShapeMatch.Analysis_Result(r);
+            //            if (Result_Data != null)
+            //            {
+            //                tool.ActualScore = Result_Data.score;
+            //                tool.DeltaX = Result_Data.deltaX_actual;
+            //                tool.DeltaY = Result_Data.deltaY_actual;
+
+            //                string sendstr = $"{(tool.DirectX ? -tool.DeltaX : tool.DeltaX).ToString("F2")},{(tool.DirectY ? -tool.DeltaY : tool.DeltaY).ToString("F2")},0.00";
+            //                if (tool.InvertXY)
+            //                {
+            //                    sendstr = $"{(tool.DirectY ? -tool.DeltaY : tool.DeltaY).ToString("F2")},{(tool.DirectX ? -tool.DeltaX : tool.DeltaX).ToString("F2")},0.00";
+            //                }
+
+            //                SendMsgRobot($"{sendstr}");
+
+            //                //NoticeBox.Show("")
+            //            }
+            //        }
+            //        catch
+            //        {
+            //            ;
+            //        }
+            //        #endregion
+
+            //    }
+            //    #endregion
+
+            //}
 
 
             #endregion

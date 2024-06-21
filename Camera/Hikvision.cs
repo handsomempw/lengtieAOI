@@ -13,6 +13,8 @@ using GalaSoft.MvvmLight;
 using MvCamCtrl.NET;
 using System.Windows.Forms;
 using GalaSoft.MvvmLight.Command;
+using System.IO;
+using System.Runtime.InteropServices.ComTypes;
 
 namespace Camera
 {
@@ -542,7 +544,7 @@ namespace Camera
 
             // ch:设置采集连续模式 | en:Set Continues Aquisition Mode
             int nret0 = m_MyCamera.MV_CC_SetEnumValue_NET("AcquisitionMode", (uint)MyCamera.MV_CAM_ACQUISITION_MODE.MV_ACQ_MODE_CONTINUOUS);
-          //  int nret1 = m_MyCamera.MV_CC_SetEnumValue_NET("TriggerMode", (uint)MyCamera.MV_CAM_TRIGGER_MODE.MV_TRIGGER_MODE_OFF);
+            //  int nret1 = m_MyCamera.MV_CC_SetEnumValue_NET("TriggerMode", (uint)MyCamera.MV_CAM_TRIGGER_MODE.MV_TRIGGER_MODE_OFF);
             int nret2 = m_MyCamera.MV_CC_RegisterImageCallBackEx_NET(cbImage, (IntPtr)0);
 
             bnGetParam_Click();// ch:获取参数 | en:Get parameters
@@ -685,8 +687,8 @@ namespace Camera
                     ImageReceived.Invoke(this, new MyEventArgs()
                     {
                         Image = ho_Image,
-                        Width=pFrameInfo.nWidth, 
-                        Height=pFrameInfo.nHeight
+                        Width = pFrameInfo.nWidth,
+                        Height = pFrameInfo.nHeight
                     });
 
 
@@ -821,6 +823,11 @@ namespace Camera
 
             MyCamera.MV_SAVE_IMG_TO_FILE_PARAM stSaveFileParam = new MyCamera.MV_SAVE_IMG_TO_FILE_PARAM();
 
+            string filename = $"{Environment.CurrentDirectory}\\图片\\{DateTime.Now.ToString("yyyyMMdd_HHmmssFFF")}.bmp";
+            string dir = Path.GetDirectoryName(filename);
+            if (!Directory.Exists(dir))
+            { Directory.CreateDirectory(dir); }
+            
             lock (BufForDriverLock)
             {
                 if (m_stFrameInfo.nFrameLen == 0)
@@ -835,7 +842,8 @@ namespace Camera
                 stSaveFileParam.nHeight = m_stFrameInfo.nHeight;
                 stSaveFileParam.nWidth = m_stFrameInfo.nWidth;
                 stSaveFileParam.iMethodValue = 2;
-                stSaveFileParam.pImagePath = "Image_w" + stSaveFileParam.nWidth.ToString() + "_h" + stSaveFileParam.nHeight.ToString() + "_fn" + m_stFrameInfo.nFrameNum.ToString() + ".bmp";
+             
+                stSaveFileParam.pImagePath = filename;
                 int nRet = m_MyCamera.MV_CC_SaveImageToFile_NET(ref stSaveFileParam);
                 if (MyCamera.MV_OK != nRet)
                 {
@@ -845,6 +853,9 @@ namespace Camera
             }
 
             ShowErrorMsg("保存成功!", 0);
+            Process.Start(dir);
+
+
         }
 
         public void bnSaveJpg_Click()
@@ -863,6 +874,11 @@ namespace Camera
 
             MyCamera.MV_SAVE_IMG_TO_FILE_PARAM stSaveFileParam = new MyCamera.MV_SAVE_IMG_TO_FILE_PARAM();
 
+            string filename = $"{Environment.CurrentDirectory}\\图片\\{DateTime.Now.ToString("yyyyMMdd_HHmmssFFF")}.jpg";
+            string dir = Path.GetDirectoryName(filename);
+            if (!Directory.Exists(dir))
+            { Directory.CreateDirectory(dir); }
+            
             lock (BufForDriverLock)
             {
                 if (m_stFrameInfo.nFrameLen == 0)
@@ -878,7 +894,8 @@ namespace Camera
                 stSaveFileParam.nWidth = m_stFrameInfo.nWidth;
                 stSaveFileParam.nQuality = 80;
                 stSaveFileParam.iMethodValue = 2;
-                stSaveFileParam.pImagePath = "Image_w" + stSaveFileParam.nWidth.ToString() + "_h" + stSaveFileParam.nHeight.ToString() + "_fn" + m_stFrameInfo.nFrameNum.ToString() + ".jpg";
+             
+                stSaveFileParam.pImagePath = filename;
                 int nRet = m_MyCamera.MV_CC_SaveImageToFile_NET(ref stSaveFileParam);
                 if (MyCamera.MV_OK != nRet)
                 {
@@ -888,6 +905,9 @@ namespace Camera
             }
 
             ShowErrorMsg("保存成功!", 0);
+            Process.Start(dir);
+
+
         }
 
         public void bnSavePng_Click()
@@ -906,6 +926,11 @@ namespace Camera
 
             MyCamera.MV_SAVE_IMG_TO_FILE_PARAM stSaveFileParam = new MyCamera.MV_SAVE_IMG_TO_FILE_PARAM();
 
+            string filename = $"{Environment.CurrentDirectory}\\图片\\{DateTime.Now.ToString("yyyyMMdd_HHmmssFFF")}.png";
+            string dir = Path.GetDirectoryName(filename);
+            if (!Directory.Exists(dir))
+            { Directory.CreateDirectory(dir); }
+            
             lock (BufForDriverLock)
             {
                 if (m_stFrameInfo.nFrameLen == 0)
@@ -921,7 +946,8 @@ namespace Camera
                 stSaveFileParam.nWidth = m_stFrameInfo.nWidth;
                 stSaveFileParam.nQuality = 8;
                 stSaveFileParam.iMethodValue = 2;
-                stSaveFileParam.pImagePath = "Image_w" + stSaveFileParam.nWidth.ToString() + "_h" + stSaveFileParam.nHeight.ToString() + "_fn" + m_stFrameInfo.nFrameNum.ToString() + ".png";
+             
+                stSaveFileParam.pImagePath = filename;
                 int nRet = m_MyCamera.MV_CC_SaveImageToFile_NET(ref stSaveFileParam);
                 if (MyCamera.MV_OK != nRet)
                 {
@@ -931,6 +957,9 @@ namespace Camera
             }
 
             ShowErrorMsg("保存成功!", 0);
+            Process.Start(dir);
+
+
         }
 
         public void bnSaveTiff_Click()
@@ -948,7 +977,11 @@ namespace Camera
             }
 
             MyCamera.MV_SAVE_IMG_TO_FILE_PARAM stSaveFileParam = new MyCamera.MV_SAVE_IMG_TO_FILE_PARAM();
-
+            string filename = $"{Environment.CurrentDirectory}\\图片\\{DateTime.Now.ToString("yyyyMMdd_HHmmssFFF")}.tiff";
+            string dir = Path.GetDirectoryName(filename);
+            if (!Directory.Exists(dir))
+            { Directory.CreateDirectory(dir); }
+            
             lock (BufForDriverLock)
             {
                 if (m_stFrameInfo.nFrameLen == 0)
@@ -963,7 +996,8 @@ namespace Camera
                 stSaveFileParam.nHeight = m_stFrameInfo.nHeight;
                 stSaveFileParam.nWidth = m_stFrameInfo.nWidth;
                 stSaveFileParam.iMethodValue = 2;
-                stSaveFileParam.pImagePath = "Image_w" + stSaveFileParam.nWidth.ToString() + "_h" + stSaveFileParam.nHeight.ToString() + "_fn" + m_stFrameInfo.nFrameNum.ToString() + ".tif";
+             
+                stSaveFileParam.pImagePath = filename;
                 int nRet = m_MyCamera.MV_CC_SaveImageToFile_NET(ref stSaveFileParam);
                 if (MyCamera.MV_OK != nRet)
                 {
@@ -972,6 +1006,7 @@ namespace Camera
                 }
             }
             ShowErrorMsg("保存成功!", 0);
+            Process.Start(dir);
         }
 
         public void bnGetParam_Click()

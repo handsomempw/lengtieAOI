@@ -20,6 +20,8 @@ using System.Windows.Interop;
 using System.Diagnostics;
 using System.IO;
 using F7_L12_Position_Detect.Model;
+using HalconDotNet;
+using F7_L12_Position_Detect.View;
 
 namespace F7_L12_Position_Detect
 {
@@ -56,6 +58,12 @@ namespace F7_L12_Position_Detect
                 if (ofd.ShowDialog() == true)
                 {
                     string filename = ofd.FileName;
+
+                    #region 加载模型图片
+                    HOperatorSet.GenEmptyObj(out t.Image);
+                    HOperatorSet.ReadImage(out t.Image, filename);
+                    #endregion
+
                     using (Bitmap bmp = (Bitmap)Bitmap.FromFile(filename))
                     {
                         t.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
@@ -69,9 +77,10 @@ namespace F7_L12_Position_Detect
 
                     zoom_all();
                 }
-            }catch(Exception ex)
+            }
+            catch (Exception ex)
             {
-               NoticeBox.Show(ex.Message,"错误",MessageBoxIcon.Error,true,10000);
+                NoticeBox.Show(ex.Message, "错误", MessageBoxIcon.Error, true, 10000);
             }
 
         }
@@ -252,6 +261,32 @@ namespace F7_L12_Position_Detect
             selectbroi = !selectbroi;
             SelectBarcodeROI.Background = selectbroi ? System.Windows.Media.Brushes.OrangeRed : System.Windows.Media.Brushes.Gray;
 
+        }
+
+        private void modelsetting_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string shmfilename = $"{vml.Main.DataModel.Settingmodel.Prjdir}\\{vml.Main.DataModel.Settingmodel.Name}\\Tool{vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.tool.Index - 1].Index}.shm";
+                ModelWindow modelWindow = new ModelWindow(t.Image, shmfilename);
+                modelWindow.ShowDialog();
+            }
+            catch { }
+
+        }
+
+        private void ApplyAll_Click(object sender, RoutedEventArgs e)
+        {
+            for (int i = 0; i < vml.Main.DataModel.Processmodel.Tools.Count; i++)
+            {
+                try
+                {
+                    vml.Main.DataModel.Processmodel.Tools[i].MinScore = vml.Main.DataModel.Processmodel.tool.MinScore;
+                    vml.Main.DataModel.Processmodel.Tools[i].K = vml.Main.DataModel.Processmodel.tool.K;
+                    vml.Main.DataModel.Processmodel.Tools[i].Allow_Delta = vml.Main.DataModel.Processmodel.tool.Allow_Delta;
+                }
+                catch { }
+            }
         }
 
         private void move_to_center(TransformGroup group, double scale, double w1, double h1)

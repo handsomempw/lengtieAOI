@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows;
 using System;
 using Microsoft.Win32;
+using System.IO;
 
 namespace PositionDetect.ViewModel
 {
@@ -45,21 +46,24 @@ namespace PositionDetect.ViewModel
         }
         public void showregion()
         {
-            HObject ROI = null;
-            HOperatorSet.GenEmptyObj(out ROI);
-            foreach (var r in DATA.Objects)
+            try
             {
-                HOperatorSet.Union2(ROI, r, out ROI);
-            }
-            DATA.HWindow.HalconWindow.SetRgba(0, 255, 0, 100);
-            DATA.HWindow.HalconWindow.DispObj(ROI);
+                HObject ROI = null;
+                HOperatorSet.GenEmptyObj(out ROI);
+                foreach (var r in DATA.Objects)
+                {
+                    HOperatorSet.Union2(ROI, r, out ROI);
+                }
+                DATA.HWindow.HalconWindow.SetRgba(0, 255, 0, 100);
+                DATA.HWindow.HalconWindow.DispObj(ROI);
 
-            if (DATA.Objects.Count > 0 && DATA.selectedindex >= 0 && DATA.selectedindex < DATA.Objects.Count)
-            {
-                //HObject ROI1 = null;
-                DATA.HWindow.HalconWindow.SetRgba(255, 0, 0, 100);
-                DATA.HWindow.HalconWindow.DispObj(DATA.Objects[DATA.selectedindex]);
-            }
+                if (DATA.Objects.Count > 0 && DATA.selectedindex >= 0 && DATA.selectedindex < DATA.Objects.Count)
+                {
+                    //HObject ROI1 = null;
+                    DATA.HWindow.HalconWindow.SetRgba(255, 0, 0, 100);
+                    DATA.HWindow.HalconWindow.DispObj(DATA.Objects[DATA.selectedindex]);
+                }
+            }catch { ; }
 
         }
         public void drawrectangle()
@@ -155,7 +159,7 @@ namespace PositionDetect.ViewModel
                 DATA.HWindow.HalconWindow.SetPart(0, 0, (int)hv_height - 1, (int)hv_width - 1);
                 DATA.HWindow.HalconWindow.DispObj(ReduceImage);
                 HTuple modelID = null;
-                HOperatorSet.CreateShapeModel(ReduceImage, "auto",  (new HTuple(-181)).TupleRad()
+                HOperatorSet.CreateShapeModel(ReduceImage, "auto", (new HTuple(-181)).TupleRad()
                         , (new HTuple(181)).TupleRad(), "auto", "auto", "use_polarity", "auto", "auto", out modelID);
                 DATA.modelID = modelID;
                 using (HDevDisposeHelper dh = new HDevDisposeHelper())
@@ -214,12 +218,26 @@ namespace PositionDetect.ViewModel
                 return;
             }
 
-            SaveFileDialog saveFileDialog = new SaveFileDialog();
-            saveFileDialog.Filter = "*.shm|*.shm";
-            if (saveFileDialog.ShowDialog() == true)
+            if (string.IsNullOrEmpty(DATA.modelfilename))
             {
-                string filename = saveFileDialog.FileName;
-                HOperatorSet.WriteShapeModel(DATA.modelID, filename);
+                SaveFileDialog saveFileDialog = new SaveFileDialog();
+                saveFileDialog.Filter = "*.shm|*.shm";
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    string filename = saveFileDialog.FileName;
+                    HOperatorSet.WriteShapeModel(DATA.modelID, filename);
+                    NoticeBox.Show($"{filename}", $"模型导出成功",  MessageBoxIcon.Success, true, 3000);
+                }
+            }
+            else
+            {
+                string dir = Path.GetDirectoryName(DATA.modelfilename);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                HOperatorSet.WriteShapeModel(DATA.modelID, DATA.modelfilename);
+                NoticeBox.Show($"{DATA.modelfilename}", $"模型导出成功",  MessageBoxIcon.Success, true, 3000);
             }
         }
 

@@ -104,7 +104,9 @@ namespace PositionDetect
                     };
                     r.points.Add(rp);
                 }
-                HWindow.SetColor("yellow");HWindow.DispObj(ho_ROI_0);
+                HWindow.SetDraw("margin");
+                HWindow.SetColor("yellow");
+                HWindow.DispObj(ho_ROI_0);
                 HWindow.SetColor("green");
 
                 r.IsSuccess = true;

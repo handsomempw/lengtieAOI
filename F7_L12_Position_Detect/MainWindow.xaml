@@ -174,7 +174,7 @@
             </ListBox.ItemTemplate>
         </ListBox>
         <!--<Button Grid.Row="1" Grid.Column="1" Click="Button_Click">设置</Button>-->
-        <Grid Grid.Row="1" Grid.Column="2"  >
+        <Grid Grid.Row="1" Grid.Column="2"  IsEnabled="{Binding DataModel.Settingmodel.permission }" >
             <!--<Grid Grid.Row="1" Grid.Column="1" Visibility="{Binding DataModel.Settingmodel.permission ,Converter={StaticResource Bool2Visible_Converter}}" >-->
             <Grid.RowDefinitions>
                 <RowDefinition/>
@@ -224,7 +224,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="{Binding DataModel.Processmodel.tool.DecodeBarcode,Converter={StaticResource Bool2Visible_Converter}}">二维码内容:</TextBlock>
 
-                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding DataModel.Processmodel.tool.BarcodeStr}" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.BarcodeStr}" />
                     </Grid>
 
                     <Grid Grid.Row="2"  Visibility="{Binding DataModel.Processmodel.tool.PositionDetect,Converter={StaticResource Bool2Visible_Converter}}">
@@ -233,18 +233,30 @@
                             <RowDefinition/>
                             <RowDefinition/>
                             <RowDefinition/>
+                            <RowDefinition/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition/>
+                            <ColumnDefinition Width="auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X偏移:</TextBlock>
-                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">Y偏移:</TextBlock>
-                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">分值:</TextBlock>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X轴坐标:</TextBlock>
+                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X轴坐标:</TextBlock>
+                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X偏移:</TextBlock>
+                        <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">Y偏移:</TextBlock>
+                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">分值:</TextBlock>
 
-                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding DataModel.Processmodel.tool.DeltaX}"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding DataModel.Processmodel.tool.DeltaY}"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding DataModel.Processmodel.tool.ActualScore}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualX,StringFormat={}{0:F1}}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualY,StringFormat={}{0:F1}}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.DeltaX,StringFormat={}{0:F4}}"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.DeltaY,StringFormat={}{0:F4}}"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualScore,StringFormat={}{0:F3}}"/>
+
+
+                        <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">pixel</TextBlock>
+                        <TextBlock Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">pixel</TextBlock>
+                        <TextBlock Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">mm</TextBlock>
+                        <TextBlock Grid.Row="3" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">mm</TextBlock>
 
                     </Grid>
                 </Grid>
@@ -262,14 +274,18 @@
         <C:CameraControl Grid.Row="2" Name="cameractr" DataContext="{Binding DataModel.Settingmodel.camedata}"/>
 
         <WrapPanel Grid.Row="4" HorizontalAlignment="Center" Grid.ColumnSpan="3" >
-            <TextBlock>机器人连接:</TextBlock>
-            <TextBlock Text="{Binding DataModel.Settingmodel.RobotConnect.IsConnected}" Margin="0,0,20,0" />
-            <TextBlock>PC连接:</TextBlock>
-            <TextBlock Text="{Binding DataModel.Settingmodel.SoftConnect.IsConnected}" />
 
-            <Button Name="Send2Soft_btn" Click="Send2Soft_btn_Click" >发送测试Soft</Button>
-            <Button Name="Send2Robot_btn" Click="Send2Robot_btn_Click" >发送测试Robot</Button>
-            <Button Name="Barcodetest_btn"  Click="Barcodetest_btn_Click" >二维码识别测试</Button>
+            <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ImageNum,StringFormat=照片数:{0}}"  />
+            <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.RobotConnect.IsConnected,StringFormat=机器人连接:{0}}"  />
+            <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.SoftConnect.IsConnected,StringFormat=PC连接:{0}}" />
+            <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ToolIndex,StringFormat=工具编号:{0}}"/>
+
+            <CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveOK }">保存OK</CheckBox>
+            <CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveNG }">保存NG</CheckBox>
+
+            <Button Name="Send2Soft_btn" Click="Send2Soft_btn_Click" Visibility="Collapsed" >发送测试Soft</Button>
+            <Button Name="Send2Robot_btn" Click="Send2Robot_btn_Click" Visibility="Collapsed">发送测试Robot</Button>
+            <Button Name="Barcodetest_btn"  Click="Barcodetest_btn_Click" Visibility="Collapsed">二维码识别测试</Button>
         </WrapPanel>
     </Grid>
 </p:WindowX>

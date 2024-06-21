@@ -29,5 +29,8 @@ namespace F7_L12_Position_Detect.Model
         [XmlIgnore]
         public HWindow HWindow = null;
 
+        [XmlIgnore]
+        public int ImageNum { set; get; } = 0;
+
     }
 }

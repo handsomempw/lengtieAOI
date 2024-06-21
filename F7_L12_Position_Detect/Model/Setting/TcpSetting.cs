@@ -22,6 +22,7 @@ namespace F7_L12_Position_Detect.Model.Setting
         [XmlElement("远程端口")]
         public int RemotePort { set; get; } = 1000;
         [XmlElement("连接状态")]
+        [XmlIgnore]
         public bool IsConnected { set; get; } = false;
     }
 }

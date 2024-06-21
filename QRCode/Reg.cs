@@ -26,9 +26,9 @@ namespace QRCode
         public HWindow Hwindow;
 
 
-        public List<Barcode> ReadBarcode(HObject _ho_Image, int barcodenum, int _row1,  int _col1, int _row2, int _col2, bool showresut = false)
+        public List<Barcode> ReadBarcode(HObject _ho_Image, int barcodenum, int _row1, int _col1, int _row2, int _col2, bool showresut = false)
         {
-            List<Barcode> barcodes = null;
+            List<Barcode> barcodes =new List<Barcode>();
 
             row1 = _row1;
             col1 = _col1;
@@ -42,7 +42,7 @@ namespace QRCode
             HOperatorSet.GenEmptyObj(out ho_ImagePart);
             HOperatorSet.GenEmptyObj(out ho_SymbolXLDs);
             //HOperatorSet.GenEmptyObj(out ho_ROI_0);           
-            
+
 
             try
             {
@@ -52,11 +52,11 @@ namespace QRCode
             catch (Exception ex)
             {
                 //ho_Image.Dispose();
-                ho_ROI_0.Dispose();
-                ho_ImageReduced.Dispose();
-                ho_ImagePart.Dispose();
-                ho_SymbolXLDs.Dispose();
-                return null;
+                //ho_ROI_0.Dispose();
+                //ho_ImageReduced.Dispose();
+                //ho_ImagePart.Dispose();
+                //ho_SymbolXLDs.Dispose();
+                //return null;
             }
             //     ho_Image.Dispose();
             ho_ROI_0.Dispose();
@@ -75,7 +75,7 @@ namespace QRCode
 
             // Local control variables 
 
-            HTuple hv_DataCodeHandle = new HTuple(),  hv_Length = new HTuple();
+            HTuple hv_DataCodeHandle = new HTuple(), hv_Length = new HTuple();
             HTuple hv_DecodedDataStrings = new HTuple(), hv_min_gray = new HTuple();
             HTuple hv_max_gray = new HTuple(), hv_Mult = new HTuple();
             HTuple hv_Add = new HTuple(), hv_ResultHandles = new HTuple();
@@ -219,6 +219,25 @@ namespace QRCode
             return barcodes;
 
         }
+
+
+        public bool RefreshResult(List<Barcode> barcodes)
+        {
+            try
+            {
+                foreach (Barcode barcode in barcodes)
+                {
+                    Hwindow.DispCircle((double)barcode.Y, (double)barcode.X, (double)20);
+                }
+
+
+                return true;
+            }
+            catch (Exception ex) { return false; }
+
+
+        }
+
         public struct Barcode
         {
             public string codestr;

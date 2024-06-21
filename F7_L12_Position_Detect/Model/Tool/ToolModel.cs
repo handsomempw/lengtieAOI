@@ -1,4 +1,5 @@
 ﻿using GalaSoft.MvvmLight;
+using HalconDotNet;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -60,7 +61,7 @@ namespace F7_L12_Position_Detect.Model.Tool
 
 
         [XmlElement("比例um/pixel")]
-        public double K { set; get; } = 1;
+        public double K { set; get; } = 64.2186;
 
         [XmlElement("初始X轴坐标")]
         public double InitX { set; get; } = 0;
@@ -88,13 +89,66 @@ namespace F7_L12_Position_Detect.Model.Tool
         [XmlElement("发送结果状态")]
         public bool SendStatus { set; get; } = false;
 
+        [XmlElement("结果取反")]
+        public bool InvertResult { set; get; } = false;
+
+
+        [XmlElement("位置偏差范围")]
+        ///单位mm
+        public double Allow_Delta { set;get; } = 10;
+
         [XmlElement("状态颜色")]
         ///透明,等待
         ///黄色，运行中
         ///绿色，OK
         ///红色, NG
         [XmlIgnore]
-        public SolidColorBrush StatusColor { set; get; } = Brushes.Transparent;
+        public SolidColorBrush StatusColor {
+
+            get
+            {
+                switch(_ToolStatus)
+                {
+                    case ToolStatus.识别:
+                        {
+                            return Brushes.Orange;
+                        }
+                        case ToolStatus.OK:
+                        {
+                            return Brushes.GreenYellow;
+                        }
+                    case ToolStatus.NG:
+                    case ToolStatus.NG2:
+                        {
+                            return Brushes.OrangeRed;
+                        }
+                    default:
+                        {
+                            return  new SolidColorBrush(Color.FromArgb(100,255,255,255));
+                        }
+                }
+            }
+        
+        }
+
+
+        private ToolStatus _ToolStatus = ToolStatus.等待;
+        
+        public ToolStatus ToolStatus
+        {
+            set
+            {
+                _ToolStatus = value;
+                RaisePropertyChanged(() => ToolStatus);
+                RaisePropertyChanged(() => StatusColor);
+
+            }
+            get { return _ToolStatus; }
+        }
+
+
+
+
 
 
         [XmlElement("位置检测ROI")]
@@ -103,7 +157,17 @@ namespace F7_L12_Position_Detect.Model.Tool
         #endregion
         [XmlIgnore]
         public BitmapSource BitmapSource { get; set; } = null;
+        public HObject Image = null;
 
+    }
+
+    public enum ToolStatus
+    {
+        等待,
+        识别,
+        OK,
+        NG,
+        NG2
     }
 
     public class ROI : ObservableObject

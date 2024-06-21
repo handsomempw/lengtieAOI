@@ -7,7 +7,7 @@
         xmlns:p="https://opensource.panuon.com/wpf-ui"
         mc:Ignorable="d"
            WindowStartupLocation="CenterScreen" WindowState="Maximized"
-        Title="工具设置" Height="800" Width="1200"
+        Title="工具设置" Height="820" Width="1200"
            SizeChanged="WindowX_SizeChanged"
            >
     <p:WindowX.DataContext>
@@ -20,7 +20,7 @@
                 <TranslateTransform/>
             </TransformGroup>
         </Grid.Resources>
-        
+
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="auto"/>
@@ -64,12 +64,14 @@
                     <RowDefinition Height=" auto"/>
                     <RowDefinition Height=" auto"/>
                     <RowDefinition Height=" auto"/>
+                    <RowDefinition Height=" auto"/>
                     <RowDefinition/>
                 </Grid.RowDefinitions>
 
                 <Button Padding="15" Margin="5" Click="Button_Click">选择图片</Button>
                 <Grid Grid.Row="1">
                     <Grid.RowDefinitions>
+                        <RowDefinition/>
                         <RowDefinition/>
                         <RowDefinition/>
                         <RowDefinition/>
@@ -159,16 +161,23 @@
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition MinWidth="150"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">位置检测模型文件名称:</TextBlock>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="Collapsed">位置检测模型文件名称:</TextBlock>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >位置偏差范围:</TextBlock>
                         <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">模板匹配分值下限:</TextBlock>
                         <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">比例um/pixel:</TextBlock>
                         <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X轴取反:</TextBlock>
                         <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">Y轴取反:</TextBlock>
                         <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">XY轴对换:</TextBlock>
-                        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X轴取反:</TextBlock>
+                        <!--<TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">取结果:</TextBlock>-->
 
 
-                        <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center"  Margin="10,30,0,0" >标定位置:</TextBlock>
+                        <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center"  Margin="10,20,0,0" >标定位置:</TextBlock>
+                        <Button  Grid.Row="7" Grid.Column="1" VerticalAlignment="Bottom" Margin="10,0,2,0" HorizontalAlignment="Right" 
+                                 p:ButtonHelper.CornerRadius="10" Height="20" Width="80"
+                                 Background="PaleVioletRed" Foreground="White"
+                                 Name="getinitposition" Visibility="Collapsed"
+                                 >标定位置</Button>
+
                         <Grid Grid.Row="8" Grid.Column="0"  Grid.ColumnSpan="2" Margin="10,0,0,30">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="auto"/>
@@ -185,13 +194,23 @@
                         </Grid>
                         <TextBlock Grid.Row="9" Grid.Column="0" VerticalAlignment="Center" >模板匹配ROI:</TextBlock>
 
-                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Margin="2" Text="{Binding ModelFileName}" />
-                        <TextBox Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="2" Text="{Binding MinScore}"/>
-                        <TextBox Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" Margin="2" Text="{Binding K}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Margin="2" Text="{Binding ModelFileName}" Visibility="Collapsed" />
+                        <TextBox Grid.Row="0" Grid.Column="1"   Margin="2,2,100,2" Text="{Binding Allow_Delta}"  />
+                        <TextBlock Grid.Row="0" Grid.Column="1"  HorizontalAlignment="Right"  Margin="2,2,70,2" >mm</TextBlock>
+
+                        <Button Grid.Row="1" Grid.Column="1" Width="90" Margin="2"
+                                Grid.RowSpan="2" HorizontalAlignment="Right"
+                                p:ButtonHelper.CornerRadius="20"
+                                Background="PaleVioletRed" Foreground="White"
+                                Name="ApplyAll"
+                                Click="ApplyAll_Click"
+                                >全部应用</Button>
+                        <TextBox Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding MinScore}"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding K}"/>
                         <CheckBox Grid.Row="3" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectX }"/>
                         <CheckBox Grid.Row="4" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectY  }"/>
                         <CheckBox Grid.Row="5" Grid.Column="1" Margin="2"  IsChecked="{Binding InvertXY }"/>
-                        <CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding SendStatus  }"/>
+                        <!--<CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding SendStatus  }"/>-->
 
 
 
@@ -219,6 +238,26 @@
 
                         </Grid>
                     </Grid>
+                </GroupBox>
+                <Button  Grid.Row="3" VerticalAlignment="Top" Margin="10,12,5,0" HorizontalAlignment="Right" 
+                                 p:ButtonHelper.CornerRadius="10" Height="20" Width="80"
+                                 Background="Violet" Foreground="White"
+                         Name="modelsetting"
+                         Click="modelsetting_Click"
+                                 >模型设置</Button>
+
+                <GroupBox Header="结果输出" Grid.Row="4" p:GroupBoxHelper.HeaderBackground="BlueViolet" BorderBrush="BlueViolet" Margin="0,5" 
+                          VerticalAlignment="Top" >
+                    <Grid Margin="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Row="6" Grid.Column="0" Margin="2"  IsChecked="{Binding SendStatus  }" Content="取结果" />
+                        <CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding SendStatus  }" Content="结果取反" />
+
+                    </Grid>
+
                 </GroupBox>
 
             </Grid>

@@ -45,7 +45,8 @@ namespace F7_L12_Position_Detect
             vml.Main.DataModel.Processmodel.Tools.Add(new Model.Tool.ToolModel());
             vml.Main.LoadSettingModel();
             vml.Main.Load_Prj();
-            vml.Main.ConnectPC();
+            //vml.Main.ConnectPC();
+            vml.Main.InitSoftServer();
             vml.Main.InitRobotServer();
 
 
@@ -99,9 +100,9 @@ namespace F7_L12_Position_Detect
                 vml.Main.DataModel.Processmodel.tool = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
                 //vml.Main.DataModel.Processmodel.tool = @vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
                 SettingForm settingForm = new SettingForm();
-                settingForm.Topmost = true;
-                // settingForm.ShowDialog();
-                settingForm.Show();
+                //settingForm.Topmost = true;
+                 settingForm.ShowDialog();
+                //settingForm.Show();
             }
         }
 
@@ -155,7 +156,7 @@ namespace F7_L12_Position_Detect
 
         private void Send2Soft_btn_Click(object sender, RoutedEventArgs e)
         {
-            vml.Main.SendMsgPC($"softtest{DateTime.Now}");
+            vml.Main.SendMsgSoft($"softtest{DateTime.Now}");
         }
 
         private void Send2Robot_btn_Click(object sender, RoutedEventArgs e)
@@ -186,6 +187,6 @@ namespace F7_L12_Position_Detect
 
         }
 
-
+        
     }
 }

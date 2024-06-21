@@ -97,6 +97,7 @@
     <Compile Include="Model\Processmodel.cs" />
     <Compile Include="Model\RecordModel.cs" />
     <Compile Include="Model\SettingModel.cs" />
+    <Compile Include="Model\Setting\ImageSaveSetting.cs" />
     <Compile Include="Model\Setting\TcpSetting.cs" />
     <Compile Include="Model\Tool\ToolModel.cs" />
     <Compile Include="SettingForm.xaml.cs">
@@ -104,11 +105,17 @@
     </Compile>
     <Compile Include="ViewModel\MainViewModel.cs" />
     <Compile Include="ViewModel\ViewModelLocator.cs" />
+    <Compile Include="View\InitPositionWindow.xaml.cs">
+      <DependentUpon>InitPositionWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="View\Inputbox.xaml.cs">
       <DependentUpon>Inputbox.xaml</DependentUpon>
     </Compile>
     <Compile Include="View\InputPassword.xaml.cs">
       <DependentUpon>InputPassword.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="View\ModelWindow.xaml.cs">
+      <DependentUpon>ModelWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="View\newPrj.xaml.cs">
       <DependentUpon>newPrj.xaml</DependentUpon>
@@ -133,11 +140,19 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="View\InitPositionWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="View\Inputbox.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="View\InputPassword.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="View\ModelWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

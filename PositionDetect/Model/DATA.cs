@@ -45,5 +45,8 @@ namespace PositionDetect
 
         public HTuple modelID { set; get; } = null;
 
+
+        public string modelfilename { set; get; } = string.Empty;
+
     }
 }
