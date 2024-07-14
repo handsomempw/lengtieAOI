@@ -194,7 +194,7 @@
             <Button   Grid.Row="2" Grid.Column="0"   Background="#101010" Foreground="White"  Command="{Binding DeleteToolCMD}" >删除</Button>
             <Button   Grid.Row="2" Grid.Column="1"   Background="#101010" Foreground="White"  Command="{Binding ClearToolCMD}"  p:ButtonHelper.CornerRadius="0,0,15,0">清空</Button>
         </Grid>
-        <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Grid.RowSpan="2">
+        <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" >
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto"/>
                 <RowDefinition/>
@@ -347,9 +347,9 @@
                        Padding="10,2"
                        />
 
-            <CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveOK }">保存OK</CheckBox>
-            <CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveNG }">保存NG</CheckBox>
-
+            <!--<CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveOK }">保存OK</CheckBox>
+            <CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveNG }">保存NG</CheckBox>-->
+            <TextBlock Text="{Binding DataModel.Processmodel.Scannerstr,StringFormat=扫码器:{0}}"/>
             <Button Name="Send2Soft_btn" Click="Send2Soft_btn_Click" Visibility="Collapsed" >发送测试Soft</Button>
             <Button Name="Send2Robot_btn" Click="Send2Robot_btn_Click" Visibility="Collapsed">发送测试Robot</Button>
             <Button Name="Barcodetest_btn"  Click="Barcodetest_btn_Click" Visibility="Collapsed">二维码识别测试</Button>

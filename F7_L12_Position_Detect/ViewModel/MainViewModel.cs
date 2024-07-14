@@ -406,7 +406,9 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 if (Trig == 1 && DataModel.Processmodel.Trig_IO.IOstatus == 0)
                                 {
+                                    DataModel.Processmodel.Scannerstr = string.Empty;
                                     var r = DataModel.Settingmodel.ScannerModel.Scanner();
+                                    DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
                                     modbusTcp.Write((DataModel.Settingmodel.AddressStart).ToString(), (UInt16)0);
 
                                     if (!r.IsSuccess)
@@ -1264,7 +1266,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD)
                 {
 
-                    if(i==0)
+                    if (i == 0)
                     {
                         DataModel.Processmodel.Status = ToolStatus.Ê¶±ðÖÐ;
                     }

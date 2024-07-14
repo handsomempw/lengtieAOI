@@ -105,7 +105,8 @@ namespace F7_L12_Position_Detect.Model
             get { return _Status; }
         }
 
-
+        [XmlElement("扫码枪接收信息")]
+        public string Scannerstr { set; get; } = string.Empty;
 
     }
 }
