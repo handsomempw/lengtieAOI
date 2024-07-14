@@ -1326,7 +1326,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                 tool.ShapeMatch.BasicData.matchcenterY_Basic = tool.InitY;
                                 tool.ShapeMatch.BasicData.productcenter_X = tool.InitX;
                                 tool.ShapeMatch.BasicData.productcenter_Y = tool.InitY;
-                                shapmatchresult = tool.ShapeMatch.Match(myEventArgs.Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2);
+                                shapmatchresult = tool.ShapeMatch.Match(myEventArgs.Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, false);
                                 var Result_Data = tool.ShapeMatch.Analysis_Result(shapmatchresult);
                                 if (Result_Data != null)
                                 {
@@ -1392,11 +1392,16 @@ namespace F7_L12_Position_Detect.ViewModel
 
                             HTuple Area = new HTuple(), Row = new HTuple(), Column = new HTuple();
 
+                            HObject ROI, ReduceImage;
+
                             HObject Region, ConnectedRegions, SelectedRegions, RegionUnion;
                             HOperatorSet.GenEmptyObj(out Region);
                             HOperatorSet.GenEmptyObj(out ConnectedRegions);
                             HOperatorSet.GenEmptyObj(out SelectedRegions);
                             HOperatorSet.GenEmptyObj(out RegionUnion);
+
+                            HOperatorSet.GenEmptyObj(out ROI);
+                            HOperatorSet.GenEmptyObj(out ReduceImage);
 
                             HObject ImageR, ImageG, ImageB;
                             HObject RegionR, RegionG, RegionB;
@@ -1414,13 +1419,17 @@ namespace F7_L12_Position_Detect.ViewModel
 
                             try
                             {
+
+                                HOperatorSet.GenRectangle1(out ROI, tool.DimensionROI.Row1, tool.DimensionROI.Col1, tool.DimensionROI.Row2, tool.DimensionROI.Col2);
+                                HOperatorSet.ReduceDomain(myEventArgs.Image, ROI, out ReduceImage);
+
                                 if (tool.GrayMode)
                                 {
-                                    HOperatorSet.Threshold(myEventArgs.Image, out Region, tool.MinGray, tool.MaxGray);
+                                    HOperatorSet.Threshold(ReduceImage, out Region, tool.MinGray, tool.MaxGray);
                                 }
                                 else
                                 {
-                                    HOperatorSet.Decompose3(myEventArgs.Image, out ImageR, out ImageG, out ImageB);
+                                    HOperatorSet.Decompose3(ReduceImage, out ImageR, out ImageG, out ImageB);
 
                                     HOperatorSet.Threshold(ImageR, out RegionR, tool.MinRed, tool.MaxRed);
                                     HOperatorSet.Threshold(ImageG, out RegionG, tool.MinGreen, tool.MaxBlue);
@@ -1436,6 +1445,12 @@ namespace F7_L12_Position_Detect.ViewModel
                                 HOperatorSet.Union1(SelectedRegions, out RegionUnion);
                                 HOperatorSet.AreaCenter(RegionUnion, out Area, out Row, out Column);
                                 Areaint = (int)Area.L;
+
+                                hwindow.SetDraw("margin");
+                                hwindow.DispObj(ROI);
+                                hwindow.SetDraw("fill");
+                                hwindow.DispObj(SelectedRegions);
+
                             }
                             catch (Exception ex) { }
                             finally

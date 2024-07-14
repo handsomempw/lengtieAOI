@@ -321,6 +321,11 @@ namespace F7_L12_Position_Detect
             SelectDimensionROI.Background = selectdroi ? System.Windows.Media.Brushes.Orange : System.Windows.Media.Brushes.Gray;
         }
 
+        private void DimensionApply_Click(object sender, RoutedEventArgs e)
+        {
+
+        }
+
         private void move_to_center(TransformGroup group, double scale, double w1, double h1)
         {
             double w3 = show_image_ctr.ActualWidth * scale, h3 = show_image_ctr.ActualHeight * scale;

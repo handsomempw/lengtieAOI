@@ -31,12 +31,11 @@ namespace PositionDetect
             }
         }
 
-        public Result Match(HObject image, int num, int row1, int row2, int col1, int col2)
+        public Result Match(HObject image, int num, int row1, int row2, int col1, int col2, bool redraw = true)
         {
             try
             {
                 //HWindow.HalconWindow.ClearWindow();
-                HWindow.ClearWindow();
                 HObject ho_ROI_0;
                 HObject ho_ImageReduced;
                 HOperatorSet.GenEmptyObj(out ho_ImageReduced);
@@ -45,7 +44,13 @@ namespace PositionDetect
                 HTuple width, height;
                 HOperatorSet.GetImageSize(image, out width, out height);
                 //HWindow.HalconWindow.SetPart(0, 0, (int)height - 1, (int)width - 1);
-                HWindow.SetPart(0, 0, (int)height - 1, (int)width - 1);
+                
+                if (redraw)
+                {
+                    HWindow.ClearWindow();
+                    HWindow.SetPart(0, 0, (int)height - 1, (int)width - 1);
+                    HWindow.DispObj(image);
+                }
 
                 HTuple hv_Row = new HTuple(), hv_Column = new HTuple(), hv_Angle = new HTuple(), hv_Score = new HTuple();
 
@@ -53,12 +58,9 @@ namespace PositionDetect
                 HOperatorSet.GenEmptyObj(out ho_ModelContours);
                 HOperatorSet.GenEmptyObj(out ho_ContoursAffinTrans);
 
-
-
-
                 using (HDevDisposeHelper dh = new HDevDisposeHelper())
                 {
-                    HOperatorSet.GenRectangle1(out ho_ROI_0,row1,row2,col1,col2);
+                    HOperatorSet.GenRectangle1(out ho_ROI_0, row1, row2, col1, col2);
                     HOperatorSet.ReduceDomain(image, ho_ROI_0, out ho_ImageReduced);
 
                     hv_Row.Dispose(); hv_Column.Dispose(); hv_Angle.Dispose(); hv_Score.Dispose();
@@ -74,8 +76,7 @@ namespace PositionDetect
                 //HWindow.HalconWindow.SetLineWidth(2);
                 //HWindow.HalconWindow.DispObj(image);
                 //HWindow.HalconWindow.SetColor("red");
-                HWindow.SetLineWidth(2);
-                HWindow.DispObj(image);
+                HWindow.SetLineWidth(2);              
                 HWindow.SetColor("red");
                 Result r = new Result()
                 {
@@ -137,7 +138,7 @@ namespace PositionDetect
                 double angle = 0;
                 if (radius != 0)
                 {
-                     angle = Math.Asin((BasicData.productcenter_Y - BasicData.matchcenter_Y) / radius);
+                    angle = Math.Asin((BasicData.productcenter_Y - BasicData.matchcenter_Y) / radius);
                     if (BasicData.matchcenterX_Basic > BasicData.productcenter_X)
                     {
                         angle = Math.PI - angle;

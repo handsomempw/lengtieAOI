@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QRCode", "QRCode\QRCode.csp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Camera", "Camera\Camera.csproj", "{671E5D0C-031D-49EB-872E-C4940D6C921D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PositionDetect", "PositionDetect\PositionDetect.csproj", "{AC2CA99B-7A0B-4F36-AE44-23105CCA4332}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{671E5D0C-031D-49EB-872E-C4940D6C921D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{671E5D0C-031D-49EB-872E-C4940D6C921D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{671E5D0C-031D-49EB-872E-C4940D6C921D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AC2CA99B-7A0B-4F36-AE44-23105CCA4332}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC2CA99B-7A0B-4F36-AE44-23105CCA4332}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC2CA99B-7A0B-4F36-AE44-23105CCA4332}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC2CA99B-7A0B-4F36-AE44-23105CCA4332}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

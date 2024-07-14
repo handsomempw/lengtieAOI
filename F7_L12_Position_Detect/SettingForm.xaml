@@ -284,8 +284,8 @@
                             <ColumnDefinition  Width="auto" />
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        
-                        
+
+
 
                         <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >面积范围:</TextBlock>
                         <TextBox Grid.Row="0" Grid.Column="1"   Margin="2" Text="{Binding MinDimension}"  />
@@ -351,9 +351,9 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <CheckBox  Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">红色通道</CheckBox>
-                                <CheckBox  Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">绿色通道</CheckBox>
-                                <CheckBox  Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">蓝色通道</CheckBox>
+                                <CheckBox IsChecked="{Binding RedChannelEnabled}"  Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">红色通道</CheckBox>
+                                <CheckBox IsChecked="{Binding GreenChannelEnabled}" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">绿色通道</CheckBox>
+                                <CheckBox IsChecked="{Binding BlueChannelEnabled}" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">蓝色通道</CheckBox>
                                 <TextBox Grid.Row="0" Grid.Column="1"   Margin="2" Text="{Binding MinRed}"  />
                                 <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
                                 <TextBox Grid.Row="0" Grid.Column="3"   Margin="2" Text="{Binding MaxRed}"  />
@@ -366,6 +366,7 @@
                                 <TextBlock Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
                                 <TextBox Grid.Row="2" Grid.Column="3"   Margin="2" Text="{Binding MaxBlue}"  />
 
+                                <Button Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" Margin="5" Padding="5">应用测试</Button>
                             </Grid>
                         </GroupBox>
 
