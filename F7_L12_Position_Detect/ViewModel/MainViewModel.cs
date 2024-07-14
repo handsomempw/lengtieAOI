@@ -1479,7 +1479,6 @@ namespace F7_L12_Position_Detect.ViewModel
                             if (!Directory.Exists(dir))
                             { Directory.CreateDirectory(dir); }
                             HOperatorSet.WriteImage(myEventArgs.Image, "jpg", 0, savefilename);
-
                         }
                     }
                     else
