@@ -1474,7 +1474,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
                         {
-                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DataModel.Processmodel}-{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
                             string dir = Path.GetDirectoryName(savefilename);
                             if (!Directory.Exists(dir))
                             { Directory.CreateDirectory(dir); }
@@ -1486,7 +1486,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
                         {
-                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DataModel.Processmodel}-{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
 
                             string dir = Path.GetDirectoryName(savefilename);
                             if (!Directory.Exists(dir))
