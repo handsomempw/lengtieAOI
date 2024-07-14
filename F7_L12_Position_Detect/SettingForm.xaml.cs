@@ -40,6 +40,7 @@ namespace F7_L12_Position_Detect
 
         bool selectbroi = false;
         bool selectproi = false;
+        bool selectdroi = false;
 
 
         public SettingForm()
@@ -107,12 +108,18 @@ namespace F7_L12_Position_Detect
                     RectanglePosition.Width = rect.Width;
                     RectanglePosition.Height = rect.Height;
                 }
+                else if (selectdroi)
+                {
+                    RectangleDimension.Margin = new Thickness(rect.Left, rect.Top, 0, 0);
+                    RectangleDimension.Width = rect.Width;
+                    RectangleDimension.Height = rect.Height;
+                }
             }
         }
 
         private void rectange_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (selectproi || selectbroi)
+            if (selectproi || selectbroi || selectdroi)
             {
                 _downPoint = e.GetPosition(show_image_canvas);
                 _started = true;
@@ -146,6 +153,20 @@ namespace F7_L12_Position_Detect
                 t.PositionROI.Col2 = (int)(RectanglePosition.Margin.Left + RectanglePosition.Width);
                 selectproi = false;
                 SelectPositionROI.Background = selectproi ? System.Windows.Media.Brushes.Orange : System.Windows.Media.Brushes.Gray;
+            }
+            else if (selectdroi)
+            {
+
+                if (RectangleDimension.Width == 0 || RectangleDimension.Height == 0) { return; }
+                if (double.IsNaN(RectangleDimension.Width) || double.IsNaN(RectangleDimension.Height)) { return; }
+                _started = false;
+                t.DimensionROI.Row1 = (int)RectangleDimension.Margin.Top;
+                t.DimensionROI.Col1 = (int)RectangleDimension.Margin.Left;
+                t.DimensionROI.Row2 = (int)(RectangleDimension.Margin.Top + RectangleDimension.Height);
+                t.DimensionROI.Col2 = (int)(RectangleDimension.Margin.Left + RectangleDimension.Width);
+                selectdroi = false;
+                SelectDimensionROI.Background = selectdroi ? System.Windows.Media.Brushes.Orange : System.Windows.Media.Brushes.Gray;
+
             }
 
         }
@@ -285,11 +306,19 @@ namespace F7_L12_Position_Detect
                     {
                         vml.Main.DataModel.Processmodel.Tools[i].MinScore = vml.Main.DataModel.Processmodel.tool.MinScore;
                         vml.Main.DataModel.Processmodel.Tools[i].K = vml.Main.DataModel.Processmodel.tool.K;
-                        vml.Main.DataModel.Processmodel.Tools[i].Allow_Delta = vml.Main.DataModel.Processmodel.tool.Allow_Delta;
+                        vml.Main.DataModel.Processmodel.Tools[i].Allow_X_Delta = vml.Main.DataModel.Processmodel.tool.Allow_X_Delta;
+                        vml.Main.DataModel.Processmodel.Tools[i].Allow_Y_Delta = vml.Main.DataModel.Processmodel.tool.Allow_Y_Delta;
+                        vml.Main.DataModel.Processmodel.Tools[i].AllowAngleDelta = vml.Main.DataModel.Processmodel.tool.AllowAngleDelta;
                     }
                     catch { }
                 }
             }
+        }
+
+        private void SelectDimensionROI_Click(object sender, RoutedEventArgs e)
+        {
+            selectdroi = !selectdroi;
+            SelectDimensionROI.Background = selectdroi ? System.Windows.Media.Brushes.Orange : System.Windows.Media.Brushes.Gray;
         }
 
         private void move_to_center(TransformGroup group, double scale, double w1, double h1)

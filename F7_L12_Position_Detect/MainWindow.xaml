@@ -9,11 +9,11 @@
         xmlns:halcon="clr-namespace:HalconDotNet;assembly=halcondotnet"
         mc:Ignorable="d"
         xmlns:C="clr-namespace:Camera;assembly=Camera"        
-        Title="法拉电子联动线上料视觉定位系统" Height="850" Width="1200"
+        Title="法拉电子视觉检测系统" Height="850" Width="1200"
         p:WindowXCaption.Background="Orange"
         p:WindowXCaption.Foreground="White"
         p:WindowXCaption.Height="60"
-               WindowStartupLocation="CenterScreen" WindowState="Maximized"
+        WindowStartupLocation="CenterScreen" WindowState="Maximized"
            Loaded="WindowX_Loaded"
            Closing="WindowX_Closing"
           FontSize="16"
@@ -46,7 +46,6 @@
                 </Menu>
                 <TextBlock FontSize="20" Grid.Column="1" Text="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.Name}" VerticalAlignment="Center" Margin="0" Foreground="WhiteSmoke"/>
 
-
                 <!--<Button p:WindowX.IsDragMoveArea="False" Grid.Column="4" Margin="5" p:ButtonHelper.CornerRadius="50" Background="#101010" Foreground="WhiteSmoke" Click="Button_Click"
                         Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter}}"
                         Height="30" Width="30" FontSize="18"
@@ -70,6 +69,7 @@
                     Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter} }"
                    Content="&#xe98f;" ToolTip="设置"
                         ></Button>-->
+
                 <Button p:WindowX.IsDragMoveArea="False" Grid.Column="8" Margin="5" p:ButtonHelper.CornerRadius="50" Background="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.permission,Converter={StaticResource Bool2SolidColor_Converter}}" 
                    Foreground="WhiteSmoke"  Name="permissionbtn" Click="permissionbtn_Click"
                    Height="30" Width="30" FontSize="18"
@@ -126,11 +126,12 @@
         </Style>
     </p:WindowXCaption.CloseButtonStyle>-->
 
-
     <Grid Margin="3">
+
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="auto" MaxHeight="160" MinHeight="100"/>
+            <RowDefinition Height="auto" />
             <RowDefinition/>
             <RowDefinition Height="auto" />
         </Grid.RowDefinitions>
@@ -139,6 +140,7 @@
             <ColumnDefinition Width="auto" />
             <ColumnDefinition Width="auto" />
         </Grid.ColumnDefinitions>
+
         <Grid Grid.Row="0" Grid.ColumnSpan="2" MinHeight="30" Margin="5" >
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="auto"/>
@@ -152,16 +154,16 @@
             <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="5">工程名称</TextBlock>
             <ComboBox Grid.Column="1" IsEditable="False" SelectedIndex="{Binding DataModel.Settingmodel .prjselected,UpdateSourceTrigger=PropertyChanged}"  p:ComboBoxHelper.CornerRadius="15,0,0,15" Padding="15,0" ItemsSource="{Binding DataModel.Settingmodel.Prjs}" />
             <Button Grid.Column="2" x:Name="ChangePrj" p:ButtonHelper.CornerRadius="0,15,15,0" Background="#101010" Foreground="WhiteSmoke"  Click="ChangePrj_Click" >切换工程</Button>
-
-
         </Grid>
+
         <ListBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" p:ListBoxHelper.CornerRadius="5"
                  BorderBrush="#55222222" Background="Gray"
                  p:ListBoxHelper.ItemsSelectedBackground="#55FF0000" 
                  SelectionChanged="ListBox_SelectionChanged"
                  SelectedIndex="{Binding DataModel.Processmodel.selectedindex}"  
-                 MouseDoubleClick="ListBox_MouseDoubleClick"
-                     ItemsSource="{Binding DataModel.Processmodel.Tools}" >
+                 MouseDoubleClick="ListBox_MouseDoubleClick" Margin="5,0,5,0"  
+                 ItemsSource="{Binding DataModel.Processmodel.Tools}" 
+                 >
             <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
                     <StackPanel  Orientation="Horizontal"/>
@@ -174,8 +176,9 @@
             </ListBox.ItemTemplate>
         </ListBox>
         <!--<Button Grid.Row="1" Grid.Column="1" Click="Button_Click">设置</Button>-->
-        <Grid Grid.Row="1" Grid.Column="2"  IsEnabled="{Binding DataModel.Settingmodel.permission }" >
-            <!--<Grid Grid.Row="1" Grid.Column="1" Visibility="{Binding DataModel.Settingmodel.permission ,Converter={StaticResource Bool2Visible_Converter}}" >-->
+        <Grid Grid.Row="1" Grid.Column="2"  IsEnabled="{Binding DataModel.Settingmodel.permission }"
+              >
+            <!--<Grid Grid.Row="1" Grid.Column="2" Visibility="{Binding DataModel.Settingmodel.permission ,Converter={StaticResource Bool2Visible_Converter}}" >-->
             <Grid.RowDefinitions>
                 <RowDefinition/>
                 <RowDefinition/>
@@ -191,7 +194,7 @@
             <Button   Grid.Row="2" Grid.Column="0"   Background="#101010" Foreground="White"  Command="{Binding DeleteToolCMD}" >删除</Button>
             <Button   Grid.Row="2" Grid.Column="1"   Background="#101010" Foreground="White"  Command="{Binding ClearToolCMD}"  p:ButtonHelper.CornerRadius="0,0,15,0">清空</Button>
         </Grid>
-        <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2">
+        <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Grid.RowSpan="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto"/>
                 <RowDefinition/>
@@ -203,13 +206,14 @@
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
                     </Grid.RowDefinitions>
 
                     <WrapPanel>
                         <TextBlock Text="{Binding DataModel.Processmodel.tool.Index}"/>
                         <TextBlock Text="{Binding DataModel.Processmodel.tool.Name}"/>
                     </WrapPanel>
-                    <Grid Grid.Row="1"   Visibility="{Binding DataModel.Processmodel.tool.DecodeBarcode,Converter={StaticResource Bool2Visible_Converter}}">
+                    <Grid Grid.Row="1"   Visibility="{Binding DataModel.Processmodel.tool.TestMode,Converter={StaticResource TestMode2Visibility_Barcode}}">
                         <Grid.RowDefinitions>
                             <RowDefinition/>
                             <RowDefinition/>
@@ -227,8 +231,9 @@
                         <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.BarcodeStr}" />
                     </Grid>
 
-                    <Grid Grid.Row="2"  Visibility="{Binding DataModel.Processmodel.tool.PositionDetect,Converter={StaticResource Bool2Visible_Converter}}">
+                    <Grid Grid.Row="2"  Visibility="{Binding DataModel.Processmodel.tool.TestMode,Converter={StaticResource TestMode2Visibility_ShapeMatch}}">
                         <Grid.RowDefinitions>
+                            <RowDefinition/>
                             <RowDefinition/>
                             <RowDefinition/>
                             <RowDefinition/>
@@ -244,21 +249,46 @@
                         <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X轴坐标:</TextBlock>
                         <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X偏移:</TextBlock>
                         <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">Y偏移:</TextBlock>
-                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">分值:</TextBlock>
+                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">角度:</TextBlock>
+                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">分值:</TextBlock>
 
                         <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualX,StringFormat={}{0:F1}}"/>
                         <TextBlock Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualY,StringFormat={}{0:F1}}"/>
                         <TextBlock Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.DeltaX,StringFormat={}{0:F4}}"/>
                         <TextBlock Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.DeltaY,StringFormat={}{0:F4}}"/>
-                        <TextBlock Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualScore,StringFormat={}{0:F3}}"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualAngle,StringFormat={}{0:F3}}"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualScore,StringFormat={}{0:F3}}"/>
 
 
                         <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">pixel</TextBlock>
                         <TextBlock Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">pixel</TextBlock>
-                        <TextBlock Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">mm</TextBlock>
-                        <TextBlock Grid.Row="3" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">mm</TextBlock>
+                        <!--<TextBlock Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">mm</TextBlock>-->
+                        <!--<TextBlock Grid.Row="3" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">mm</TextBlock>-->
 
                     </Grid>
+                    <Grid Grid.Row="2"  Visibility="{Binding DataModel.Processmodel.tool.TestMode,Converter={StaticResource TestMode2Visibility_Dimension}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">实际面积:</TextBlock>
+
+                        <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualDimension,StringFormat={}{0:F1}}"/>
+
+
+
+
+                    </Grid>
+
+
                 </Grid>
             </GroupBox>
 
@@ -271,14 +301,51 @@
 
         </Grid>
         <halcon:HWindowControlWPF Grid.Row="2" Name="Hwindow" Visibility="Hidden" />
-        <C:CameraControl Grid.Row="2" Name="cameractr" DataContext="{Binding DataModel.Settingmodel.camedata}"/>
+        <C:CameraControl Grid.Row="3" Name="cameractr" DataContext="{Binding DataModel.Settingmodel.camedata}"/>
+        <ListBox Grid.Row="2"  Grid.Column="0" Grid.ColumnSpan="2" 
+                 p:ListBoxHelper.CornerRadius="5" HorizontalAlignment="Center" 
+                 VerticalAlignment="Center"
+                  Background="White" BorderThickness="0"
+                 p:ListBoxHelper.ItemsSelectedBackground="#55FF0000" 
+                 SelectionChanged="ListBox_SelectionChanged"
+                 SelectedIndex="{Binding DataModel.Processmodel.selectedindex}"  
+                 MouseDoubleClick="ListBox_MouseDoubleClick" Margin="5,0,5,0"  
+                 ItemsSource="{Binding DataModel.Processmodel.Tools}" >
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel  Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <!--<ctr:Toolcontrol MinHeight="140" MinWidth="140" DataContext="{Binding}"/>-->
+                    <!--<Rectangle Width="10" Height="10" />-->
+                    <Grid DataContext="{Binding}">
+                        <TextBlock  Background="{Binding StatusColor}" Text="{Binding Index,StringFormat={}{0:00}}" Padding="2"></TextBlock>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
 
+        </ListBox>
+        <TextBlock Grid.Row="2" Grid.Column="0"  Text="{Binding DataModel.Processmodel.Status}" 
+                   HorizontalAlignment="Left"
+                   Margin="20,5,5,5"
+                   FontSize="20"
+                   Foreground="{Binding  DataModel.Processmodel.StatusColor }"
+                   
+                   />
         <WrapPanel Grid.Row="4" HorizontalAlignment="Center" Grid.ColumnSpan="3" >
 
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ImageNum,StringFormat=照片数:{0}}"  />
             <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.RobotConnect.IsConnected,StringFormat=机器人连接:{0}}"  />
             <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.SoftConnect.IsConnected,StringFormat=PC连接:{0}}" />
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ToolIndex,StringFormat=工具编号:{0}}"/>
+            <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.RCMD,StringFormat=接收:{0}}"/>
+            <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.Trig_IO.IOstatus,StringFormat=触发:{0}}" 
+                       Background="{Binding DataModel.Processmodel.Trig_IO.IOstatusBackGround}" 
+                       Foreground="{Binding DataModel.Processmodel.Trig_IO.IOStatusForeGround}"
+                       Padding="10,2"
+                       />
 
             <CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveOK }">保存OK</CheckBox>
             <CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveNG }">保存NG</CheckBox>

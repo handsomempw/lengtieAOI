@@ -5,9 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:F7_L12_Position_Detect"
         xmlns:p="https://opensource.panuon.com/wpf-ui"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
            WindowStartupLocation="CenterScreen" WindowState="Maximized"
-        Title="工具设置" Height="820" Width="1200"
+        Title="工具设置" Height="1020" Width="1200"
            SizeChanged="WindowX_SizeChanged"
            >
     <p:WindowX.DataContext>
@@ -19,6 +20,12 @@
                 <ScaleTransform/>
                 <TranslateTransform/>
             </TransformGroup>
+
+            <ObjectDataProvider x:Key="testmodes" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+                <ObjectDataProvider.MethodParameters>
+                    <x:Type Type="local:TestModes"/>
+                </ObjectDataProvider.MethodParameters>
+            </ObjectDataProvider>
         </Grid.Resources>
 
         <Grid.ColumnDefinitions>
@@ -51,6 +58,7 @@
                     </Image>
                     <Rectangle x:Name="RectangleBarcode"   StrokeThickness="2"    Stroke="OrangeRed" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
                     <Rectangle x:Name="RectanglePosition"   StrokeThickness="2"   Stroke="Orange" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
+                    <Rectangle x:Name="RectangleDimension"   StrokeThickness="2"   Stroke="Orange" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
 
                 </Canvas>
 
@@ -61,6 +69,7 @@
         <GroupBox Header="工具参数" Grid.Column="1">
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height=" auto"/>
                     <RowDefinition Height=" auto"/>
                     <RowDefinition Height=" auto"/>
                     <RowDefinition Height=" auto"/>
@@ -77,26 +86,30 @@
                         <RowDefinition/>
                         <RowDefinition/>
                         <RowDefinition/>
+                        <RowDefinition/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto"/>
                         <ColumnDefinition MinWidth="150"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">工具序号:</TextBlock>
-                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">工具名称:</TextBlock>
-                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">触发指令:</TextBlock>
-                    <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">识别二维码:</TextBlock>
-                    <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">位置检测:</TextBlock>
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">工具类型:</TextBlock>
+                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">工具名称:</TextBlock>
+                    <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">触发指令:</TextBlock>
+                    <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">相机曝光时间:</TextBlock>
 
                     <TextBlock Grid.Row="0" Grid.Column="1" Margin="2" Text="{Binding Index  }"/>
-                    <TextBox Grid.Row="1" Grid.Column="1"   Margin="2" Text="{Binding Name}" />
-                    <TextBox Grid.Row="2" Grid.Column="1"   Margin="2" Text="{Binding Command}" />
-                    <CheckBox Grid.Row="3" Grid.Column="1" Margin="2"  IsChecked="{Binding DecodeBarcode  }"/>
-                    <CheckBox Grid.Row="4" Grid.Column="1" Margin="2"  IsChecked="{Binding PositionDetect  }"/>
+                    <ComboBox Grid.Row="1"  Grid.Column="1" Margin="2"  Text="{Binding TestMode,UpdateSourceTrigger=PropertyChanged}" IsEditable="True"  IsReadOnly="True" 
+                            ItemsSource="{Binding Source={StaticResource testmodes}}"
+                              />
+                    <TextBox Grid.Row="2" Grid.Column="1"   Margin="2" Text="{Binding Name}" />
+                    <TextBox Grid.Row="3" Grid.Column="1"   Margin="2" Text="{Binding Command}" />
+                    <TextBox Grid.Row="4" Grid.Column="1"   Margin="2" Text="{Binding ExposureTime}" />
 
                 </Grid>
                 <GroupBox Header="二维码识别" Grid.Row="2" p:GroupBoxHelper.HeaderBackground="YellowGreen" BorderBrush="YellowGreen" Margin="0,5"
-                          IsEnabled="{Binding DecodeBarcode}"
+                          IsEnabled="{Binding DecodeBarcode}" p:GroupBoxHelper.HeaderForeground="White"
+                         Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_Barcode}}"
                           >
                     <Grid Grid.Row="0">
                         <Grid.RowDefinitions>
@@ -138,7 +151,10 @@
                 </GroupBox>
 
                 <GroupBox Header="位置检测" Grid.Row="3" p:GroupBoxHelper.HeaderBackground="BlueViolet" BorderBrush="BlueViolet" Margin="0,5" 
-                          VerticalAlignment="Top" IsEnabled="{Binding PositionDetect}">
+                          VerticalAlignment="Top" IsEnabled="{Binding PositionDetect}" 
+                          p:GroupBoxHelper.HeaderForeground="White"
+                          Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_ShapeMatch}}"
+                          >
                     <Grid Grid.Row="0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="auto"/>
@@ -161,24 +177,25 @@
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition MinWidth="150"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="Collapsed">位置检测模型文件名称:</TextBlock>
-                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >位置偏差范围:</TextBlock>
-                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">模板匹配分值下限:</TextBlock>
-                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">比例um/pixel:</TextBlock>
-                        <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X轴取反:</TextBlock>
-                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">Y轴取反:</TextBlock>
-                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">XY轴对换:</TextBlock>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >X偏差范围:</TextBlock>
+                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >Y偏差范围:</TextBlock>
+                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >角度偏差范围:</TextBlock>
+                        <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">模板匹配分值下限:</TextBlock>
+                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">比例um/pixel:</TextBlock>
+                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X轴取反:</TextBlock>
+                        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">Y轴取反:</TextBlock>
+                        <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">XY轴对换:</TextBlock>
                         <!--<TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">取结果:</TextBlock>-->
 
 
-                        <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center"  Margin="10,20,0,0" >标定位置:</TextBlock>
-                        <Button  Grid.Row="7" Grid.Column="1" VerticalAlignment="Bottom" Margin="10,0,2,0" HorizontalAlignment="Right" 
+                        <TextBlock Grid.Row="9" Grid.Column="0" VerticalAlignment="Center"  Margin="10,20,0,0" >标定位置:</TextBlock>
+                        <Button  Grid.Row="9" Grid.Column="1" VerticalAlignment="Bottom" Margin="10,0,2,0" HorizontalAlignment="Right" 
                                  p:ButtonHelper.CornerRadius="10" Height="20" Width="80"
                                  Background="PaleVioletRed" Foreground="White"
                                  Name="getinitposition" Visibility="Collapsed"
                                  >标定位置</Button>
 
-                        <Grid Grid.Row="8" Grid.Column="0"  Grid.ColumnSpan="2" Margin="10,0,0,30">
+                        <Grid Grid.Row="10" Grid.Column="0"  Grid.ColumnSpan="2" Margin="10,0,0,30">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="auto"/>
                                 <ColumnDefinition />
@@ -192,30 +209,33 @@
                             <TextBox Grid.Row="0" Grid.Column="3"   Margin="2" Text="{Binding InitY}" />
 
                         </Grid>
-                        <TextBlock Grid.Row="9" Grid.Column="0" VerticalAlignment="Center" >模板匹配ROI:</TextBlock>
+                        <TextBlock Grid.Row="11" Grid.Column="0" VerticalAlignment="Center" >模板匹配ROI:</TextBlock>
 
                         <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Margin="2" Text="{Binding ModelFileName}" Visibility="Collapsed" />
-                        <TextBox Grid.Row="0" Grid.Column="1"   Margin="2,2,100,2" Text="{Binding Allow_Delta}"  />
+                        <TextBox Grid.Row="0" Grid.Column="1"   Margin="2,2,100,2" Text="{Binding Allow_X_Delta}"  />
+                        <TextBox Grid.Row="1" Grid.Column="1"   Margin="2,2,100,2" Text="{Binding Allow_Y_Delta}"  />
+                        <TextBox Grid.Row="2" Grid.Column="1"   Margin="2,2,100,2" Text="{Binding AllowAngleDelta}"  />
                         <TextBlock Grid.Row="0" Grid.Column="1"  HorizontalAlignment="Right"  Margin="2,2,70,2" >mm</TextBlock>
+                        <TextBlock Grid.Row="1" Grid.Column="1"  HorizontalAlignment="Right"  Margin="2,2,70,2" >mm</TextBlock>
 
-                        <Button Grid.Row="1" Grid.Column="1" Width="90" Margin="2"
+                        <Button Grid.Row="3" Grid.Column="1" Width="90" Margin="2"
                                 Grid.RowSpan="2" HorizontalAlignment="Right"
                                 p:ButtonHelper.CornerRadius="20"
                                 Background="PaleVioletRed" Foreground="White"
                                 Name="ApplyAll"
                                 Click="ApplyAll_Click"
                                 >全部应用</Button>
-                        <TextBox Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding MinScore}"/>
-                        <TextBox Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding K}"/>
-                        <CheckBox Grid.Row="3" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectX }"/>
-                        <CheckBox Grid.Row="4" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectY  }"/>
-                        <CheckBox Grid.Row="5" Grid.Column="1" Margin="2"  IsChecked="{Binding InvertXY }"/>
+                        <TextBox Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding MinScore}"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding K}"/>
+                        <CheckBox Grid.Row="5" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectX }"/>
+                        <CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectY  }"/>
+                        <CheckBox Grid.Row="7" Grid.Column="1" Margin="2"  IsChecked="{Binding InvertXY }"/>
                         <!--<CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding SendStatus  }"/>-->
 
 
 
-                        <Button Grid.Row="9" Grid.Column="1"    Margin="2" Name="SelectPositionROI" Click="SelectPositionROI_Click">选择</Button>
-                        <Grid Grid.Row="10" Grid.Column="0" Margin="10,2,2,2" Grid.ColumnSpan="2">
+                        <Button Grid.Row="11" Grid.Column="1"    Margin="2" Name="SelectPositionROI" Click="SelectPositionROI_Click" Padding="5">选择</Button>
+                        <Grid Grid.Row="12" Grid.Column="0" Margin="10,2,2,2" Grid.ColumnSpan="2">
                             <Grid.RowDefinitions>
                                 <RowDefinition/>
                                 <RowDefinition/>
@@ -226,7 +246,7 @@
                                 <ColumnDefinition Width="auto"/>
                                 <ColumnDefinition />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">ROW1:</TextBlock>
+                            <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" >ROW1:</TextBlock>
                             <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">ROW2:</TextBlock>
                             <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center">COL1:</TextBlock>
                             <TextBlock Grid.Row="1" Grid.Column="2" VerticalAlignment="Center">COL2:</TextBlock>
@@ -239,26 +259,176 @@
                         </Grid>
                     </Grid>
                 </GroupBox>
-                <Button  Grid.Row="3" VerticalAlignment="Top" Margin="10,12,5,0" HorizontalAlignment="Right" 
-                                 p:ButtonHelper.CornerRadius="10" Height="20" Width="80"
-                                 Background="Violet" Foreground="White"
-                         Name="modelsetting"
-                         Click="modelsetting_Click"
-                                 >模型设置</Button>
 
-                <GroupBox Header="结果输出" Grid.Row="4" p:GroupBoxHelper.HeaderBackground="BlueViolet" BorderBrush="BlueViolet" Margin="0,5" 
-                          VerticalAlignment="Top" >
+                <GroupBox Header="面积检测" Grid.Row="4" p:GroupBoxHelper.HeaderBackground="CadetBlue" BorderBrush="BlueViolet" Margin="0,5" 
+                          VerticalAlignment="Top"  p:GroupBoxHelper.HeaderForeground="White"
+                          Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_Dimension}}"
+                          
+                          >
+                    <Grid Margin="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="auto" />
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition  Width="auto" />
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >面积范围:</TextBlock>
+                        <TextBox Grid.Row="0" Grid.Column="1"   Margin="2" Text="{Binding MinDimension}"  />
+                        <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
+                        <TextBox Grid.Row="0" Grid.Column="3"   Margin="2" Text="{Binding MaxDimension}"  />
+
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >面积过滤:</TextBlock>
+                        <TextBox Grid.Row="1" Grid.Column="1"   Margin="2" Text="{Binding MinAreaFilter}"  />
+                        <TextBlock Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
+                        <TextBox Grid.Row="1" Grid.Column="3"   Margin="2" Text="{Binding MaxAreaFilter}"  />
+
+                        <CheckBox  Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"  Margin="2" Grid.ColumnSpan="2"
+                                    IsChecked="{Binding GrayMode}" 
+                                   >灰色模式</CheckBox>
+
+
+
+                        <GroupBox Header="灰度参数" Grid.Row="4" Grid.ColumnSpan="5"   Visibility="{Binding GrayMode ,Converter={StaticResource Bool2Visible_Converter}}" >
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition  Width="auto" />
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock  Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">灰度范围:</TextBlock>
+                                <TextBox Grid.Row="0" Grid.Column="1"   Margin="2" Text="{Binding MinGray}"  />
+                                <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
+                                <TextBox Grid.Row="0" Grid.Column="3"   Margin="2" Text="{Binding MaxGray}"  />
+
+
+
+                            </Grid>
+                        </GroupBox>
+
+                        <GroupBox Header="彩色参数" Grid.Row="3" Grid.ColumnSpan="5" Visibility="{Binding GrayMode,Converter={StaticResource Bool2Visible_Converter_INV}}" >
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition  Width="auto" />
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <CheckBox  Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">红色通道</CheckBox>
+                                <CheckBox  Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">绿色通道</CheckBox>
+                                <CheckBox  Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">蓝色通道</CheckBox>
+                                <TextBox Grid.Row="0" Grid.Column="1"   Margin="2" Text="{Binding MinRed}"  />
+                                <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
+                                <TextBox Grid.Row="0" Grid.Column="3"   Margin="2" Text="{Binding MaxRed}"  />
+
+                                <TextBox Grid.Row="1" Grid.Column="1"   Margin="2" Text="{Binding MinGreen}"  />
+                                <TextBlock Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
+                                <TextBox Grid.Row="1" Grid.Column="3"   Margin="2" Text="{Binding MaxGreen}"  />
+
+                                <TextBox Grid.Row="2" Grid.Column="1"   Margin="2" Text="{Binding MinBlue}"  />
+                                <TextBlock Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
+                                <TextBox Grid.Row="2" Grid.Column="3"   Margin="2" Text="{Binding MaxBlue}"  />
+
+                            </Grid>
+                        </GroupBox>
+
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" >面积计算ROI:</TextBlock>
+                        <Button Grid.Row="5" Grid.Column="1"    Margin="2" Name="SelectDimensionROI" Click="SelectDimensionROI_Click" Grid.ColumnSpan="5" Padding="5">选择</Button>
+                        <Grid Grid.Row="12" Grid.Column="0" Margin="10,2,2,2" Grid.ColumnSpan="6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="auto"/>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="auto"/>
+                                <ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" >ROW1:</TextBlock>
+                            <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">ROW2:</TextBlock>
+                            <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center">COL1:</TextBlock>
+                            <TextBlock Grid.Row="1" Grid.Column="2" VerticalAlignment="Center">COL2:</TextBlock>
+
+                            <TextBox Grid.Row="0" Grid.Column="1"   Margin="2" Text="{Binding DimensionROI.Row1}" />
+                            <TextBox Grid.Row="1" Grid.Column="1"   Margin="2" Text="{Binding DimensionROI.Row2}" />
+                            <TextBox Grid.Row="0" Grid.Column="3"   Margin="2" Text="{Binding DimensionROI.Col1}" />
+                            <TextBox Grid.Row="1" Grid.Column="3"   Margin="2" Text="{Binding DimensionROI.Col2}" />
+
+                        </Grid>
+                    </Grid>
+
+                </GroupBox>
+                <GroupBox Header="结果输出" Grid.Row="5" p:GroupBoxHelper.HeaderBackground="BlueViolet" BorderBrush="BlueViolet" Margin="0,5" 
+                          VerticalAlignment="Top" Foreground="White" >
                     <Grid Margin="2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition/>
                             <ColumnDefinition/>
                         </Grid.ColumnDefinitions>
                         <CheckBox Grid.Row="6" Grid.Column="0" Margin="2"  IsChecked="{Binding SendStatus  }" Content="取结果" />
-                        <CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding SendStatus  }" Content="结果取反" />
+                        <CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding InvertResult  }" Content="结果取反" />
 
                     </Grid>
 
                 </GroupBox>
+
+
+                <CheckBox BorderBrush="White" Grid.Row="2" VerticalAlignment="Top" Margin="10,12,5,0" HorizontalAlignment="Right"
+                          Foreground="White" IsChecked="{Binding SendBarcodeData}"
+                          >输出条码
+
+                </CheckBox>
+                <CheckBox BorderBrush="White" Grid.Row="3" VerticalAlignment="Top" Margin="10,12,5,0" HorizontalAlignment="Right"
+                          Foreground="White" IsChecked="{Binding SendPositionData}"
+                          >输出位置
+
+                </CheckBox>
+                <Button  Grid.Row="3" VerticalAlignment="Top" Margin="10,12,100,0" HorizontalAlignment="Right" 
+                                 p:ButtonHelper.CornerRadius="10" Height="20" Width="80"
+                                 Background="Violet" Foreground="White"
+                         Name="modelsetting" Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_ShapeMatch}}"
+                         Click="modelsetting_Click"
+                                 >模型设置</Button>
+
 
             </Grid>
         </GroupBox>

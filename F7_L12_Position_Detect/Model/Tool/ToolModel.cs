@@ -13,6 +13,15 @@ namespace F7_L12_Position_Detect.Model.Tool
 {
     public class ToolModel : ObservableObject
     {
+        [XmlElement("工具模式")]
+        public TestModes TestMode { set; get; } = TestModes.模板匹配;
+
+        [XmlElement("相机曝光时间")]
+
+        public int ExposureTime { set; get; } = 3000;
+
+
+
         [XmlIgnore]
         public QRCode.Reg Reg = new QRCode.Reg();
 
@@ -28,10 +37,6 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         [XmlElement("工具名称")]
         public string Name { set; get; } = string.Empty;
-
-        //[XmlElement("曝光时间")]
-        //public double ExposureTime { set; get; } = 10000;
-
 
         #region 二维码识别
 
@@ -73,10 +78,15 @@ namespace F7_L12_Position_Detect.Model.Tool
         public double ActualX { set; get; } = 0;
         [XmlElement("检测Y轴坐标")]
         public double ActualY { set; get; } = 0;
+        [XmlElement("检测角度")]
+        public double ActualAngle { set; get; } = 0;
         [XmlElement("X轴偏差")]
         public double DeltaX { set; get; } = 0;
         [XmlElement("Y轴偏差")]
         public double DeltaY { set; get; } = 0;
+
+        [XmlElement("允许角度偏差")]
+        public double AllowAngleDelta { set; get; } = 20;
 
 
         [XmlElement("X轴取反")]
@@ -89,13 +99,26 @@ namespace F7_L12_Position_Detect.Model.Tool
         [XmlElement("发送结果状态")]
         public bool SendStatus { set; get; } = false;
 
+        [XmlElement("发送定位数据")]
+        public bool SendPositionData { set; get; } = true;
+
+
+        [XmlElement("发送二维码数据")]
+        public bool SendBarcodeData { set; get; } = true;
+
+
+
         [XmlElement("结果取反")]
         public bool InvertResult { set; get; } = false;
 
 
-        [XmlElement("位置偏差范围")]
+        [XmlElement("X位置偏差范围")]
         ///单位mm
-        public double Allow_Delta { set;get; } = 10;
+        public double Allow_X_Delta { set; get; } = 10;
+        [XmlElement("Y位置偏差范围")]
+        ///单位mm
+        public double Allow_Y_Delta { set; get; } = 10;
+        //public double Allow_Delta { set; get; } = 10;
 
         [XmlElement("状态颜色")]
         ///透明,等待
@@ -103,17 +126,18 @@ namespace F7_L12_Position_Detect.Model.Tool
         ///绿色，OK
         ///红色, NG
         [XmlIgnore]
-        public SolidColorBrush StatusColor {
+        public SolidColorBrush StatusColor
+        {
 
             get
             {
-                switch(_ToolStatus)
+                switch (_ToolStatus)
                 {
-                    case ToolStatus.识别:
+                    case ToolStatus.识别中:
                         {
                             return Brushes.Orange;
                         }
-                        case ToolStatus.OK:
+                    case ToolStatus.OK:
                         {
                             return Brushes.GreenYellow;
                         }
@@ -124,16 +148,16 @@ namespace F7_L12_Position_Detect.Model.Tool
                         }
                     default:
                         {
-                            return  new SolidColorBrush(Color.FromArgb(100,255,255,255));
+                            return new SolidColorBrush(Color.FromArgb(100, 255, 255, 255));
                         }
                 }
             }
-        
+
         }
 
 
-        private ToolStatus _ToolStatus = ToolStatus.等待;
-        
+        private ToolStatus _ToolStatus = ToolStatus.等待中;
+
         public ToolStatus ToolStatus
         {
             set
@@ -148,27 +172,79 @@ namespace F7_L12_Position_Detect.Model.Tool
 
 
 
-
-
-
         [XmlElement("位置检测ROI")]
         public ROI PositionROI { set; get; } = new ROI();
 
         #endregion
+
+        #region 面积检测
+        [XmlElement("面积ROI")]
+        public ROI DimensionROI { set; get; } = new ROI();
+        [XmlElement("面积检测")]
+        public bool DimensionDetect { set; get; } = true;
+        [XmlElement("实际面积")]
+        public double ActualDimension { set; get; } = 0;
+        [XmlElement("最小面积")]
+        public double MinDimension { set; get; } = 0;
+        [XmlElement("最大面积")]
+        public double MaxDimension { set; get; } = 1000000;
+        [XmlElement("灰色模式")]
+        public bool GrayMode { set; get; } = false;
+        [XmlElement("启用红色通道")]
+        public bool RedChannelEnabled { set; get; } = true;
+        [XmlElement("启用绿色通道")]
+        public bool GreenChannelEnabled { set; get; } = true;
+        [XmlElement("启用蓝色通道")]
+        public bool BlueChannelEnabled { set; get; } = true;
+        [XmlElement("最小灰度")]
+        public byte MinGray { set; get; } = 128;
+        [XmlElement("最大灰度")]
+        public byte MaxGray { set; get; } = 255;
+        [XmlElement("最小红色通道")]
+        public byte MinRed { set; get; } = 128;
+        [XmlElement("最大红色通道")]
+        public byte MaxRed { set; get; } = 255;
+        [XmlElement("最小绿色通道")]
+        public byte MinGreen { set; get; } = 128;
+        [XmlElement("最大绿色通道")]
+        public byte MaxGreen { set; get; } = 255;
+        [XmlElement("最小蓝色通道")]
+        public byte MinBlue { set; get; } = 128;
+        [XmlElement("最大蓝色通道")]
+        public byte MaxBlue { set; get; } = 255;
+        [XmlElement("过滤最小面积")]
+        public int MinAreaFilter { set; get; } = 0;
+        [XmlElement("过滤最大面积")]
+        public int MaxAreaFilter { set; get; } = int.MaxValue;
+        #endregion
+
         [XmlIgnore]
         public BitmapSource BitmapSource { get; set; } = null;
         public HObject Image = null;
+
+
+
+
+        #region 发送数据
+        public string OKCMD { set; get; } = "OK";
+        public string NG1CMD { set; get; } = "NG1";
+        public string NG2CMD { set; get; } = "NG2";
+
+        #endregion
 
     }
 
     public enum ToolStatus
     {
-        等待,
-        识别,
+        等待中,
+        识别中,
         OK,
         NG,
         NG2
     }
+
+
+
 
     public class ROI : ObservableObject
     {

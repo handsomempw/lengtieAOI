@@ -76,6 +76,9 @@ namespace F7_L12_Position_Detect
             }));
 
             vml.Main.InitShm();
+
+            vml.Main.PLC_Start();
+
         }
 
 

@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows;
+using F7_L12_Position_Detect.Model.Tool;
 
 namespace F7_L12_Position_Detect
 {
@@ -214,6 +215,9 @@ namespace F7_L12_Position_Detect
     //}
 
 
+
+
+
     [ValueConversion(typeof(KStatus), typeof(SolidColorBrush))]
     public class Status2BackGround_Converter : IValueConverter
     {
@@ -331,6 +335,85 @@ namespace F7_L12_Position_Detect
     }
 
 
+    [ValueConversion(typeof(TestModes), typeof(Visibility))]
+    public class TestMode2Visibility_Dimension : IValueConverter
+    {
+        //源属性传给目标属性时，调用此方法ConvertBack
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+            { throw new ArgumentNullException("value can not be null"); }
+            if ((TestModes)value!=TestModes.面积)
+            {
+                return Visibility.Collapsed;
+            }
+            else
+            {
+                return Visibility.Visible;
+            }
+        }
+
+        //目标属性传给源属性时，调用此方法ConvertBack
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+
+
+    [ValueConversion(typeof(TestModes), typeof(Visibility))]
+    public class TestMode2Visibility_Barcode : IValueConverter
+    {
+        //源属性传给目标属性时，调用此方法ConvertBack
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+            { throw new ArgumentNullException("value can not be null"); }
+            if ((TestModes)value != TestModes.二维码)
+            {
+                return Visibility.Collapsed;
+            }
+            else
+            {
+                return Visibility.Visible;
+            }
+        }
+
+        //目标属性传给源属性时，调用此方法ConvertBack
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+
+
+
+    [ValueConversion(typeof(TestModes), typeof(Visibility))]
+    public class TestMode2Visibility_ShapeMatch : IValueConverter
+    {
+        //源属性传给目标属性时，调用此方法ConvertBack
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+            { throw new ArgumentNullException("value can not be null"); }
+            if ((TestModes)value != TestModes.模板匹配)
+            {
+                return Visibility.Collapsed;
+            }
+            else
+            {
+                return Visibility.Visible;
+            }
+        }
+
+        //目标属性传给源属性时，调用此方法ConvertBack
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+
+
     [ValueConversion(typeof(bool), typeof(bool))]
     public class BoolINV_Converter : IValueConverter
     {
@@ -356,5 +439,12 @@ namespace F7_L12_Position_Detect
         Processing_NG,
         OK,
         NG
+    }
+
+    public enum TestModes
+    {
+        面积,
+        二维码,
+        模板匹配
     }
 }

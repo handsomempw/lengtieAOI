@@ -7,6 +7,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Media;
 using System.Xml.Serialization;
 
 namespace F7_L12_Position_Detect.Model
@@ -21,10 +22,13 @@ namespace F7_L12_Position_Detect.Model
         public Camera.DATA camedata { set; get; } = new Camera.DATA();
 
 
+
+
         [XmlElement("照片保存设置")]
-        public ImageSaveSetting ImageSaveSetting { get; set; }=new ImageSaveSetting();  
+        public ImageSaveSetting ImageSaveSetting { get; set; }=new ImageSaveSetting();
 
-
+        [XmlElement("扫码器")]
+        public Scanner.ScannerModel ScannerModel { set; get; } = new Scanner.ScannerModel();
 
         #region 工程配置
         [XmlElement("工程路径")]
@@ -50,9 +54,25 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("上位机")]
         public TcpSetting SoftConnect { set; get; } = new TcpSetting();
 
+
+        #region PLC配置
+        [XmlElement("PLC通讯IP")]
+        public string PLC_IP { set; get; } = "10.23.8.20";
+        [XmlElement("PLC通讯端口")]
+        public int PLC_Port { set; get; } = 502;
+        [XmlElement("信号交互地址")]
+        public int AddressStart { set; get; } = 7080;
+
+ 
+        #endregion
+
+
+
+
+
         //[XmlIgnore]
         //public TcpClientHelper.TcpClientH TcpClientH { set; get; } = new TcpClientHelper.TcpClientH();
- 
+
         [XmlIgnore]
         public TcpServerHelper.TCPServerH TcpServerRobot { set; get; } = new TcpServerHelper.TCPServerH();
         [XmlIgnore]
@@ -61,5 +81,74 @@ namespace F7_L12_Position_Detect.Model
         #endregion
 
 
+        [XmlElement("测试延时")]
+
+        public int delaytime { set; get; } = 1000;
+
+    }
+
+    public enum IOstatus
+    {
+        连接失败,
+        高电平,
+        低电平
+    }
+
+    public class IO : ObservableObject
+    {
+
+        private int _IOstatus = -1;
+        [XmlIgnore]
+        public int IOstatus
+        {
+            get
+            {
+                return _IOstatus;
+            }
+            set
+            {
+                _IOstatus = value;
+                RaisePropertyChanged(() => IOstatusBackGround);
+                RaisePropertyChanged(() => IOStatusForeGround);
+            }
+        }
+        [XmlIgnore]
+        public SolidColorBrush IOstatusBackGround
+        {
+            get
+            {
+                if (_IOstatus == -1)
+                {
+                    return Brushes.WhiteSmoke;
+                }
+
+                else if (IOstatus == 1)
+                {
+                    return Brushes.GreenYellow;
+                }
+                else
+                {
+                    return Brushes.Black;
+                }
+            }
+        }
+        public SolidColorBrush IOStatusForeGround
+        {
+            get
+            {
+                if (_IOstatus == -1)
+                {
+                    return Brushes.Black;
+                }
+                else if (_IOstatus == 1)
+                {
+                    return Brushes.OrangeRed;
+                }
+                else
+                {
+                    return Brushes.White;
+                }
+            }
+        }
     }
 }

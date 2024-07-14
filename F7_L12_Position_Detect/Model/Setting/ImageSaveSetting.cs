@@ -14,9 +14,9 @@ namespace F7_L12_Position_Detect.Model.Setting
         public string ImageSaveDir { set; get; } = $"{Environment.CurrentDirectory}\\照片";
 
         [XmlElement("保存合格照片")]
-        public bool SaveOK { set; get; } = false;
+        public bool SaveOK { set; get; } = true;
         [XmlElement("保存NG照片")]
-        public bool SaveNG { set; get; } = false;
+        public bool SaveNG { set; get; } = true;
 
     }
 }

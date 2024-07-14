@@ -23,6 +23,9 @@
             <local:Bool2Visible_Converter_INV        x:Key="Bool2Visible_Converter_INV"/>
             <local:BoolINV_Converter                 x:Key="BoolINV_Converter"/>
             <local:permission2lockorunlock_Converter x:Key="permission2lockorunlock_Converter"/>
+            <local:TestMode2Visibility_Barcode       x:Key="TestMode2Visibility_Barcode"/>
+            <local:TestMode2Visibility_Dimension     x:Key="TestMode2Visibility_Dimension"/>
+            <local:TestMode2Visibility_ShapeMatch    x:Key="TestMode2Visibility_ShapeMatch"/>
 
         </ResourceDictionary>
     </Application.Resources>

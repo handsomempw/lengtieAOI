@@ -154,7 +154,7 @@ namespace PositionDetect
 
                 ResultData.deltaX_actual = (deltaX + r_X - b_X) * BasicData.K;
                 ResultData.deltaY_actual = (deltaY + r_Y - b_Y) * BasicData.K;
-
+                ResultData.angle = rp.angle;
                 ResultData.score = rp.score;
 
                 ResultData.isSuccess = true;
@@ -195,7 +195,7 @@ namespace PositionDetect
         public double Y_actual { set; get; } = 0;
         public double deltaX_actual { set; get; } = 0;
         public double deltaY_actual { set; get; } = 0;
-
+        public double angle { set; get; } = 0;
         public double score = 0;
         public bool isSuccess { set; get; } = false;
     }

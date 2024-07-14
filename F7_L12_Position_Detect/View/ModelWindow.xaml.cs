@@ -118,7 +118,7 @@ namespace F7_L12_Position_Detect.View
                     if (Result_Data != null)
                     {
                         vml.Main.DataModel.Processmodel.tool.InitX = Result_Data.X_actual;
-                        vml.Main.DataModel.Processmodel.tool.InitY = Result_Data.Y_actual;
+                        vml.Main.DataModel.Processmodel.tool.InitY = Result_Data.Y_actual;                        
                         MessageBox.Show("标定成功");
                     }
                 }
