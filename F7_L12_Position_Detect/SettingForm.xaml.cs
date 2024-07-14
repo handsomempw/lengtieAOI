@@ -22,6 +22,7 @@ using System.IO;
 using F7_L12_Position_Detect.Model;
 using HalconDotNet;
 using F7_L12_Position_Detect.View;
+using Camera;
 
 namespace F7_L12_Position_Detect
 {
@@ -323,7 +324,8 @@ namespace F7_L12_Position_Detect
 
         private void DimensionApply_Click(object sender, RoutedEventArgs e)
         {
-
+            int area = vml.Main.CoculateDimension(vml.Main.DataModel.Processmodel.tool.Image, vml.Main.DataModel.Processmodel.tool, vml.Main.DataModel.Settingmodel.HWindow, true);
+            NoticeBox.Show($"识别面积大小:{area}", "提示", MessageBoxIcon.Info, true, 10000);
         }
 
         private void move_to_center(TransformGroup group, double scale, double w1, double h1)

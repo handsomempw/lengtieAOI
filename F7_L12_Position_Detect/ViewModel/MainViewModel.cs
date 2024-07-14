@@ -29,6 +29,7 @@ using System.Runtime;
 using System.Linq;
 using System.Security.Cryptography;
 using HslCommunication.ModBus;
+using System.Windows.Input;
 
 namespace F7_L12_Position_Detect.ViewModel
 {
@@ -1387,86 +1388,8 @@ namespace F7_L12_Position_Detect.ViewModel
                         {
                             #region 读取面积
 
-
-                            int Areaint = 0;
-
-                            HTuple Area = new HTuple(), Row = new HTuple(), Column = new HTuple();
-
-                            HObject ROI, ReduceImage;
-
-                            HObject Region, ConnectedRegions, SelectedRegions, RegionUnion;
-                            HOperatorSet.GenEmptyObj(out Region);
-                            HOperatorSet.GenEmptyObj(out ConnectedRegions);
-                            HOperatorSet.GenEmptyObj(out SelectedRegions);
-                            HOperatorSet.GenEmptyObj(out RegionUnion);
-
-                            HOperatorSet.GenEmptyObj(out ROI);
-                            HOperatorSet.GenEmptyObj(out ReduceImage);
-
-                            HObject ImageR, ImageG, ImageB;
-                            HObject RegionR, RegionG, RegionB;
-                            HObject RegionIntersection;
-
-                            HOperatorSet.GenEmptyObj(out ImageR);
-                            HOperatorSet.GenEmptyObj(out ImageG);
-                            HOperatorSet.GenEmptyObj(out ImageB);
-
-                            HOperatorSet.GenEmptyObj(out RegionR);
-                            HOperatorSet.GenEmptyObj(out RegionG);
-                            HOperatorSet.GenEmptyObj(out RegionB);
-
-                            HOperatorSet.GenEmptyObj(out RegionIntersection);
-
-                            try
-                            {
-
-                                HOperatorSet.GenRectangle1(out ROI, tool.DimensionROI.Row1, tool.DimensionROI.Col1, tool.DimensionROI.Row2, tool.DimensionROI.Col2);
-                                HOperatorSet.ReduceDomain(myEventArgs.Image, ROI, out ReduceImage);
-
-                                if (tool.GrayMode)
-                                {
-                                    HOperatorSet.Threshold(ReduceImage, out Region, tool.MinGray, tool.MaxGray);
-                                }
-                                else
-                                {
-                                    HOperatorSet.Decompose3(ReduceImage, out ImageR, out ImageG, out ImageB);
-
-                                    HOperatorSet.Threshold(ImageR, out RegionR, tool.MinRed, tool.MaxRed);
-                                    HOperatorSet.Threshold(ImageG, out RegionG, tool.MinGreen, tool.MaxBlue);
-                                    HOperatorSet.Threshold(ImageB, out RegionB, tool.MinBlue, tool.MaxBlue);
-
-                                    HOperatorSet.Intersection(RegionR, RegionG, out RegionIntersection);
-                                    HOperatorSet.Intersection(RegionB, RegionIntersection, out Region);
-                                }
-
-
-                                HOperatorSet.Connection(Region, out ConnectedRegions);
-                                HOperatorSet.SelectShape(ConnectedRegions, out SelectedRegions, "area", "and", tool.MinAreaFilter, tool.MaxAreaFilter);
-                                HOperatorSet.Union1(SelectedRegions, out RegionUnion);
-                                HOperatorSet.AreaCenter(RegionUnion, out Area, out Row, out Column);
-                                Areaint = (int)Area.L;
-
-                                hwindow.SetDraw("margin");
-                                hwindow.DispObj(ROI);
-                                hwindow.SetDraw("fill");
-                                hwindow.DispObj(SelectedRegions);
-
-                            }
-                            catch (Exception ex) { }
-                            finally
-                            {
-                                Region?.Dispose();
-                                ConnectedRegions?.Dispose();
-                                SelectedRegions?.Dispose();
-                                RegionUnion?.Dispose();
-                                ImageR?.Dispose();
-                                ImageG?.Dispose();
-                                ImageB?.Dispose();
-                                RegionR?.Dispose();
-                                RegionG?.Dispose();
-                                RegionB?.Dispose();
-                                RegionIntersection?.Dispose();
-                            }
+                            int Areaint = CoculateDimension(myEventArgs.Image, tool, hwindow, false);
+                            tool.ActualDimension = Areaint;
 
                             if (Areaint >= tool.MinDimension && Areaint <= tool.MaxDimension)
                             {
@@ -1476,8 +1399,6 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 tool.ToolStatus = ToolStatus.NG;
                             }
-
-
 
                             #endregion
                         }
@@ -1656,7 +1577,113 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         #endregion
 
+        #region 面积计算
 
+        public int CoculateDimension(HObject image, ToolModel tool, HWindow hwindow, bool redraw = true)
+        {
+            try
+            {
+
+                HTuple Area = new HTuple(), Row = new HTuple(), Column = new HTuple();
+
+                HObject ROI, ReduceImage;
+
+                HObject Region, ConnectedRegions, SelectedRegions, RegionUnion;
+                HOperatorSet.GenEmptyObj(out Region);
+                HOperatorSet.GenEmptyObj(out ConnectedRegions);
+                HOperatorSet.GenEmptyObj(out SelectedRegions);
+                HOperatorSet.GenEmptyObj(out RegionUnion);
+
+                HOperatorSet.GenEmptyObj(out ROI);
+                HOperatorSet.GenEmptyObj(out ReduceImage);
+
+                HObject ImageR, ImageG, ImageB;
+                HObject RegionR, RegionG, RegionB;
+                HObject RegionIntersection;
+
+                HOperatorSet.GenEmptyObj(out ImageR);
+                HOperatorSet.GenEmptyObj(out ImageG);
+                HOperatorSet.GenEmptyObj(out ImageB);
+
+                HOperatorSet.GenEmptyObj(out RegionR);
+                HOperatorSet.GenEmptyObj(out RegionG);
+                HOperatorSet.GenEmptyObj(out RegionB);
+
+                HOperatorSet.GenEmptyObj(out RegionIntersection);
+
+                try
+                {
+
+                    HOperatorSet.GenRectangle1(out ROI, tool.DimensionROI.Row1, tool.DimensionROI.Col1, tool.DimensionROI.Row2, tool.DimensionROI.Col2);
+                    HOperatorSet.ReduceDomain(image, ROI, out ReduceImage);
+
+                    if (tool.GrayMode)
+                    {
+                        HOperatorSet.Threshold(ReduceImage, out Region, tool.MinGray, tool.MaxGray);
+                    }
+                    else
+                    {
+                        HOperatorSet.Decompose3(ReduceImage, out ImageR, out ImageG, out ImageB);
+
+                        HOperatorSet.Threshold(ImageR, out RegionR, tool.MinRed, tool.MaxRed);
+                        HOperatorSet.Threshold(ImageG, out RegionG, tool.MinGreen, tool.MaxBlue);
+                        HOperatorSet.Threshold(ImageB, out RegionB, tool.MinBlue, tool.MaxBlue);
+
+                        HOperatorSet.Intersection(RegionR, RegionG, out RegionIntersection);
+                        HOperatorSet.Intersection(RegionB, RegionIntersection, out Region);
+                    }
+
+
+                    HOperatorSet.Connection(Region, out ConnectedRegions);
+                    HOperatorSet.SelectShape(ConnectedRegions, out SelectedRegions, "area", "and", tool.MinAreaFilter, tool.MaxAreaFilter);
+                    HOperatorSet.Union1(SelectedRegions, out RegionUnion);
+                    HOperatorSet.AreaCenter(RegionUnion, out Area, out Row, out Column);
+
+                    HTuple width, height;
+                    HOperatorSet.GetImageSize(image, out width, out height);
+                    //HWindow.HalconWindow.SetPart(0, 0, (int)height - 1, (int)width - 1);
+
+                    if (redraw)
+                    {
+                        
+                        hwindow.ClearWindow();
+                        hwindow.SetPart(0, 0, (int)height - 1, (int)width - 1);
+                        hwindow.DispObj(image);
+                    }
+                    hwindow.SetLineWidth(2);
+                    hwindow.SetDraw("margin");
+                    hwindow.SetColor("orange");
+                    hwindow.DispObj(ROI);
+                    hwindow.SetDraw("fill");
+                    hwindow.SetColor("red");
+                    hwindow.DispObj(SelectedRegions);
+
+                }
+                catch (Exception ex) { }
+                finally
+                {
+                    Region?.Dispose();
+                    ConnectedRegions?.Dispose();
+                    SelectedRegions?.Dispose();
+                    RegionUnion?.Dispose();
+                    ImageR?.Dispose();
+                    ImageG?.Dispose();
+                    ImageB?.Dispose();
+                    RegionR?.Dispose();
+                    RegionG?.Dispose();
+                    RegionB?.Dispose();
+                    RegionIntersection?.Dispose();
+                }
+                //tool.ActualDimension = (int)Area.L;
+                return (int)Area.L;
+            }
+            catch (Exception e)
+            {
+                //tool.ActualDimension = -1;
+                return -1;
+            }
+        }
+        #endregion
 
     }
 }

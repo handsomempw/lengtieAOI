@@ -366,14 +366,13 @@
                                 <TextBlock Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
                                 <TextBox Grid.Row="2" Grid.Column="3"   Margin="2" Text="{Binding MaxBlue}"  />
 
-                                <Button Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" Margin="5" Padding="5">应用测试</Button>
-                            </Grid>
+                               </Grid>
                         </GroupBox>
 
 
                         <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" >面积计算ROI:</TextBlock>
                         <Button Grid.Row="5" Grid.Column="1"    Margin="2" Name="SelectDimensionROI" Click="SelectDimensionROI_Click" Grid.ColumnSpan="5" Padding="5">选择</Button>
-                        <Grid Grid.Row="12" Grid.Column="0" Margin="10,2,2,2" Grid.ColumnSpan="6">
+                        <Grid Grid.Row="6" Grid.Column="0" Margin="10,2,2,2" Grid.ColumnSpan="6">
                             <Grid.RowDefinitions>
                                 <RowDefinition/>
                                 <RowDefinition/>
@@ -395,6 +394,12 @@
                             <TextBox Grid.Row="1" Grid.Column="3"   Margin="2" Text="{Binding DimensionROI.Col2}" />
 
                         </Grid>
+                        <Button x:Name="DimensionApply" Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="5" Margin="5" Padding="5" 
+                                
+                                Click="DimensionApply_Click"
+                                
+                                >应用测试</Button>
+
                     </Grid>
 
                 </GroupBox>
