@@ -108,5 +108,8 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("扫码枪接收信息")]
         public string Scannerstr { set; get; } = string.Empty;
 
+        [XmlElement("SN列表")]
+        public ObservableCollection<string> SNList { set; get; } =new ObservableCollection<string>();
+
     }
 }

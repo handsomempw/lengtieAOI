@@ -328,6 +328,25 @@ namespace F7_L12_Position_Detect
             NoticeBox.Show($"识别面积大小:{area}", "提示", MessageBoxIcon.Info, true, 10000);
         }
 
+        private void DimensionApply_Pic_Click(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog ofd = new OpenFileDialog();
+            ofd.Filter = "*.jpg|*.jpg";
+            if (ofd.ShowDialog() == true)
+            {
+                string filename = ofd.FileName;
+
+                HObject image;
+                HOperatorSet.GenEmptyObj(out image);
+                #region 加载模型图片
+                HOperatorSet.GenEmptyObj(out image);
+                HOperatorSet.ReadImage(out image, filename);
+                #endregion
+                int area = vml.Main.CoculateDimension(image, vml.Main.DataModel.Processmodel.tool, vml.Main.DataModel.Settingmodel.HWindow, true);
+                NoticeBox.Show($"识别面积大小:{area}", "提示", MessageBoxIcon.Info, true, 10000);
+            }
+        }
+
         private void move_to_center(TransformGroup group, double scale, double w1, double h1)
         {
             double w3 = show_image_ctr.ActualWidth * scale, h3 = show_image_ctr.ActualHeight * scale;

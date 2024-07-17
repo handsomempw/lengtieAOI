@@ -30,6 +30,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using HslCommunication.ModBus;
 using System.Windows.Input;
+using System.Data;
 
 namespace F7_L12_Position_Detect.ViewModel
 {
@@ -405,21 +406,27 @@ namespace F7_L12_Position_Detect.ViewModel
                             int Trig = readresult.Content[0];
                             try
                             {
-                                if (Trig == 1 && DataModel.Processmodel.Trig_IO.IOstatus == 0)
+                                if (Trig == 1 )
                                 {
-                                    DataModel.Processmodel.Scannerstr = string.Empty;
-                                    var r = DataModel.Settingmodel.ScannerModel.Scanner();
-                                    DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
                                     modbusTcp.Write((DataModel.Settingmodel.AddressStart).ToString(), (UInt16)0);
 
-                                    if (!r.IsSuccess)
+                                    if (DataModel.Processmodel.Trig_IO.IOstatus == 0)
                                     {
-                                        modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                                    }
-                                    else
-                                    {
-                                        SendMsgRobot("DOK");
-                                        ClearTools();
+                                        DataModel.Processmodel.Scannerstr = string.Empty;
+                                        var r = DataModel.Settingmodel.ScannerModel.Scanner();
+                                        DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
+
+                                        GetSNList(DataModel.Processmodel.Scannerstr);
+
+                                        if (!r.IsSuccess)
+                                        {
+                                            modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                                        }
+                                        else
+                                        {
+                                            SendMsgRobot("DOK");
+                                            ClearTools();
+                                        }
                                     }
                                 }
                             }
@@ -452,6 +459,22 @@ namespace F7_L12_Position_Detect.ViewModel
                 Thread.Sleep(100);
             }
 
+        }
+
+        public bool GetSNList(string barcode)
+        {
+            try
+            {
+                string sql = $"SELECT [成品码] FROM [绑定完表格] WHERE  [物料名称]='容器码' and [条形码]= '{barcode}' ORDER BY [编号]";
+                DataTable dt = Sqlserver.MicrosoftSql_DATABASE.Read(sql);
+                DataModel.Processmodel.SNList.Clear();
+                for (int i = 0; i < dt.Rows.Count; i++)
+                {
+                    DataModel.Processmodel.SNList.Add(dt.Rows[i][0].ToString());
+                }
+                return true;
+            }
+            catch { return false; }
         }
 
         private bool PLC_write(UInt16 result)
@@ -1410,7 +1433,14 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
                         {
-                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DataModel.Processmodel}-{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+
+                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            try
+                            {
+                                savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            }
+                            catch {; }
+
                             string dir = Path.GetDirectoryName(savefilename);
                             if (!Directory.Exists(dir))
                             { Directory.CreateDirectory(dir); }
@@ -1421,8 +1451,12 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
                         {
-                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DataModel.Processmodel}-{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-
+                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            try
+                            {
+                                savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            }
+                            catch {; }
                             string dir = Path.GetDirectoryName(savefilename);
                             if (!Directory.Exists(dir))
                             { Directory.CreateDirectory(dir); }
@@ -1460,7 +1494,6 @@ namespace F7_L12_Position_Detect.ViewModel
                                 //var NG1 = (from ToolModel in r
                                 //           where (ToolModel.ToolStatus == ToolStatus.NG)
                                 //           select ToolModel);
-
 
                                 var NG2 = (from ToolModel in r
                                            where (ToolModel.ToolStatus == ToolStatus.NG2)
@@ -1645,7 +1678,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (redraw)
                     {
-                        
+
                         hwindow.ClearWindow();
                         hwindow.SetPart(0, 0, (int)height - 1, (int)width - 1);
                         hwindow.DispObj(image);

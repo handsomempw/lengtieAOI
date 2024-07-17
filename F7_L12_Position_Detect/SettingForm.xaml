@@ -97,6 +97,7 @@
                     <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">工具名称:</TextBlock>
                     <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">触发指令:</TextBlock>
                     <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">相机曝光时间:</TextBlock>
+                    <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">产品位置序号:</TextBlock>
 
                     <TextBlock Grid.Row="0" Grid.Column="1" Margin="2" Text="{Binding Index  }"/>
                     <ComboBox Grid.Row="1"  Grid.Column="1" Margin="2"  Text="{Binding TestMode,UpdateSourceTrigger=PropertyChanged}" IsEditable="True"  IsReadOnly="True" 
@@ -105,10 +106,11 @@
                     <TextBox Grid.Row="2" Grid.Column="1"   Margin="2" Text="{Binding Name}" />
                     <TextBox Grid.Row="3" Grid.Column="1"   Margin="2" Text="{Binding Command}" />
                     <TextBox Grid.Row="4" Grid.Column="1"   Margin="2" Text="{Binding ExposureTime}" />
+                    <TextBox Grid.Row="5" Grid.Column="1"   Margin="2" Text="{Binding ProductPositionNO}" />
 
                 </Grid>
                 <GroupBox Header="二维码识别" Grid.Row="2" p:GroupBoxHelper.HeaderBackground="YellowGreen" BorderBrush="YellowGreen" Margin="0,5"
-                          IsEnabled="{Binding DecodeBarcode}" p:GroupBoxHelper.HeaderForeground="White"
+                           p:GroupBoxHelper.HeaderForeground="White"
                          Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_Barcode}}"
                           >
                     <Grid Grid.Row="0">
@@ -181,10 +183,10 @@
                         <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >Y偏差范围:</TextBlock>
                         <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" >角度偏差范围:</TextBlock>
                         <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">模板匹配分值下限:</TextBlock>
-                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">比例um/pixel:</TextBlock>
-                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">X轴取反:</TextBlock>
-                        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">Y轴取反:</TextBlock>
-                        <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">XY轴对换:</TextBlock>
+                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right"  Visibility="Collapsed">比例um/pixel:</TextBlock>
+                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right"  Visibility="Collapsed">X轴取反:</TextBlock>
+                        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right"  Visibility="Collapsed">Y轴取反:</TextBlock>
+                        <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right"  Visibility="Collapsed">XY轴对换:</TextBlock>
                         <!--<TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">取结果:</TextBlock>-->
 
 
@@ -215,10 +217,10 @@
                         <TextBox Grid.Row="0" Grid.Column="1"   Margin="2,2,100,2" Text="{Binding Allow_X_Delta}"  />
                         <TextBox Grid.Row="1" Grid.Column="1"   Margin="2,2,100,2" Text="{Binding Allow_Y_Delta}"  />
                         <TextBox Grid.Row="2" Grid.Column="1"   Margin="2,2,100,2" Text="{Binding AllowAngleDelta}"  />
-                        <TextBlock Grid.Row="0" Grid.Column="1"  HorizontalAlignment="Right"  Margin="2,2,70,2" >mm</TextBlock>
-                        <TextBlock Grid.Row="1" Grid.Column="1"  HorizontalAlignment="Right"  Margin="2,2,70,2" >mm</TextBlock>
+                        <TextBlock Grid.Row="0" Grid.Column="1"  HorizontalAlignment="Right"  Margin="2,2,70,2"  Visibility="Collapsed">mm</TextBlock>
+                        <TextBlock Grid.Row="1" Grid.Column="1"  HorizontalAlignment="Right"  Margin="2,2,70,2"  Visibility="Collapsed">mm</TextBlock>
 
-                        <Button Grid.Row="3" Grid.Column="1" Width="90" Margin="2"
+                        <Button Grid.Row="2" Grid.Column="1" Width="90" Margin="2"
                                 Grid.RowSpan="2" HorizontalAlignment="Right"
                                 p:ButtonHelper.CornerRadius="20"
                                 Background="PaleVioletRed" Foreground="White"
@@ -226,10 +228,10 @@
                                 Click="ApplyAll_Click"
                                 >全部应用</Button>
                         <TextBox Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding MinScore}"/>
-                        <TextBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding K}"/>
-                        <CheckBox Grid.Row="5" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectX }"/>
-                        <CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectY  }"/>
-                        <CheckBox Grid.Row="7" Grid.Column="1" Margin="2"  IsChecked="{Binding InvertXY }"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,100,2" Text="{Binding K}"  Visibility="Collapsed"/>
+                        <CheckBox Grid.Row="5" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectX }" Visibility="Collapsed"/>
+                        <CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding DirectY  }" Visibility="Collapsed"/>
+                        <CheckBox Grid.Row="7" Grid.Column="1" Margin="2"  IsChecked="{Binding InvertXY }" Visibility="Collapsed"/>
                         <!--<CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding SendStatus  }"/>-->
 
 
@@ -262,9 +264,10 @@
 
                 <GroupBox Header="面积检测" Grid.Row="4" p:GroupBoxHelper.HeaderBackground="CadetBlue" BorderBrush="BlueViolet" Margin="0,5" 
                           VerticalAlignment="Top"  p:GroupBoxHelper.HeaderForeground="White"
-                          Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_Dimension}}"
-                          
-                          >
+                    Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_Dimension}}"
+
+                    >
+
                     <Grid Margin="2">
                         <Grid.RowDefinitions>
                             <RowDefinition/>
@@ -351,9 +354,10 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <CheckBox IsChecked="{Binding RedChannelEnabled}"  Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">红色通道</CheckBox>
-                                <CheckBox IsChecked="{Binding GreenChannelEnabled}" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">绿色通道</CheckBox>
-                                <CheckBox IsChecked="{Binding BlueChannelEnabled}" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">蓝色通道</CheckBox>
+                                <TextBlock   Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">红色通道</TextBlock>
+                                <TextBlock   Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">绿色通道</TextBlock>
+                                <TextBlock   Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">蓝色通道</TextBlock>
+
                                 <TextBox Grid.Row="0" Grid.Column="1"   Margin="2" Text="{Binding MinRed}"  />
                                 <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
                                 <TextBox Grid.Row="0" Grid.Column="3"   Margin="2" Text="{Binding MaxRed}"  />
@@ -366,7 +370,7 @@
                                 <TextBlock Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" >-</TextBlock>
                                 <TextBox Grid.Row="2" Grid.Column="3"   Margin="2" Text="{Binding MaxBlue}"  />
 
-                               </Grid>
+                            </Grid>
                         </GroupBox>
 
 
@@ -394,11 +398,16 @@
                             <TextBox Grid.Row="1" Grid.Column="3"   Margin="2" Text="{Binding DimensionROI.Col2}" />
 
                         </Grid>
-                        <Button x:Name="DimensionApply" Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="5" Margin="5" Padding="5" 
+                        <Button x:Name="DimensionApply" Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="1" Margin="5" Padding="5" 
                                 
                                 Click="DimensionApply_Click"
                                 
-                                >应用测试</Button>
+                                >检测试模板</Button>
+                        <Button x:Name="DimensionApply_Pic" Grid.Row="12" Grid.Column="1" Grid.ColumnSpan="5" Margin="5" Padding="5" 
+                                Background="Orange" Foreground="White"
+                                Click="DimensionApply_Pic_Click"
+                                
+                                >检测照片</Button>
 
                     </Grid>
 

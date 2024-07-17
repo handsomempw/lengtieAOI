@@ -20,6 +20,10 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         public int ExposureTime { set; get; } = 3000;
 
+        [XmlElement("产品位置序号")]
+
+        public byte  ProductPositionNO { set; get; } = 0;
+
 
 
         [XmlIgnore]
@@ -66,7 +70,7 @@ namespace F7_L12_Position_Detect.Model.Tool
 
 
         [XmlElement("比例um/pixel")]
-        public double K { set; get; } = 64.2186;
+        public double K { set; get; } = 1000;
 
         [XmlElement("初始X轴坐标")]
         public double InitX { set; get; } = 0;

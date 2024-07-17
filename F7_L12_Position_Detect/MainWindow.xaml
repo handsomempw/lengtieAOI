@@ -198,6 +198,8 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto"/>
                 <RowDefinition/>
+                <RowDefinition Height="auto"/>
+
             </Grid.RowDefinitions>
 
             <GroupBox>
@@ -260,8 +262,8 @@
                         <TextBlock Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.ActualScore,StringFormat={}{0:F3}}"/>
 
 
-                        <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">pixel</TextBlock>
-                        <TextBlock Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">pixel</TextBlock>
+                        <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="Collapsed">pixel</TextBlock>
+                        <TextBlock Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="Collapsed">pixel</TextBlock>
                         <!--<TextBlock Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">mm</TextBlock>-->
                         <!--<TextBlock Grid.Row="3" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">mm</TextBlock>-->
 
@@ -298,7 +300,9 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-
+            <ListBox ItemsSource="{Binding DataModel.Processmodel.SNList}" Grid.Row="2" MinHeight="40" Padding="5" Margin="2">
+                
+            </ListBox>
         </Grid>
         <halcon:HWindowControlWPF Grid.Row="2" Name="Hwindow" Visibility="Hidden" />
         <C:CameraControl Grid.Row="3" Name="cameractr" DataContext="{Binding DataModel.Settingmodel.camedata}"/>
@@ -336,9 +340,9 @@
                    />
         <WrapPanel Grid.Row="4" HorizontalAlignment="Center" Grid.ColumnSpan="3" >
 
-            <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ImageNum,StringFormat=照片数:{0}}"  />
+            <!--<TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ImageNum,StringFormat=照片数:{0}}"  />-->
             <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.RobotConnect.IsConnected,StringFormat=机器人连接:{0}}"  />
-            <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.SoftConnect.IsConnected,StringFormat=PC连接:{0}}" />
+            <!--<TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.SoftConnect.IsConnected,StringFormat=PC连接:{0}}" />-->
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ToolIndex,StringFormat=工具编号:{0}}"/>
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.RCMD,StringFormat=接收:{0}}"/>
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.Trig_IO.IOstatus,StringFormat=触发:{0}}" 
