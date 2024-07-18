@@ -228,7 +228,7 @@
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="{Binding DataModel.Processmodel.tool.DecodeBarcode,Converter={StaticResource Bool2Visible_Converter}}">二维码内容:</TextBlock>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="{Binding DataModel.Processmodel.tool.TestMode,Converter={StaticResource TestMode2Visibility_Barcode}}">二维码内容:</TextBlock>
 
                         <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding DataModel.Processmodel.tool.BarcodeStr}" />
                     </Grid>

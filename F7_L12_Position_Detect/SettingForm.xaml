@@ -413,15 +413,27 @@
 
                 </GroupBox>
                 <GroupBox Header="结果输出" Grid.Row="5" p:GroupBoxHelper.HeaderBackground="BlueViolet" BorderBrush="BlueViolet" Margin="0,5" 
-                          VerticalAlignment="Top" Foreground="White" >
+                          VerticalAlignment="Top" p:GroupBoxHelper.HeaderForeground="White" >
                     <Grid Margin="2">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition/>
+                            <ColumnDefinition Width="auto"/>
                             <ColumnDefinition/>
                         </Grid.ColumnDefinitions>
-                        <CheckBox Grid.Row="6" Grid.Column="0" Margin="2"  IsChecked="{Binding SendStatus  }" Content="取结果" />
-                        <CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding InvertResult  }" Content="结果取反" />
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <CheckBox Grid.Row="0" Grid.Column="0" Margin="2"  IsChecked="{Binding SendStatus  }" Content="输出结果" />
+                        <!--<CheckBox Grid.Row="6" Grid.Column="1" Margin="2"  IsChecked="{Binding InvertResult  }" Content="结果取反" />-->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Margin="5">OK输出命令:</TextBlock>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Margin="5">NG1输出命令:</TextBlock>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Margin="5">NG2输出命令;</TextBlock>
 
+                        <TextBox Grid.Row="1" Grid.Column="1" Margin="2" Padding="2" Text="{Binding OKCMD}"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" Margin="2" Padding="2" Text="{Binding NG1CMD}"/>
+                        <TextBox Grid.Row="3" Grid.Column="1" Margin="2" Padding="2" Text="{Binding NG2CMD}"/>
                     </Grid>
 
                 </GroupBox>

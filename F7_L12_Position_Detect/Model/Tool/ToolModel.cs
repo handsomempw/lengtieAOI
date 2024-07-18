@@ -44,8 +44,8 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         #region 二维码识别
 
-        [XmlElement("是否识别二维码")]
-        public bool DecodeBarcode { set; get; } = false;
+        //[XmlElement("是否识别二维码")]
+        //public bool DecodeBarcode { set; get; } = false;
 
         [XmlElement("二维码内容")]
         public string BarcodeStr { set; get; } = string.Empty;
@@ -55,8 +55,8 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         #region 位置检测
 
-        [XmlElement("位置检测")]
-        public bool PositionDetect { set; get; } = true;
+        //[XmlElement("位置检测")]
+        //public bool PositionDetect { set; get; } = true;
 
 
         [XmlElement("位置检测模型文件名称")]
@@ -93,27 +93,27 @@ namespace F7_L12_Position_Detect.Model.Tool
         public double AllowAngleDelta { set; get; } = 20;
 
 
-        [XmlElement("X轴取反")]
-        public bool DirectX { set; get; } = false;
-        [XmlElement("Y轴取反")]
-        public bool DirectY { set; get; } = false;
-        [XmlElement("XY轴对换")]
-        public bool InvertXY { set; get; } = false;
+        //[XmlElement("X轴取反")]
+        //public bool DirectX { set; get; } = false;
+        //[XmlElement("Y轴取反")]
+        //public bool DirectY { set; get; } = false;
+        //[XmlElement("XY轴对换")]
+        //public bool InvertXY { set; get; } = false;
 
         [XmlElement("发送结果状态")]
-        public bool SendStatus { set; get; } = false;
+        public bool SendStatus { set; get; } = true;
 
-        [XmlElement("发送定位数据")]
-        public bool SendPositionData { set; get; } = true;
-
-
-        [XmlElement("发送二维码数据")]
-        public bool SendBarcodeData { set; get; } = true;
+        //[XmlElement("发送定位数据")]
+        //public bool SendPositionData { set; get; } = true;
 
 
+        //[XmlElement("发送二维码数据")]
+        //public bool SendBarcodeData { set; get; } = true;
 
-        [XmlElement("结果取反")]
-        public bool InvertResult { set; get; } = false;
+
+
+        //[XmlElement("结果取反")]
+        //public bool InvertResult { set; get; } = false;
 
 
         [XmlElement("X位置偏差范围")]
@@ -184,8 +184,8 @@ namespace F7_L12_Position_Detect.Model.Tool
         #region 面积检测
         [XmlElement("面积ROI")]
         public ROI DimensionROI { set; get; } = new ROI();
-        [XmlElement("面积检测")]
-        public bool DimensionDetect { set; get; } = true;
+        //[XmlElement("面积检测")]
+        //public bool DimensionDetect { set; get; } = true;
         [XmlElement("实际面积")]
         public double ActualDimension { set; get; } = 0;
         [XmlElement("最小面积")]
@@ -231,8 +231,8 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         #region 发送数据
         public string OKCMD { set; get; } = "OK";
-        public string NG1CMD { set; get; } = "NG1";
-        public string NG2CMD { set; get; } = "NG2";
+        public string NG1CMD { set; get; } = "NG";
+        public string NG2CMD { set; get; } = "NG";
 
         #endregion
 

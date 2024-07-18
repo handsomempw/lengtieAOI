@@ -173,7 +173,7 @@ namespace F7_L12_Position_Detect
         }
         #endregion
 
-        private bool mouseDown = false;
+        //private bool mouseDown = false;
         private System.Windows.Point mouseXY;
         int X, Y = 0;
         private void Show_image_ctr_MouseMove(object sender, MouseEventArgs e)
