@@ -95,7 +95,7 @@ namespace F7_L12_Position_Detect
         {
             if (!vml.Main.DataModel.Settingmodel.permission)
             {
-                NoticeBox.Show("请先打开权限，在再进行编辑", "提示", MessageBoxIcon.Warning, true, 5000);
+                NoticeBox.Show("请先打开权限，再进行编辑", "提示", MessageBoxIcon.Warning, true, 5000);
                 return;
             }
             if (MessageBoxX.Show("是否确定打开编辑工具？", "提示", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
@@ -190,8 +190,10 @@ namespace F7_L12_Position_Detect
 
         private void ListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            vml.Main.DataModel.Processmodel.tool = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
-
+            if (vml.Main.DataModel.Processmodel.selectedindex >= 0)
+            {
+                vml.Main.DataModel.Processmodel.tool = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
+            }
         }
 
 

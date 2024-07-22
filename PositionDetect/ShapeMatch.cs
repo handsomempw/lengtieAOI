@@ -33,13 +33,21 @@ namespace PositionDetect
 
         public Result Match(HObject image, int num, int row1, int row2, int col1, int col2, bool redraw = true)
         {
+
+
+            HObject ho_ROI_0;
+            HObject ho_ImageReduced;
+            HOperatorSet.GenEmptyObj(out ho_ImageReduced);
+            HOperatorSet.GenEmptyObj(out ho_ROI_0);
+
+            HObject ho_ModelContours, ho_ContoursAffinTrans;
+            HOperatorSet.GenEmptyObj(out ho_ModelContours);
+            HOperatorSet.GenEmptyObj(out ho_ContoursAffinTrans);
+
             try
             {
                 //HWindow.HalconWindow.ClearWindow();
-                HObject ho_ROI_0;
-                HObject ho_ImageReduced;
-                HOperatorSet.GenEmptyObj(out ho_ImageReduced);
-                HOperatorSet.GenEmptyObj(out ho_ROI_0);
+            
 
                 HTuple width, height;
                 HOperatorSet.GetImageSize(image, out width, out height);
@@ -54,9 +62,7 @@ namespace PositionDetect
 
                 HTuple hv_Row = new HTuple(), hv_Column = new HTuple(), hv_Angle = new HTuple(), hv_Score = new HTuple();
 
-                HObject ho_ModelContours, ho_ContoursAffinTrans;
-                HOperatorSet.GenEmptyObj(out ho_ModelContours);
-                HOperatorSet.GenEmptyObj(out ho_ContoursAffinTrans);
+        
 
                 using (HDevDisposeHelper dh = new HDevDisposeHelper())
                 {
@@ -70,7 +76,7 @@ namespace PositionDetect
                 out hv_Column, out hv_Angle, out hv_Score);
                 }
 
-                ho_ModelContours.Dispose();
+                //ho_ModelContours.Dispose();
                 HOperatorSet.GetShapeModelContours(out ho_ModelContours, modelID, 1);
 
                 //HWindow.HalconWindow.SetLineWidth(2);
@@ -110,11 +116,21 @@ namespace PositionDetect
                 HWindow.DispObj(ho_ROI_0);
                 HWindow.SetColor("green");
 
+                ho_ROI_0?.Dispose();
+                ho_ImageReduced?.Dispose();
+                ho_ModelContours?.Dispose();
+                ho_ContoursAffinTrans?.Dispose();
+
                 r.IsSuccess = true;
                 return r;
             }
             catch (Exception ex)
             {
+                ho_ROI_0?.Dispose();
+                ho_ImageReduced?.Dispose();
+                ho_ModelContours?.Dispose();
+                ho_ContoursAffinTrans?.Dispose();
+
                 return new Result() { IsSuccess = false, ErrorInfo = ex.ToString() };
             }
         }

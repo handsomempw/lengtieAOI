@@ -111,5 +111,7 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("SN列表")]
         public ObservableCollection<string> SNList { set; get; } =new ObservableCollection<string>();
 
+        
+
     }
 }

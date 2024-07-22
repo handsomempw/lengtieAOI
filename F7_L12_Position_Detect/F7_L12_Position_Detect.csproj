@@ -97,6 +97,7 @@
       <DependentUpon>Toolcontrol.xaml</DependentUpon>
     </Compile>
     <Compile Include="convertor.cs" />
+    <Compile Include="Hobject2Bitmap.cs" />
     <Compile Include="Log\Log.cs" />
     <Compile Include="Model\Record\Record.cs" />
     <Compile Include="Model\DataModel.cs" />

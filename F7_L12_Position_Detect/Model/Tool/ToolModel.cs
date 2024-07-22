@@ -22,7 +22,7 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         [XmlElement("产品位置序号")]
 
-        public byte  ProductPositionNO { set; get; } = 0;
+        public byte ProductPositionNO { set; get; } = 0;
 
 
 
@@ -224,6 +224,12 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         [XmlIgnore]
         public BitmapSource BitmapSource { get; set; } = null;
+        [XmlIgnore]
+        [XmlElement("实时照片")]
+        public BitmapSource CurrentBitmapSource { set; get; } = null;
+        [XmlElement("实时照片路径")]
+        public string CurrentBitmapFileName { set; get; } = string.Empty;
+
         public HObject Image = null;
 
 

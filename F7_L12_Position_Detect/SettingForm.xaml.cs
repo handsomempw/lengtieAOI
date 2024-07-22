@@ -62,6 +62,7 @@ namespace F7_L12_Position_Detect
                     string filename = ofd.FileName;
 
                     #region 加载模型图片
+                    t.Image?.Dispose();
                     HOperatorSet.GenEmptyObj(out t.Image);
                     HOperatorSet.ReadImage(out t.Image, filename);
                     #endregion
@@ -171,6 +172,30 @@ namespace F7_L12_Position_Detect
             }
 
         }
+
+
+
+        private void refreshrectangle()
+        {
+            try
+            {
+
+                var t = vml.Main.DataModel.Processmodel.tool;
+                RectangleBarcode.Margin = new Thickness(t.BarCodeROI.Col1, t.BarCodeROI.Row1, 0, 0);
+                RectangleBarcode.Width = t.BarCodeROI.Col2 - t.BarCodeROI.Col1;
+                RectangleBarcode.Height = t.BarCodeROI.Row2 - t.BarCodeROI.Row1;
+
+                RectanglePosition.Margin = new Thickness(t.PositionROI.Col1, t.PositionROI.Row1, 0, 0);
+                RectanglePosition.Width = t.PositionROI.Col2 - t.PositionROI.Col1;
+                RectanglePosition.Height = t.PositionROI.Row2 - t.PositionROI.Row1;
+
+                RectangleDimension.Margin = new Thickness(t.DimensionROI.Col1, t.DimensionROI.Row1, 0, 0);
+                RectangleDimension.Width = t.DimensionROI.Col2 - t.DimensionROI.Col1;
+                RectangleDimension.Height = t.DimensionROI.Row2 - t.DimensionROI.Row1;
+            }
+            catch (Exception ex) { }
+
+        }
         #endregion
 
         //private bool mouseDown = false;
@@ -263,12 +288,16 @@ namespace F7_L12_Position_Detect
 
                 move_to_center(group, scale, w1, h1);
             }
-            catch {; }
+            catch
+            {
+                ;
+            }
         }
 
         private void WindowX_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             zoom_all();
+            refreshrectangle();
         }
 
         private void SelectPositionROI_Click(object sender, RoutedEventArgs e)

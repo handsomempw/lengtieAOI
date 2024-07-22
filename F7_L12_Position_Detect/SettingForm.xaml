@@ -56,9 +56,9 @@
                             <DropShadowEffect BlurRadius="100" Opacity="0.75"/>
                         </Image.Effect>
                     </Image>
-                    <Rectangle x:Name="RectangleBarcode"   StrokeThickness="2"    Stroke="OrangeRed" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
-                    <Rectangle x:Name="RectanglePosition"   StrokeThickness="2"   Stroke="Orange" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
-                    <Rectangle x:Name="RectangleDimension"   StrokeThickness="2"   Stroke="Orange" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
+                    <Rectangle x:Name="RectangleBarcode"   Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_Barcode}}" StrokeThickness="2"    Stroke="OrangeRed" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
+                    <Rectangle x:Name="RectanglePosition" Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_ShapeMatch}}"  StrokeThickness="2"   Stroke="Orange" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
+                    <Rectangle x:Name="RectangleDimension" Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_Dimension}}"   StrokeThickness="2"   Stroke="Orange" Canvas.Left="10" Canvas.Right="10" Width="50" Height="50"    HorizontalAlignment="Left" VerticalAlignment="Top"></Rectangle>
 
                 </Canvas>
 
@@ -439,17 +439,15 @@
                 </GroupBox>
 
 
-                <CheckBox BorderBrush="White" Grid.Row="2" VerticalAlignment="Top" Margin="10,12,5,0" HorizontalAlignment="Right"
+                <!--<CheckBox BorderBrush="White" Grid.Row="2" VerticalAlignment="Top" Margin="10,12,5,0" HorizontalAlignment="Right"
                           Foreground="White" IsChecked="{Binding SendBarcodeData}"
                           >输出条码
 
                 </CheckBox>
                 <CheckBox BorderBrush="White" Grid.Row="3" VerticalAlignment="Top" Margin="10,12,5,0" HorizontalAlignment="Right"
                           Foreground="White" IsChecked="{Binding SendPositionData}"
-                          >输出位置
-
-                </CheckBox>
-                <Button  Grid.Row="3" VerticalAlignment="Top" Margin="10,12,100,0" HorizontalAlignment="Right" 
+                          >输出位置                </CheckBox>-->
+                <Button  Grid.Row="3" VerticalAlignment="Top" Margin="10,12,10,0" HorizontalAlignment="Right" 
                                  p:ButtonHelper.CornerRadius="10" Height="20" Width="80"
                                  Background="Violet" Foreground="White"
                          Name="modelsetting" Visibility="{Binding TestMode,Converter={StaticResource TestMode2Visibility_ShapeMatch}}"

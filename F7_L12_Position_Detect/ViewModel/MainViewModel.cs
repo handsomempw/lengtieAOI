@@ -416,7 +416,10 @@ namespace F7_L12_Position_Detect.ViewModel
                                         var r = DataModel.Settingmodel.ScannerModel.Scanner();
                                         DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
 
-                                        GetSNList(DataModel.Processmodel.Scannerstr);
+                                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                        {
+                                            GetSNList(DataModel.Processmodel.Scannerstr);
+                                        }));
 
                                         if (!r.IsSuccess)
                                         {
@@ -465,6 +468,9 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
+
+
+
                 string sql = $"SELECT [成品码] FROM [绑定完表格] WHERE  [物料名称]='容器码' and [条形码]= '{barcode}' ORDER BY [编号]";
                 DataTable dt = Sqlserver.MicrosoftSql_DATABASE.Read(sql);
                 DataModel.Processmodel.SNList.Clear();
@@ -473,6 +479,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Processmodel.SNList.Add(dt.Rows[i][0].ToString());
                 }
                 return true;
+
             }
             catch { return false; }
         }
@@ -1220,13 +1227,15 @@ namespace F7_L12_Position_Detect.ViewModel
                         DataModel.Processmodel.Tools.Add(tool);
                         string jpgfilename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index}.jpg";
                         #region 加载模型图片
+                        tool.Image?.Dispose();
                         HOperatorSet.GenEmptyObj(out tool.Image);
                         HOperatorSet.ReadImage(out tool.Image, jpgfilename);
                         #endregion
                         using (Bitmap bmp = (Bitmap)Bitmap.FromFile(jpgfilename))
                         {
-                            tool.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-
+                            BitmapSource bs = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                            tool.BitmapSource = bs;
+                            tool.CurrentBitmapSource = bs;
                         }
                     }
                     GC.Collect();
@@ -1298,7 +1307,13 @@ namespace F7_L12_Position_Detect.ViewModel
 
                         DataModel.Processmodel.ToolIndex = i + 1;
 
-                        ToolModel tool = DataModel.Processmodel.Tools[DataModel.Processmodel.ToolIndex - 1];
+                        ToolModel tool = DataModel.Processmodel.Tools[i];
+
+                        Bitmap bmp;
+                        Hobject2Bitmap.HobjectToBitmap24(myEventArgs.Image, out bmp);
+                        tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        bmp.Dispose();
+
                         ClearTool(tool);
                         tool.ToolStatus = ToolStatus.识别中;
                         try
@@ -1602,6 +1617,8 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                 }
                 #endregion
+
+                GC.Collect();
             }
             catch (Exception ex)
             {
@@ -1693,20 +1710,21 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 }
                 catch (Exception ex) { }
-                finally
-                {
-                    Region?.Dispose();
-                    ConnectedRegions?.Dispose();
-                    SelectedRegions?.Dispose();
-                    RegionUnion?.Dispose();
-                    ImageR?.Dispose();
-                    ImageG?.Dispose();
-                    ImageB?.Dispose();
-                    RegionR?.Dispose();
-                    RegionG?.Dispose();
-                    RegionB?.Dispose();
-                    RegionIntersection?.Dispose();
-                }
+
+                ROI?.Dispose();
+                ReduceImage?.Dispose();
+                Region?.Dispose();
+                ConnectedRegions?.Dispose();
+                SelectedRegions?.Dispose();
+                RegionUnion?.Dispose();
+                ImageR?.Dispose();
+                ImageG?.Dispose();
+                ImageB?.Dispose();
+                RegionR?.Dispose();
+                RegionG?.Dispose();
+                RegionB?.Dispose();
+                RegionIntersection?.Dispose();
+
                 //tool.ActualDimension = (int)Area.L;
                 return (int)Area.L;
             }

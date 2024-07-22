@@ -37,6 +37,9 @@ namespace QRCode
 
             ho_Image = _ho_Image;
 
+
+        
+
             HOperatorSet.GenEmptyObj(out ho_ROI_0);
             HOperatorSet.GenEmptyObj(out ho_ImageReduced);
             HOperatorSet.GenEmptyObj(out ho_ImagePart);
@@ -59,10 +62,10 @@ namespace QRCode
                 //return null;
             }
             //     ho_Image.Dispose();
-            ho_ROI_0.Dispose();
-            ho_ImageReduced.Dispose();
-            ho_ImagePart.Dispose();
-            ho_SymbolXLDs.Dispose();
+            ho_ROI_0?.Dispose();
+            ho_ImageReduced?.Dispose();
+            ho_ImagePart?.Dispose();
+            ho_SymbolXLDs?.Dispose();
             return barcodes;
 
         }

@@ -52,6 +52,7 @@ namespace F7_L12_Position_Detect.View
         {
             InitializeComponent();
             vml = (ViewModelLocator)this.FindResource("Locator");
+            vml.PositionDetectViewModel.DATA.image?.Dispose();
             HOperatorSet.GenEmptyObj(out vml.PositionDetectViewModel.DATA.image);
             HOperatorSet.CopyImage(image, out vml.PositionDetectViewModel.DATA.image);
             vml.PositionDetectViewModel.DATA.modelfilename = Modelfilename;
