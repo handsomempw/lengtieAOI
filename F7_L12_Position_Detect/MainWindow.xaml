@@ -171,7 +171,9 @@
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <ctr:Toolcontrol MinHeight="140" MinWidth="140" DataContext="{Binding}"/>
+                    <ctr:Toolcontrol MinHeight="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.ImageSize}" 
+                                     MinWidth="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.ImageSize}" 
+                                     DataContext="{Binding}"/>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
@@ -301,7 +303,7 @@
             </DataGrid>
 
             <ListBox ItemsSource="{Binding DataModel.Processmodel.SNList}" Grid.Row="2" MinHeight="40" Padding="5" Margin="2">
-                
+
             </ListBox>
         </Grid>
         <halcon:HWindowControlWPF Grid.Row="2" Name="Hwindow" Visibility="Hidden" />
@@ -325,7 +327,18 @@
                     <!--<ctr:Toolcontrol MinHeight="140" MinWidth="140" DataContext="{Binding}"/>-->
                     <!--<Rectangle Width="10" Height="10" />-->
                     <Grid DataContext="{Binding}">
-                        <TextBlock  Background="{Binding StatusColor}" Text="{Binding Index,StringFormat={}{0:00}}" Padding="2"></TextBlock>
+                        <TextBlock  Background="{Binding StatusColor}" Text="{Binding Index,StringFormat={}{0:00}}" Padding="2">
+                            <TextBlock.ToolTip>
+                                <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Orientation="Vertical" >
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <TextBlock    Foreground="Orange" Text="{Binding Index }"/>
+                                        <TextBlock    Foreground="DarkBlue" Text="{Binding Name }" Margin="0,0,10,0"/>
+                                        <TextBlock HorizontalAlignment="Center">模板照片</TextBlock>
+                                    </StackPanel>
+                                    <Image   HorizontalAlignment="Center" Source="{Binding BitmapSource}"/>
+                                </StackPanel>
+                            </TextBlock.ToolTip>
+                        </TextBlock>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>

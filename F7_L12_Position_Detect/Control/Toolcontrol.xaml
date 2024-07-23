@@ -12,19 +12,23 @@
         <Binding Source="{Binding Source={StaticResource Locator}}" Path="Main.DataModel.Processmodel.tool"/>
     </UserControl.DataContext>-->
     <Grid>
-        
+
         <Grid.RowDefinitions>
             <RowDefinition/>
             <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
         <Border Margin="2" BorderThickness="1" BorderBrush="Orange" CornerRadius="10" Background="#99FFFFFF"  >
             <Border.ToolTip>
-                <StackPanel>
-                    <TextBlock HorizontalAlignment="Center">模板照片</TextBlock>
-                    <Image  Width="150" Height="150" HorizontalAlignment="Center" Source="{Binding BitmapSource}"/>
+                <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Orientation="Vertical" >
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock    Foreground="Orange" Text="{Binding Index }"/>
+                        <TextBlock    Foreground="DarkBlue" Text="{Binding Name }" Margin="0,0,10,0"/>
+                        <TextBlock HorizontalAlignment="Center">模板照片</TextBlock>
+                    </StackPanel>  
+                    <Image   HorizontalAlignment="Center" Source="{Binding BitmapSource}"/>
                 </StackPanel>
             </Border.ToolTip>
-            
+
             <Image Margin="0" Source="{Binding  CurrentBitmapSource}"/>
         </Border>
         <!--<Border Margin="2" BorderThickness="1" BorderBrush="Orange" CornerRadius="10" Background="#99FFFFFF"  Visibility="Collapsed">

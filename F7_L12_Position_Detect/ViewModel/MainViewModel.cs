@@ -31,6 +31,7 @@ using System.Security.Cryptography;
 using HslCommunication.ModBus;
 using System.Windows.Input;
 using System.Data;
+using Color = System.Drawing.Color;
 
 namespace F7_L12_Position_Detect.ViewModel
 {
@@ -1233,9 +1234,12 @@ namespace F7_L12_Position_Detect.ViewModel
                         #endregion
                         using (Bitmap bmp = (Bitmap)Bitmap.FromFile(jpgfilename))
                         {
-                            BitmapSource bs = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                            tool.BitmapSource = bs;
-                            tool.CurrentBitmapSource = bs;
+                            using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
+                            {
+                                BitmapSource bs = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                                tool.BitmapSource = bs;
+                                tool.CurrentBitmapSource = bs.Clone();
+                            }
                         }
                     }
                     GC.Collect();
@@ -1250,6 +1254,32 @@ namespace F7_L12_Position_Detect.ViewModel
             //{
             //    DataModel.Processmodel.Tools[i].Index = i + 1;
             //}
+        }
+
+
+        public bool LoadBitmapSource()
+        {
+
+            try
+            {
+                string jpgfilename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{DataModel.Processmodel.selectedindex + 1}.jpg";
+                using (Bitmap bmp = (Bitmap)Bitmap.FromFile(jpgfilename))
+                {
+                    BitmapSource bs = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                    DataModel.Processmodel.ShowBitmapSource = null;
+                    DataModel.Processmodel.ShowBitmapSource = bs;
+
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+
+            GC.Collect();
+
+
         }
 
         private ToolModel LoadPrjXml(int index)
@@ -1311,7 +1341,13 @@ namespace F7_L12_Position_Detect.ViewModel
 
                         Bitmap bmp;
                         Hobject2Bitmap.HobjectToBitmap24(myEventArgs.Image, out bmp);
-                        tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+
+                        using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
+                        {
+                            tool.CurrentBitmapSource = null;
+                            tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        }
+
                         bmp.Dispose();
 
                         ClearTool(tool);
@@ -1736,5 +1772,31 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         #endregion
 
+
+
+        public Bitmap GetReducedImage(double W, double H, Bitmap src)
+        {
+            try
+            {
+                double _wscale = W / (double)src.Width;
+                double _Hscale = H / (double)src.Height;
+                double _scale = Math.Min(_wscale, _Hscale);
+                W = src.Width * _scale;
+                H = src.Height * _scale;
+                Bitmap r = new Bitmap((int)W, (int)H, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                Graphics g = Graphics.FromImage(r);
+                g.Clear(Color.Transparent);
+                g.DrawImage(src, new Rectangle(0, 0, (int)W, (int)H));
+                g.Save();
+                g.Dispose();
+                return r;
+
+            }
+            catch (Exception e)
+            {
+                return null;
+            }
+
+        }
     }
 }

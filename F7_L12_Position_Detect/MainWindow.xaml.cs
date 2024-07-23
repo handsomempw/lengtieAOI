@@ -101,12 +101,15 @@ namespace F7_L12_Position_Detect
             if (MessageBoxX.Show("是否确定打开编辑工具？", "提示", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
                 vml.Main.DataModel.Processmodel.tool = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
+                vml.Main.LoadBitmapSource();
                 //vml.Main.DataModel.Processmodel.tool = @vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
                 SettingForm settingForm = new SettingForm();
                 //settingForm.Topmost = true;
                 settingForm.ShowDialog();
 
                 //settingForm.Show();
+
+           
             }
         }
 

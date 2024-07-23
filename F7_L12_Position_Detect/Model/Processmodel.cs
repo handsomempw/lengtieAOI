@@ -9,6 +9,7 @@ using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Xml.Serialization;
 
 namespace F7_L12_Position_Detect.Model
@@ -111,7 +112,9 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("SN列表")]
         public ObservableCollection<string> SNList { set; get; } =new ObservableCollection<string>();
 
-        
+        [XmlIgnore]
+        [XmlElement("显示照片")]
+        public BitmapSource ShowBitmapSource { set; get; }
 
     }
 }

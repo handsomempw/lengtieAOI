@@ -85,6 +85,11 @@ namespace F7_L12_Position_Detect.Model
 
         public int delaytime { set; get; } = 1000;
 
+
+        [XmlElement("缩放照片尺寸")]
+        public int ImageSize { set; get; } = 140;
+
+
     }
 
     public enum IOstatus

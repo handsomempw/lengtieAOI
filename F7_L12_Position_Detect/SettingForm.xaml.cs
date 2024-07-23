@@ -69,9 +69,15 @@ namespace F7_L12_Position_Detect
 
                     using (Bitmap bmp = (Bitmap)Bitmap.FromFile(filename))
                     {
-                        t.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        using (Bitmap bmp1 = vml.Main.GetReducedImage(vml.Main.DataModel.Settingmodel.ImageSize, vml.Main.DataModel.Settingmodel.ImageSize, bmp))
+                        {
+                            //t.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                            vml.Main.DataModel.Processmodel.tool.BitmapSource = null;
+                                vml.Main.DataModel.Processmodel.tool.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
 
-                        // vml.Main.DataModel.Processmodel.tool.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        }
+                        vml.Main.DataModel.Processmodel.ShowBitmapSource = null;
+                        vml.Main.DataModel.Processmodel.ShowBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                     }
                     string newfilename = $"{vml.Main.DataModel.Settingmodel.Prjdir}\\{vml.Main.DataModel.Settingmodel.Name}\\Tool{t.Index}.jpg";
 
@@ -85,6 +91,8 @@ namespace F7_L12_Position_Detect
             {
                 NoticeBox.Show(ex.Message, "错误", MessageBoxIcon.Error, true, 10000);
             }
+            GC.Collect();
+
 
         }
 
@@ -265,7 +273,7 @@ namespace F7_L12_Position_Detect
         {
             try
             {
-                zoom_all(t.BitmapSource.Width, t.BitmapSource.Height);
+                zoom_all(vml.Main.DataModel.Processmodel.ShowBitmapSource.Width, vml.Main.DataModel.Processmodel.ShowBitmapSource.Height);
                 //zoom_all(vml.Main.DataModel.Processmodel.tool.BitmapSource.Width, vml.Main.DataModel.Processmodel.tool.BitmapSource.Height);
             }
             catch (Exception ex) {; }

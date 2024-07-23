@@ -35,8 +35,8 @@
         <ScrollViewer  Grid.Row="1" Grid.Column="0"  HorizontalAlignment="Center" VerticalAlignment="Center" x:Name="BackFrame" 
                        Background="Transparent"  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled"  
                        Cursor="SizeAll" Margin="5" Focusable="False" >
-            <ContentControl  Width="{Binding Source={StaticResource Locator},Path=Main.DataModel.Processmodel.tool.BitmapSource.Width}"
-                             Height="{Binding Source={StaticResource Locator},Path=Main.DataModel.Processmodel.tool.BitmapSource.Height}"
+            <ContentControl  Width="{Binding Source={StaticResource Locator},Path=Main.DataModel.Processmodel.ShowBitmapSource.Width}"
+                             Height="{Binding Source={StaticResource Locator},Path=Main.DataModel.Processmodel.ShowBitmapSource.Height}"
                              Background="Transparent" 
                              MouseLeftButtonDown="ContentControl_MouseLeftButtonDown"  
                              MouseLeftButtonUp="ContentControl_MouseLeftButtonUp"
@@ -47,7 +47,7 @@
 
                     <!--<Image x:Name="show_image_ctr"   Source="{Binding Source={StaticResource Locator},Path=Main.DATA.srcbitmapsource}"  ></Image>-->
                     <Image x:FieldModifier="public" x:Name="show_image_ctr"  
-                           Source="{Binding Source={StaticResource Locator},Path=Main.DataModel.Processmodel.tool.BitmapSource}"
+                           Source="{Binding Source={StaticResource Locator},Path=Main.DataModel.Processmodel.ShowBitmapSource}"
                            MouseMove="Show_image_ctr_MouseMove" Panel.ZIndex="0" 
                            Stretch="Uniform"  
                            RenderOptions.BitmapScalingMode="NearestNeighbor"  >
