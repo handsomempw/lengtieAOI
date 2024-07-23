@@ -22,6 +22,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using Camera;
+using F7_L12_Position_Detect.Model;
+
 namespace F7_L12_Position_Detect
 {
     /// <summary>
@@ -109,7 +111,7 @@ namespace F7_L12_Position_Detect
 
                 //settingForm.Show();
 
-           
+
             }
         }
 
@@ -199,6 +201,23 @@ namespace F7_L12_Position_Detect
             }
         }
 
+        private void tooltest_Click(object sender, RoutedEventArgs e)
+        {
 
+            OpenFileDialog ofd = new OpenFileDialog();
+            ofd.Filter = "*.jpg|*.jpg";
+            if (ofd.ShowDialog() == true)
+            {
+                HTuple W = new HTuple(), H = new HTuple();
+
+                HObject image;
+                HOperatorSet.GenEmptyObj(out image);
+                HOperatorSet.ReadImage(out image, ofd.FileName);
+                HOperatorSet.GetImageSize(image, out W, out H);
+                //vml.Main.DataModel.Processmodel.ToolIndex = 1;
+                vml.Main.DataModel.Processmodel.RCMD = "A1";
+                vml.Main.OnReceiveProcess(image, (int)H, (int)W);
+            }
+        }
     }
 }

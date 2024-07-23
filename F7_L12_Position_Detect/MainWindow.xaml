@@ -370,6 +370,7 @@
             <Button Name="Send2Soft_btn" Click="Send2Soft_btn_Click" Visibility="Collapsed" >发送测试Soft</Button>
             <Button Name="Send2Robot_btn" Click="Send2Robot_btn_Click" Visibility="Collapsed">发送测试Robot</Button>
             <Button Name="Barcodetest_btn"  Click="Barcodetest_btn_Click" Visibility="Collapsed">二维码识别测试</Button>
+            <Button Name="tooltest" Click="tooltest_Click" Content="照片测试" />
         </WrapPanel>
     </Grid>
 </p:WindowX>

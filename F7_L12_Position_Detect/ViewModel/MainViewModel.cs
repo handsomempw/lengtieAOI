@@ -1270,6 +1270,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Processmodel.ShowBitmapSource = bs;
 
                 }
+                GC.Collect ();
                 return true;
             }
             catch (Exception ex)
@@ -1316,351 +1317,343 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
                 MyEventArgs myEventArgs = e as MyEventArgs;
-                // NoticeBox.Show("接收图片");
-                #region 图片接收
 
-                //myEventArgs.Image
-
-                HWindow hwindow = DataModel.Settingmodel.HWindow;
-                hwindow.ClearWindow();
-                hwindow.SetPart(0, 0, myEventArgs.Height - 1, myEventArgs.Width - 1);
-                hwindow.DispObj(myEventArgs.Image);
-                for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+                App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    if (DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD)
-                    {
+                    OnReceiveProcess(myEventArgs.Image, myEventArgs.Height, myEventArgs.Width);
 
-                        if (i == 0)
-                        {
-                            DataModel.Processmodel.Status = ToolStatus.识别中;
-                        }
-
-                        DataModel.Processmodel.ToolIndex = i + 1;
-
-                        ToolModel tool = DataModel.Processmodel.Tools[i];
-
-                        Bitmap bmp;
-                        Hobject2Bitmap.HobjectToBitmap24(myEventArgs.Image, out bmp);
-
-                        using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
-                        {
-                            tool.CurrentBitmapSource = null;
-                            tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                        }
-
-                        bmp.Dispose();
-
-                        ClearTool(tool);
-                        tool.ToolStatus = ToolStatus.识别中;
-                        try
-                        {
-                            if (tool.TestMode == TestModes.二维码)
-                            {
-                                #region 读取二维码
-                                List<Reg.Barcode> barcodelist = null;
-
-                                try
-                                {
-                                    barcodelist = tool.Reg.ReadBarcode(myEventArgs.Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
-                                    if (barcodelist.Count > 0)
-                                    {
-                                        tool.BarcodeStr = barcodelist[0].codestr;
-                                        NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
-                                        //if (tool.SendBarcodeData)
-                                        //{
-                                        //    SendMsgSoft(tool.BarcodeStr);
-                                        //}
-                                        writeLog($"二维码读取成功:{barcodelist[0].codestr}");
-                                        tool.ToolStatus = ToolStatus.OK;
-                                    }
-                                    else
-                                    {
-                                        tool.BarcodeStr = string.Empty;
-                                        writeLog($"二维码读取失败:{barcodelist[0].codestr}");
-                                        tool.ToolStatus = ToolStatus.NG2;
-
-                                    }
-                                }
-                                catch
-                                {
-                                    ;
-                                }
-
-                                #endregion
-                            }
-                            else if (tool.TestMode == TestModes.模板匹配)
-                            {
-                                #region 读取位置
-                                /// NG  未安装好  NG2:缺少配件  OK:合格              
-
-                                try
-                                {
-                                    ShapeMatch.Result shapmatchresult = new ShapeMatch.Result();
-                                    tool.ShapeMatch.BasicData.matchcenter_X = tool.InitX;
-                                    tool.ShapeMatch.BasicData.matchcenter_Y = tool.InitY;
-                                    tool.ShapeMatch.BasicData.matchcenterX_Basic = tool.InitX;
-                                    tool.ShapeMatch.BasicData.matchcenterY_Basic = tool.InitY;
-                                    tool.ShapeMatch.BasicData.productcenter_X = tool.InitX;
-                                    tool.ShapeMatch.BasicData.productcenter_Y = tool.InitY;
-                                    shapmatchresult = tool.ShapeMatch.Match(myEventArgs.Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, false);
-                                    var Result_Data = tool.ShapeMatch.Analysis_Result(shapmatchresult);
-                                    if (Result_Data != null)
-                                    {
-                                        tool.ActualX = Result_Data.X_actual;
-                                        tool.ActualY = Result_Data.Y_actual;
-                                        tool.ActualAngle = Result_Data.angle;
-                                        tool.ActualScore = Result_Data.score;
-                                        tool.DeltaX = Result_Data.deltaX_actual * tool.K / 1000;
-                                        tool.DeltaY = Result_Data.deltaY_actual * tool.K / 1000;
-
-                                        //string sendstr = $"{(tool.DirectX ? -tool.DeltaX : tool.DeltaX).ToString("F2")},{(tool.DirectY ? -tool.DeltaY : tool.DeltaY).ToString("F2")},0.00";
-                                        //if (tool.InvertXY)
-                                        //{
-                                        //    sendstr = $"{(tool.DirectY ? -tool.DeltaY : tool.DeltaY).ToString("F2")},{(tool.DirectX ? -tool.DeltaX : tool.DeltaX).ToString("F2")},0.00,";
-                                        //}
-
-                                        if (tool.ActualScore >= tool.MinScore)
-                                        {
-                                            if (Math.Abs(tool.DeltaX) < tool.Allow_X_Delta &&
-                                                Math.Abs(tool.DeltaY) < tool.Allow_Y_Delta &&
-                                                Math.Abs(tool.ActualAngle) < tool.AllowAngleDelta
-                                                )
-                                            {
-                                                //if (tool.SendPositionData)
-                                                //{
-                                                //    SendMsgRobot($"{sendstr},");
-                                                //}
-                                                tool.ToolStatus = ToolStatus.OK;
-                                            }
-                                            else
-                                            {
-                                                tool.ToolStatus = ToolStatus.NG;
-
-                                            }
-
-                                        }
-                                        else
-                                        {
-                                            tool.ToolStatus = ToolStatus.NG2;
-                                        }
-
-                                    }
-                                    else
-                                    {
-                                        tool.ToolStatus = ToolStatus.NG2;
-                                    }
-                                }
-                                catch
-                                {
-                                    ;
-                                }
-
-
-                                #endregion
-                            }
-                            else if (tool.TestMode == TestModes.面积)
-                            {
-                                #region 读取面积
-
-                                int Areaint = CoculateDimension(myEventArgs.Image, tool, hwindow, false);
-                                tool.ActualDimension = Areaint;
-
-                                if (Areaint >= tool.MinDimension && Areaint <= tool.MaxDimension)
-                                {
-                                    tool.ToolStatus = ToolStatus.OK;
-                                }
-                                else
-                                {
-                                    tool.ToolStatus = ToolStatus.NG;
-                                }
-
-                                #endregion
-                            }
-                        }
-                        catch {; }
-
-                        #region 保存图片
-                        if (tool.ToolStatus == ToolStatus.OK)
-                        {
-                            if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
-                            {
-
-                                string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                try
-                                {
-                                    savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                }
-                                catch {; }
-
-                                string dir = Path.GetDirectoryName(savefilename);
-                                if (!Directory.Exists(dir))
-                                { Directory.CreateDirectory(dir); }
-                                HOperatorSet.WriteImage(myEventArgs.Image, "jpg", 0, savefilename);
-                            }
-                        }
-                        else
-                        {
-                            if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
-                            {
-                                string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                try
-                                {
-                                    savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                }
-                                catch {; }
-                                string dir = Path.GetDirectoryName(savefilename);
-                                if (!Directory.Exists(dir))
-                                { Directory.CreateDirectory(dir); }
-                                HOperatorSet.WriteImage(myEventArgs.Image, "jpg", 0, savefilename);
-
-                            }
-                        }
-
-                        #endregion
-
-                        if (tool.SendStatus)
-                        {
-
-                            int status = -1;
-
-                            var r = (from ToolModel in DataModel.Processmodel.Tools
-                                     where ToolModel.Command == DataModel.Processmodel.RCMD
-                                     select ToolModel);
-                            var wait = (from ToolModel in r
-                                        where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
-                                        select ToolModel);
-
-                            if (wait.Count() == 0)
-                            {
-                                var ok = (from ToolModel in r
-                                          where (ToolModel.ToolStatus == ToolStatus.OK)
-                                          select ToolModel);
-
-                                if (ok.Count() == r.Count())
-                                {
-                                    status = 0;
-                                }
-                                else
-                                {
-                                    //var NG1 = (from ToolModel in r
-                                    //           where (ToolModel.ToolStatus == ToolStatus.NG)
-                                    //           select ToolModel);
-
-                                    var NG2 = (from ToolModel in r
-                                               where (ToolModel.ToolStatus == ToolStatus.NG2)
-                                               select ToolModel);
-                                    if (NG2.Count() > 0)
-                                    {
-                                        status = 2;
-                                    }
-                                    else
-                                    {
-                                        status = 1;
-                                    }
-
-                                }
-                            }
-
-                            switch (status)
-                            {
-
-                                case 0:
-                                    {
-                                        SendMsgRobot(tool.OKCMD.Trim());
-                                        break;
-                                    }
-                                case 1:
-                                    {
-                                        SendMsgRobot(tool.NG1CMD.Trim());
-                                        break;
-                                    }
-                                case 2:
-                                    {
-                                        SendMsgRobot(tool.NG2CMD.Trim());
-                                        break;
-                                    }
-                                default:
-                                    {
-                                        break;
-                                    }
-                            }
-
-
-
-                            //if (!tool.InvertResult)
-                            //{
-                            //    SendMsgRobot($"NG,");
-                            //    //tool.ToolStatus = ToolStatus.NG;
-
-                            //}
-                            //else
-                            //{
-                            //    SendMsgRobot($"OK,");
-                            //    tool.ToolStatus = ToolStatus.OK;
-                            //}
-                        }
-
-
-                        if (i == DataModel.Processmodel.Tools.Count - 1)
-                        {
-                            int status = -1;
-                            int c = DataModel.Processmodel.Tools.Count();
-
-
-                            var ok = (from ToolModel in DataModel.Processmodel.Tools
-                                      where (ToolModel.ToolStatus == ToolStatus.OK)
-                                      select ToolModel);
-                            var NG1 = (from ToolModel in DataModel.Processmodel.Tools
-                                       where (ToolModel.ToolStatus == ToolStatus.NG)
-                                       select ToolModel);
-                            var NG2 = (from ToolModel in DataModel.Processmodel.Tools
-                                       where (ToolModel.ToolStatus == ToolStatus.NG2)
-                                       select ToolModel);
-                            var wait = (from ToolModel in DataModel.Processmodel.Tools
-                                        where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
-                                        select ToolModel);
-
-                            if (ok.Count() == c)
-                            {
-                                status = 0;
-                            }
-                            else if (NG2.Count() > 0)
-                            {
-                                status = 2;
-                            }
-                            else
-                            {
-                                status = 1;
-                            }
-
-                            if (status == 0)
-                            {
-                                DataModel.Processmodel.Status = ToolStatus.OK;
-                                PLC_write((UInt16)1);
-                            }
-                            else if (status == 0)
-                            {
-                                DataModel.Processmodel.Status = ToolStatus.NG2;
-                                PLC_write((UInt16)3);
-                            }
-                            else
-                            {
-                                DataModel.Processmodel.Status = ToolStatus.NG;
-                                PLC_write((UInt16)2);
-                            }
-
-                        }
-                    }
-                }
-                #endregion
-
-                GC.Collect();
+                    GC.Collect();
+                }));
+               
             }
             catch (Exception ex)
             {
                 writeError($"[{DataModel.Processmodel.RCMD}]识别错误:{ex.ToString()}");
             }
         }
+
+
+        public void OnReceiveProcess(HObject Image, int H, int W)
+        {
+
+            #region 图片接收
+
+            //Image
+
+            HWindow hwindow = DataModel.Settingmodel.HWindow;
+            hwindow.ClearWindow();
+            hwindow.SetPart(0, 0, H - 1, W - 1);
+            hwindow.DispObj(Image);
+            for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+            {
+                if (DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD)
+                {
+
+                    if (i == 0)
+                    {
+                        DataModel.Processmodel.Status = ToolStatus.识别中;
+                    }
+
+                    DataModel.Processmodel.ToolIndex = i + 1;
+
+                    ToolModel tool = DataModel.Processmodel.Tools[i];
+
+                    Bitmap bmp;
+                    Hobject2Bitmap.HobjectToBitmap24(Image, out bmp);
+
+                    using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
+                    {
+                        tool.CurrentBitmapSource = null;
+                        tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                    }
+
+                    bmp.Dispose();
+
+                    ClearTool(tool);
+                    tool.ToolStatus = ToolStatus.识别中;
+                    try
+                    {
+                        if (tool.TestMode == TestModes.二维码)
+                        {
+                            #region 读取二维码
+                            List<Reg.Barcode> barcodelist = null;
+
+                            try
+                            {
+                                barcodelist = tool.Reg.ReadBarcode(Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
+                                if (barcodelist.Count > 0)
+                                {
+                                    tool.BarcodeStr = barcodelist[0].codestr;
+                                    NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
+                                    //if (tool.SendBarcodeData)
+                                    //{
+                                    //    SendMsgSoft(tool.BarcodeStr);
+                                    //}
+                                    writeLog($"二维码读取成功:{barcodelist[0].codestr}");
+                                    tool.ToolStatus = ToolStatus.OK;
+                                }
+                                else
+                                {
+                                    tool.BarcodeStr = string.Empty;
+                                    writeLog($"二维码读取失败:{barcodelist[0].codestr}");
+                                    tool.ToolStatus = ToolStatus.NG2;
+
+                                }
+                            }
+                            catch
+                            {
+                                ;
+                            }
+
+                            #endregion
+                        }
+                        else if (tool.TestMode == TestModes.模板匹配)
+                        {
+                            #region 读取位置
+                            /// NG  未安装好  NG2:缺少配件  OK:合格              
+
+                            try
+                            {
+                                ShapeMatch.Result shapmatchresult = new ShapeMatch.Result();
+                                tool.ShapeMatch.BasicData.matchcenter_X = tool.InitX;
+                                tool.ShapeMatch.BasicData.matchcenter_Y = tool.InitY;
+                                tool.ShapeMatch.BasicData.matchcenterX_Basic = tool.InitX;
+                                tool.ShapeMatch.BasicData.matchcenterY_Basic = tool.InitY;
+                                tool.ShapeMatch.BasicData.productcenter_X = tool.InitX;
+                                tool.ShapeMatch.BasicData.productcenter_Y = tool.InitY;
+                                shapmatchresult = tool.ShapeMatch.Match(Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, false);
+                                var Result_Data = tool.ShapeMatch.Analysis_Result(shapmatchresult);
+                                if (Result_Data != null)
+                                {
+                                    tool.ActualX = Result_Data.X_actual;
+                                    tool.ActualY = Result_Data.Y_actual;
+                                    tool.ActualAngle = Result_Data.angle;
+                                    tool.ActualScore = Result_Data.score;
+                                    tool.DeltaX = Result_Data.deltaX_actual * tool.K / 1000;
+                                    tool.DeltaY = Result_Data.deltaY_actual * tool.K / 1000;
+
+
+                                    if (tool.ActualScore >= tool.MinScore)
+                                    {
+                                        if (Math.Abs(tool.DeltaX) < tool.Allow_X_Delta &&
+                                            Math.Abs(tool.DeltaY) < tool.Allow_Y_Delta &&
+                                            Math.Abs(tool.ActualAngle) < tool.AllowAngleDelta
+                                            )
+                                        {
+                                            //if (tool.SendPositionData)
+                                            //{
+                                            //    SendMsgRobot($"{sendstr},");
+                                            //}
+                                            tool.ToolStatus = ToolStatus.OK;
+                                        }
+                                        else
+                                        {
+                                            tool.ToolStatus = ToolStatus.NG;
+
+                                        }
+
+                                    }
+                                    else
+                                    {
+                                        tool.ToolStatus = ToolStatus.NG2;
+                                    }
+
+                                }
+                                else
+                                {
+                                    tool.ToolStatus = ToolStatus.NG2;
+                                }
+                            }
+                            catch
+                            {
+                                ;
+                            }
+
+
+                            #endregion
+                        }
+                        else if (tool.TestMode == TestModes.面积)
+                        {
+                            #region 读取面积
+
+                            int Areaint = CoculateDimension(Image, tool, hwindow, false);
+                            tool.ActualDimension = Areaint;
+
+                            if (Areaint >= tool.MinDimension && Areaint <= tool.MaxDimension)
+                            {
+                                tool.ToolStatus = ToolStatus.OK;
+                            }
+                            else
+                            {
+                                tool.ToolStatus = ToolStatus.NG;
+                            }
+
+                            #endregion
+                        }
+                    }
+                    catch {; }
+
+                    #region 保存图片
+                    if (tool.ToolStatus == ToolStatus.OK)
+                    {
+                        if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
+                        {
+
+                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            try
+                            {
+                                savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            }
+                            catch {; }
+
+                            string dir = Path.GetDirectoryName(savefilename);
+                            if (!Directory.Exists(dir))
+                            { Directory.CreateDirectory(dir); }
+                            HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                        }
+                    }
+                    else
+                    {
+                        if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
+                        {
+                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            try
+                            {
+                                savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                            }
+                            catch {; }
+                            string dir = Path.GetDirectoryName(savefilename);
+                            if (!Directory.Exists(dir))
+                            { Directory.CreateDirectory(dir); }
+                            HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+
+                        }
+                    }
+
+                    #endregion
+
+                    if (tool.SendStatus)
+                    {
+
+                        int status = -1;
+
+                        var r = (from ToolModel in DataModel.Processmodel.Tools
+                                 where ToolModel.Command == DataModel.Processmodel.RCMD
+                                 select ToolModel);
+                        var wait = (from ToolModel in r
+                                    where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
+                                    select ToolModel);
+
+                        if (wait.Count() == 0)
+                        {
+                            var ok = (from ToolModel in r
+                                      where (ToolModel.ToolStatus == ToolStatus.OK)
+                                      select ToolModel);
+
+                            if (ok.Count() == r.Count())
+                            {
+                                status = 0;
+                            }
+                            else
+                            {
+
+                                var NG2 = (from ToolModel in r
+                                           where (ToolModel.ToolStatus == ToolStatus.NG2)
+                                           select ToolModel);
+                                if (NG2.Count() > 0)
+                                {
+                                    status = 2;
+                                }
+                                else
+                                {
+                                    status = 1;
+                                }
+
+                            }
+                        }
+
+                        switch (status)
+                        {
+
+                            case 0:
+                                {
+                                    SendMsgRobot(tool.OKCMD.Trim());
+                                    break;
+                                }
+                            case 1:
+                                {
+                                    SendMsgRobot(tool.NG1CMD.Trim());
+                                    break;
+                                }
+                            case 2:
+                                {
+                                    SendMsgRobot(tool.NG2CMD.Trim());
+                                    break;
+                                }
+                            default:
+                                {
+                                    break;
+                                }
+                        }
+                    }
+
+
+                    if (i == DataModel.Processmodel.Tools.Count - 1)
+                    {
+                        int status = -1;
+                        int c = DataModel.Processmodel.Tools.Count();
+
+
+                        var ok = (from ToolModel in DataModel.Processmodel.Tools
+                                  where (ToolModel.ToolStatus == ToolStatus.OK)
+                                  select ToolModel);
+                        var NG1 = (from ToolModel in DataModel.Processmodel.Tools
+                                   where (ToolModel.ToolStatus == ToolStatus.NG)
+                                   select ToolModel);
+                        var NG2 = (from ToolModel in DataModel.Processmodel.Tools
+                                   where (ToolModel.ToolStatus == ToolStatus.NG2)
+                                   select ToolModel);
+                        var wait = (from ToolModel in DataModel.Processmodel.Tools
+                                    where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
+                                    select ToolModel);
+
+                        if (ok.Count() == c)
+                        {
+                            status = 0;
+                        }
+                        else if (NG2.Count() > 0)
+                        {
+                            status = 2;
+                        }
+                        else
+                        {
+                            status = 1;
+                        }
+
+                        if (status == 0)
+                        {
+                            DataModel.Processmodel.Status = ToolStatus.OK;
+                            PLC_write((UInt16)1);
+                        }
+                        else if (status == 0)
+                        {
+                            DataModel.Processmodel.Status = ToolStatus.NG2;
+                            PLC_write((UInt16)3);
+                        }
+                        else
+                        {
+                            DataModel.Processmodel.Status = ToolStatus.NG;
+                            PLC_write((UInt16)2);
+                        }
+
+                    }
+                }
+            }
+            #endregion
+
+        }
+
+
         #endregion
 
         #region 面积计算
@@ -1772,8 +1765,6 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         #endregion
 
-
-
         public Bitmap GetReducedImage(double W, double H, Bitmap src)
         {
             try
@@ -1790,7 +1781,6 @@ namespace F7_L12_Position_Detect.ViewModel
                 g.Save();
                 g.Dispose();
                 return r;
-
             }
             catch (Exception e)
             {
