@@ -1270,7 +1270,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Processmodel.ShowBitmapSource = bs;
 
                 }
-                GC.Collect ();
+                GC.Collect();
                 return true;
             }
             catch (Exception ex)
@@ -1324,7 +1324,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     GC.Collect();
                 }));
-               
+
             }
             catch (Exception ex)
             {
@@ -1421,13 +1421,14 @@ namespace F7_L12_Position_Detect.ViewModel
                                 tool.ShapeMatch.BasicData.matchcenterY_Basic = tool.InitY;
                                 tool.ShapeMatch.BasicData.productcenter_X = tool.InitX;
                                 tool.ShapeMatch.BasicData.productcenter_Y = tool.InitY;
-                                shapmatchresult = tool.ShapeMatch.Match(Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, false);
+                                //shapmatchresult = tool.ShapeMatch.Match(Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, -180, 180, false);
+                                shapmatchresult = tool.ShapeMatch.Match(Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, (int)-tool.AllowAngleDelta, (int)tool.AllowAngleDelta, false);
                                 var Result_Data = tool.ShapeMatch.Analysis_Result(shapmatchresult);
                                 if (Result_Data != null)
                                 {
                                     tool.ActualX = Result_Data.X_actual;
                                     tool.ActualY = Result_Data.Y_actual;
-                                    tool.ActualAngle = Result_Data.angle;
+                                    tool.ActualAngle = (Result_Data.angle / Math.PI * 180.0);
                                     tool.ActualScore = Result_Data.score;
                                     tool.DeltaX = Result_Data.deltaX_actual * tool.K / 1000;
                                     tool.DeltaY = Result_Data.deltaY_actual * tool.K / 1000;

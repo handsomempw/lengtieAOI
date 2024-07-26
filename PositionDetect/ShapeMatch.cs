@@ -31,7 +31,7 @@ namespace PositionDetect
             }
         }
 
-        public Result Match(HObject image, int num, int row1, int row2, int col1, int col2, bool redraw = true)
+        public Result Match(HObject image, int num, int row1, int row2, int col1, int col2,int MinAngle=-20,int MaxAngle=20, bool redraw = true)
         {
 
 
@@ -71,8 +71,8 @@ namespace PositionDetect
 
                     hv_Row.Dispose(); hv_Column.Dispose(); hv_Angle.Dispose(); hv_Score.Dispose();
 
-                    HOperatorSet.FindShapeModel(ho_ImageReduced, modelID, (new HTuple(-180)).TupleRad()
-                   , (new HTuple(180)).TupleRad(), 0.5, num, 0.5, "least_squares", 4, 0.9, out hv_Row,
+                    HOperatorSet.FindShapeModel(ho_ImageReduced, modelID, (new HTuple(MinAngle)).TupleRad()
+                   , (new HTuple(MaxAngle)).TupleRad(), 0.5, num, 0.5, "least_squares", 4, 0.9, out hv_Row,
                 out hv_Column, out hv_Angle, out hv_Score);
                 }
 

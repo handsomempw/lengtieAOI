@@ -92,6 +92,8 @@ namespace F7_L12_Position_Detect.Model.Tool
         [XmlElement("允许角度偏差")]
         public double AllowAngleDelta { set; get; } = 20;
 
+        
+
 
         //[XmlElement("X轴取反")]
         //public bool DirectX { set; get; } = false;
