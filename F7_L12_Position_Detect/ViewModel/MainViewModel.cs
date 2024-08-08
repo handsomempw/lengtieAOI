@@ -690,6 +690,9 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                     }
 
+                }else
+                {
+                   
                 }
             }
             catch (Exception ex)
@@ -730,9 +733,15 @@ namespace F7_L12_Position_Detect.ViewModel
 
         public void DeleteTool()
         {
+            int index = DataModel.Processmodel.selectedindex;
+            DeleteTool(index);
+
+        }
+        public void DeleteTool(int index)
+        {
             try
             {
-                if (DataModel.Processmodel.selectedindex < 0)
+                if (index < 0)
                 {
 
                     NoticeBox.Show($"请先选择需要删除的工具", "失败", MessageBoxIcon.Error, true, 5000);
@@ -740,15 +749,59 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
                 if (MessageBoxX.Show("是否确定删除工具？", "提示", System.Windows.MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == System.Windows.MessageBoxResult.Yes)
                 {
-                    if (DataModel.Processmodel.selectedindex >= 0)
+
+                    string jpgsrc1 = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index + 1}.jpg";
+                    string xmlsrc1 = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index + 1}.xml";
+                    string shmsrc1 = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index + 1}.shm";
+
+                    DeleteFile(jpgsrc1);
+                    DeleteFile(xmlsrc1);
+                    DeleteFile(shmsrc1);
+
+                    if (index != DataModel.Processmodel.Tools.Count - 1)
                     {
-                        DataModel.Processmodel.Tools.RemoveAt(DataModel.Processmodel.selectedindex);
+
+                        for (int i = index; i < DataModel.Processmodel.Tools.Count - 1; i++)
+                        {
+                            string jpgsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.jpg";
+                            string xmlsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.xml";
+                            string shmsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.shm";
+
+                            string jpgdst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.jpg";
+                            string xmldst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.xml";
+                            string shmdst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.shm";
+
+                            MoveFile(jpgdst, jpgsrc);
+                            MoveFile(xmldst, xmlsrc);
+                            MoveFile(shmdst, shmsrc);
+
+
+                        }
+                    }
+                    if (index >= 0)
+                    {
+                        DataModel.Processmodel.Tools.RemoveAt(index);
                     }
                     autoindex();
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+            }
         }
+
+
+        public void DeleteFile(string path)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+
+      
+      
+
         public void AddTool()
         {
             int index = DataModel.Processmodel.Tools.Count;
@@ -756,7 +809,7 @@ namespace F7_L12_Position_Detect.ViewModel
             InsertTool(index);
 
         }
-        public void InsertTool(int index)
+        public void InsertTool(int index, ToolModel tool = null)
         {
             try
             {
@@ -768,7 +821,27 @@ namespace F7_L12_Position_Detect.ViewModel
                     return;
                 }
 
-                ToolModel tool = new ToolModel();
+                for (int i = DataModel.Processmodel.Tools.Count - 1; i >= index; i--)
+                {
+                    string jpgsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.jpg";
+                    string xmlsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.xml";
+                    string shmsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.shm";
+
+                    string jpgdst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.jpg";
+                    string xmldst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.xml";
+                    string shmdst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.shm";
+
+                    MoveFile(jpgsrc, jpgdst);
+                    MoveFile(xmlsrc, xmldst);
+                    MoveFile(shmsrc, shmdst);
+
+
+                }
+
+                if (tool == null)
+                {
+                    tool = new ToolModel();
+                }
                 DataModel.Processmodel.Tools.Insert(index, tool);
                 DataModel.Processmodel.selectedindex = index;
                 autoindex();
@@ -776,6 +849,16 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex) { }
         }
+
+        public void MoveFile(string srcfile, string dstfilename)
+        {
+            if (File.Exists(srcfile))
+            {
+                File.Move(srcfile, dstfilename);
+            }
+        }
+
+
         public void ClearTool()
         {
             try
@@ -818,14 +901,58 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (MessageBoxX.Show("是否确定复制选中的工具？", "提示", System.Windows.MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == System.Windows.MessageBoxResult.Yes)
                 {
 
-                    DataModel.Processmodel.Tools.Insert(
-                        DataModel.Processmodel.selectedindex + 1,
-                      New_Tool_Model(DataModel.Processmodel.Tools[DataModel.Processmodel.selectedindex])
-                        );
+                    CopyTool(DataModel.Processmodel.selectedindex + 1, New_Tool_Model(DataModel.Processmodel.Tools[DataModel.Processmodel.selectedindex]));
+                   
+
+
                     autoindex();
                 }
             }
             catch (Exception ex) { }
+        }
+        public void CopyTool(int index, ToolModel tool )
+        {
+            try
+            {
+
+                if (DataModel.Processmodel.selectedindex < 0)
+                {
+
+                    NoticeBox.Show($"请先选择需要插入工具的位置", "失败", MessageBoxIcon.Error, true, 5000);
+                    return;
+                }
+
+                for (int i = DataModel.Processmodel.Tools.Count-1; i >= index-1; i--)
+                {
+                    string jpgsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i +1}.jpg";
+                    string xmlsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i +1}.xml";
+                    string shmsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i +1}.shm";
+
+                    string jpgdst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.jpg";
+                    string xmldst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.xml";
+                    string shmdst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.shm";
+
+                    CopyFile(jpgsrc, jpgdst);
+                    CopyFile(xmlsrc, xmldst);
+                    CopyFile(shmsrc, shmdst);
+
+
+                }
+
+                DataModel.Processmodel.Tools.Insert(index, tool);
+                DataModel.Processmodel.selectedindex = index;
+                autoindex();
+
+            }
+            catch (Exception ex) { }
+        }
+
+        public void CopyFile(string srcfile, string dstfilename)
+        {
+            if (File.Exists(srcfile))
+            {
+                File.Copy(srcfile, dstfilename,true);
+            }
         }
 
         public ROI New_ROI(ROI roi)
@@ -893,7 +1020,11 @@ namespace F7_L12_Position_Detect.ViewModel
             t.MinAreaFilter = tool.MinAreaFilter;
             t.MaxAreaFilter = tool.MaxAreaFilter;
 
-
+            t.BitmapSource = tool.BitmapSource.Clone();
+            t.CurrentBitmapSource = tool.CurrentBitmapSource.Clone();
+            t.CurrentBitmapFileName = tool.CurrentBitmapFileName;
+            t.Image = tool.Image.Clone();
+            
 
 
             return t;
