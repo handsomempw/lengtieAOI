@@ -90,6 +90,9 @@ namespace F7_L12_Position_Detect.Model
         public int ImageSize { set; get; } = 140;
 
 
+        [XmlElement("自动记录识别过程日志")]
+        public bool SaveProcessData { set; get; } = true;
+
     }
 
     public enum IOstatus

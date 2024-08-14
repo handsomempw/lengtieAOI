@@ -32,6 +32,7 @@ using HslCommunication.ModBus;
 using System.Windows.Input;
 using System.Data;
 using Color = System.Drawing.Color;
+using System.Diagnostics;
 
 namespace F7_L12_Position_Detect.ViewModel
 {
@@ -690,9 +691,10 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                     }
 
-                }else
+                }
+                else
                 {
-                   
+
                 }
             }
             catch (Exception ex)
@@ -799,8 +801,8 @@ namespace F7_L12_Position_Detect.ViewModel
             }
         }
 
-      
-      
+
+
 
         public void AddTool()
         {
@@ -902,7 +904,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
 
                     CopyTool(DataModel.Processmodel.selectedindex + 1, New_Tool_Model(DataModel.Processmodel.Tools[DataModel.Processmodel.selectedindex]));
-                   
+
 
 
                     autoindex();
@@ -910,7 +912,7 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex) { }
         }
-        public void CopyTool(int index, ToolModel tool )
+        public void CopyTool(int index, ToolModel tool)
         {
             try
             {
@@ -922,11 +924,11 @@ namespace F7_L12_Position_Detect.ViewModel
                     return;
                 }
 
-                for (int i = DataModel.Processmodel.Tools.Count-1; i >= index-1; i--)
+                for (int i = DataModel.Processmodel.Tools.Count - 1; i >= index - 1; i--)
                 {
-                    string jpgsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i +1}.jpg";
-                    string xmlsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i +1}.xml";
-                    string shmsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i +1}.shm";
+                    string jpgsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.jpg";
+                    string xmlsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.xml";
+                    string shmsrc = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 1}.shm";
 
                     string jpgdst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.jpg";
                     string xmldst = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{i + 2}.xml";
@@ -951,7 +953,7 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             if (File.Exists(srcfile))
             {
-                File.Copy(srcfile, dstfilename,true);
+                File.Copy(srcfile, dstfilename, true);
             }
         }
 
@@ -1019,12 +1021,13 @@ namespace F7_L12_Position_Detect.ViewModel
             t.MaxBlue = tool.MaxBlue;
             t.MinAreaFilter = tool.MinAreaFilter;
             t.MaxAreaFilter = tool.MaxAreaFilter;
-
+            t.BitmapSource = null;
+            t.CurrentBitmapSource = null;
             t.BitmapSource = tool.BitmapSource.Clone();
             t.CurrentBitmapSource = tool.CurrentBitmapSource.Clone();
             t.CurrentBitmapFileName = tool.CurrentBitmapFileName;
             t.Image = tool.Image.Clone();
-            
+
 
 
             return t;
@@ -1368,6 +1371,9 @@ namespace F7_L12_Position_Detect.ViewModel
                             using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
                             {
                                 BitmapSource bs = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                                tool.BitmapSource = null;
+                                tool.CurrentBitmapSource = null;
+
                                 tool.BitmapSource = bs;
                                 tool.CurrentBitmapSource = bs.Clone();
                             }
@@ -1470,6 +1476,8 @@ namespace F7_L12_Position_Detect.ViewModel
             #region 图片接收
 
             //Image
+          
+            
 
             HWindow hwindow = DataModel.Settingmodel.HWindow;
             hwindow.ClearWindow();
@@ -1479,6 +1487,8 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 if (DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD)
                 {
+                    Stopwatch stopwatch = new Stopwatch();
+                    stopwatch.Start();
 
                     if (i == 0)
                     {
@@ -1624,6 +1634,11 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                     }
                     catch {; }
+
+
+                    string s1 = $"{DataModel.Processmodel.Tools[i].Name}:识别耗时:{stopwatch.ElapsedMilliseconds}ms";
+                    Save_record(s1);
+                    stopwatch.Restart();
 
                     #region 保存图片
                     if (tool.ToolStatus == ToolStatus.OK)
@@ -1779,9 +1794,35 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
 
                     }
+
+                    string s2 = $"{DataModel.Processmodel.Tools[i].Name}:保存图片发送结果耗时:{stopwatch.ElapsedMilliseconds}ms";
+                    Save_record(s2);
+
                 }
             }
             #endregion
+
+        }
+
+
+        public void Save_record(string info)
+        {
+            if (DataModel.Settingmodel.SaveProcessData)
+            {
+                DateTime dt = DateTime.Now;
+                string filename = $"{Environment.CurrentDirectory}\\识别过程日志\\{dt.ToString("yyyy-MM-dd")}\\{dt.ToString("yyyyMMddHH")}.txt";
+                string dir = Path.GetDirectoryName(filename);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                using (StreamWriter sw = new StreamWriter(filename, true))
+                {
+                    sw.WriteLine($"[{dt.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{info}");
+                }
+            }
+
 
         }
 
