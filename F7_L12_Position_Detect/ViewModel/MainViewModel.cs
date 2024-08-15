@@ -586,10 +586,11 @@ namespace F7_L12_Position_Detect.ViewModel
                     App.Current.Dispatcher.Invoke(() =>
                     {
                         DataModel.Recordmodel.workLog.Insert(0, logstr);
-                        int num = 4000;
+                        int num = 200;
                         if (DataModel.Recordmodel.workLog.Count > num)
                         {
-                            DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
+                            //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
+                            DataModel.Recordmodel.workLog.Clear();
                         }
                     });
 
@@ -619,13 +620,14 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 try
                 {
-                    int num = 2000;
+                    int num = 200;
                     string bugstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{Content}";
 
                     DataModel.Recordmodel.ErrorLog.Insert(0, bugstr);
                     if (DataModel.Recordmodel.ErrorLog.Count > num)
                     {
-                        DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
+                        //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
+                        DataModel.Recordmodel.ErrorLog.Clear();
                     }
 
                     string filename = $"{Environment.CurrentDirectory}\\日志\\错误\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
@@ -690,10 +692,6 @@ namespace F7_L12_Position_Detect.ViewModel
 
                         }
                     }
-
-                }
-                else
-                {
 
                 }
             }
@@ -1476,8 +1474,8 @@ namespace F7_L12_Position_Detect.ViewModel
             #region 图片接收
 
             //Image
-          
-            
+
+
 
             HWindow hwindow = DataModel.Settingmodel.HWindow;
             hwindow.ClearWindow();
