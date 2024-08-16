@@ -190,7 +190,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 TCPevent TCPevent = (TCPevent)e;
                 string cmd = (string)TCPevent.Msg;
                 writeLog($"机器人->视觉:{cmd}");
-                NoticeBox.Show((string)TCPevent.Msg, "接收机器人信息", MessageBoxIcon.Info, true, 3000);
+             //   NoticeBox.Show((string)TCPevent.Msg, "接收机器人信息", MessageBoxIcon.Info, true, 3000);
                 DataModel.Processmodel.ToolIndex = -1;
 
                 DataModel.Processmodel.RCMD = cmd;
@@ -344,7 +344,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 TCPevent TCPevent = (TCPevent)e;
                 string cmd = (string)TCPevent.Msg;
                 writeLog($"上位机->视觉:{cmd}");
-                NoticeBox.Show((string)TCPevent.Msg, "接收上位机信息", MessageBoxIcon.Info, true, 3000);
+              //  NoticeBox.Show((string)TCPevent.Msg, "接收上位机信息", MessageBoxIcon.Info, true, 3000);
                 //DataModel.Processmodel.ToolIndex = -1;
                 //for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 //{
@@ -1531,7 +1531,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                 if (barcodelist.Count > 0)
                                 {
                                     tool.BarcodeStr = barcodelist[0].codestr;
-                                    NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
+                                  //  NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
                                     //if (tool.SendBarcodeData)
                                     //{
                                     //    SendMsgSoft(tool.BarcodeStr);
