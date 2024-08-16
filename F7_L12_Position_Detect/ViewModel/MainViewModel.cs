@@ -215,12 +215,15 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 ClearTools();
                             }
+                            writeLog($"机器人->视觉:{cmd}开始设置参数",false);
                             DataModel.Processmodel.ToolIndex = i + 1;
                             DataModel.Settingmodel.camedata.CameraModel.exposuretime = DataModel.Processmodel.Tools[i].ExposureTime;
                             DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = DataModel.Processmodel.Tools[i].ExposureTime;
                             DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
                             Thread.Sleep(DataModel.Settingmodel.delaytime);
+                            writeLog($"机器人->视觉:{cmd}开始触发",false);
                             DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
+                            writeLog($"机器人->视觉:{cmd}触发完成", false);
 
                             break;
                         }
@@ -576,24 +579,26 @@ namespace F7_L12_Position_Detect.ViewModel
 
         private object writeBug_Locker = new object();
 
-        internal void writeLog(string LogContent)
+        internal void writeLog(string LogContent,bool showdatarecord=true)
         {
             lock (writeLog_Locker)
             {
                 try
                 {
                     string logstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{LogContent}";
-                    App.Current.Dispatcher.Invoke(() =>
+                    if (showdatarecord)
                     {
-                        DataModel.Recordmodel.workLog.Insert(0, logstr);
-                        int num = 200;
-                        if (DataModel.Recordmodel.workLog.Count > num)
+                        App.Current.Dispatcher.Invoke(() =>
                         {
-                            //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
-                            DataModel.Recordmodel.workLog.Clear();
-                        }
-                    });
-
+                            int num = 200;
+                            if (DataModel.Recordmodel.workLog.Count > num)
+                            {
+                                //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
+                                DataModel.Recordmodel.workLog.Clear();
+                            }
+                            DataModel.Recordmodel.workLog.Insert(0, logstr);
+                        });
+                    }
 
                     string filename = $"{Environment.CurrentDirectory}\\日志\\日志\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
                     string dir = Path.GetDirectoryName(filename);
@@ -622,14 +627,15 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     int num = 200;
                     string bugstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{Content}";
-
-                    DataModel.Recordmodel.ErrorLog.Insert(0, bugstr);
-                    if (DataModel.Recordmodel.ErrorLog.Count > num)
+                    App.Current.Dispatcher.Invoke(() =>
                     {
-                        //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
-                        DataModel.Recordmodel.ErrorLog.Clear();
-                    }
-
+                        if (DataModel.Recordmodel.ErrorLog.Count > num)
+                        {
+                            //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
+                            DataModel.Recordmodel.ErrorLog.Clear();
+                        }
+                        DataModel.Recordmodel.ErrorLog.Insert(0, bugstr);
+                    });
                     string filename = $"{Environment.CurrentDirectory}\\日志\\错误\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
                     string dir = Path.GetDirectoryName(filename);
                     if (!Directory.Exists(dir))
@@ -1451,6 +1457,8 @@ namespace F7_L12_Position_Detect.ViewModel
 
             try
             {
+                writeLog($"相机->视觉:接收照片", false);
+
                 MyEventArgs myEventArgs = e as MyEventArgs;
 
                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
@@ -1633,7 +1641,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                     catch {; }
 
-
+                    writeLog($"视觉->视觉:计算完成", false);
                     string s1 = $"{DataModel.Processmodel.Tools[i].Name}:识别耗时:{stopwatch.ElapsedMilliseconds}ms";
                     Save_record(s1);
                     stopwatch.Restart();
@@ -1792,6 +1800,8 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
 
                     }
+
+                    writeLog($"视觉->视觉:保存完成", false);
 
                     string s2 = $"{DataModel.Processmodel.Tools[i].Name}:保存图片发送结果耗时:{stopwatch.ElapsedMilliseconds}ms";
                     Save_record(s2);
