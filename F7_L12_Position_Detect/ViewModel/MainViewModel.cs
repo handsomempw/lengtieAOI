@@ -190,7 +190,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 TCPevent TCPevent = (TCPevent)e;
                 string cmd = (string)TCPevent.Msg;
                 writeLog($"机器人->视觉:{cmd}");
-             //   NoticeBox.Show((string)TCPevent.Msg, "接收机器人信息", MessageBoxIcon.Info, true, 3000);
+                //   NoticeBox.Show((string)TCPevent.Msg, "接收机器人信息", MessageBoxIcon.Info, true, 3000);
                 DataModel.Processmodel.ToolIndex = -1;
 
                 DataModel.Processmodel.RCMD = cmd;
@@ -215,13 +215,13 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 ClearTools();
                             }
-                            writeLog($"机器人->视觉:{cmd}开始设置参数",false);
+                            writeLog($"机器人->视觉:{cmd}开始设置参数", false);
                             DataModel.Processmodel.ToolIndex = i + 1;
                             DataModel.Settingmodel.camedata.CameraModel.exposuretime = DataModel.Processmodel.Tools[i].ExposureTime;
                             DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = DataModel.Processmodel.Tools[i].ExposureTime;
                             DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
                             Thread.Sleep(DataModel.Settingmodel.delaytime);
-                            writeLog($"机器人->视觉:{cmd}开始触发",false);
+                            writeLog($"机器人->视觉:{cmd}开始触发", false);
                             DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
                             writeLog($"机器人->视觉:{cmd}触发完成", false);
 
@@ -344,7 +344,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 TCPevent TCPevent = (TCPevent)e;
                 string cmd = (string)TCPevent.Msg;
                 writeLog($"上位机->视觉:{cmd}");
-              //  NoticeBox.Show((string)TCPevent.Msg, "接收上位机信息", MessageBoxIcon.Info, true, 3000);
+                //  NoticeBox.Show((string)TCPevent.Msg, "接收上位机信息", MessageBoxIcon.Info, true, 3000);
                 //DataModel.Processmodel.ToolIndex = -1;
                 //for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 //{
@@ -474,8 +474,6 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
 
-
-
                 string sql = $"SELECT [成品码] FROM [绑定完表格] WHERE  [物料名称]='容器码' and [条形码]= '{barcode}' ORDER BY [编号]";
                 DataTable dt = Sqlserver.MicrosoftSql_DATABASE.Read(sql);
                 DataModel.Processmodel.SNList.Clear();
@@ -491,6 +489,8 @@ namespace F7_L12_Position_Detect.ViewModel
 
         private bool PLC_write(UInt16 result)
         {
+            writeLog($"视觉->PLC:{result}、{(result == 1 ? "OK" : "NG")}", false);
+
             int i = 0;
             while (i++ < 4)
             {
@@ -579,7 +579,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
         private object writeBug_Locker = new object();
 
-        internal void writeLog(string LogContent,bool showdatarecord=true)
+        internal void writeLog(string LogContent, bool showdatarecord = true)
         {
             lock (writeLog_Locker)
             {
@@ -1531,7 +1531,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                 if (barcodelist.Count > 0)
                                 {
                                     tool.BarcodeStr = barcodelist[0].codestr;
-                                  //  NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
+                                    //  NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
                                     //if (tool.SendBarcodeData)
                                     //{
                                     //    SendMsgSoft(tool.BarcodeStr);
