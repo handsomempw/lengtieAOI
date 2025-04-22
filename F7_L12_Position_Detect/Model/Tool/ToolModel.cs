@@ -14,7 +14,7 @@ namespace F7_L12_Position_Detect.Model.Tool
     public class ToolModel : ObservableObject
     {
         [XmlElement("工具模式")]
-        public TestModes TestMode { set; get; } = TestModes.模板匹配;
+        public TestModes TestMode { set; get; } = TestModes.二维码;
 
         [XmlElement("相机曝光时间")]
 
@@ -51,6 +51,14 @@ namespace F7_L12_Position_Detect.Model.Tool
         public string BarcodeStr { set; get; } = string.Empty;
         [XmlElement("二维码ROI")]
         public ROI BarCodeROI { set; get; } = new ROI();
+
+        [XmlElement("延时")]
+        public int Delaytimes { set; get; } = 100;
+
+        [XmlElement("结束码")]
+
+        public string FinishedCode { set; get; } = string.Empty;
+
         #endregion
 
         #region 位置检测
@@ -92,7 +100,7 @@ namespace F7_L12_Position_Detect.Model.Tool
         [XmlElement("允许角度偏差")]
         public double AllowAngleDelta { set; get; } = 20;
 
-        
+
 
 
         //[XmlElement("X轴取反")]

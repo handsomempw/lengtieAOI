@@ -27,6 +27,13 @@ namespace TcpServerHelper
         private TcpClient _tcpClient = null;
         //public Action<string> ReciviMsgAction { get; set; }
 
+        public string ReceiveMSG { set; get; } = string.Empty;
+        public string GetMsg()
+        {
+            string _s = ReceiveMSG;
+            return _s;
+        }
+
 
         private bool isConnected = false;
         /// <summary>
@@ -178,14 +185,14 @@ namespace TcpServerHelper
                     _tcpClient = _tcpServer.AcceptTcpClient();        //接收挂起的连接请求
                     isConnected = true;
                     //ReciviMsgAction.Invoke("客户端重新连接");
-                   ClientConnected.Invoke(
-                  this,
-                  new TCPevent()
-                  {
-                      IPaddress = _tcpClient.Client.RemoteEndPoint.AddressFamily.ToString(),
-                      Port = ((int)_tcpClient.Client.RemoteEndPoint.AddressFamily),
-                      Msg = "客户端重新连接"
-                  });
+                    ClientConnected.Invoke(
+                   this,
+                   new TCPevent()
+                   {
+                       IPaddress = _tcpClient.Client.RemoteEndPoint.AddressFamily.ToString(),
+                       Port = ((int)_tcpClient.Client.RemoteEndPoint.AddressFamily),
+                       Msg = "客户端重新连接"
+                   });
                     //Task.Run(ReceiveMsg);
                 }
                 Thread.Sleep(1000);

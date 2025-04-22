@@ -80,6 +80,11 @@ namespace F7_L12_Position_Detect
                         vml.Main.DataModel.Processmodel.ShowBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                     }
                     string newfilename = $"{vml.Main.DataModel.Settingmodel.Prjdir}\\{vml.Main.DataModel.Settingmodel.Name}\\Tool{t.Index}.jpg";
+                    string dir = System.IO.Path.GetDirectoryName(newfilename);
+                    if (!Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
 
                     File.Copy(filename, newfilename, true);
 

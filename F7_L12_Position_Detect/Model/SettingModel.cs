@@ -93,6 +93,11 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("自动记录识别过程日志")]
         public bool SaveProcessData { set; get; } = true;
 
+        [XmlElement("扫码检索服务器地址")]
+        public string SNlistServerIP { set; get; } = "10.23.8.28";
+
+
+
     }
 
     public enum IOstatus

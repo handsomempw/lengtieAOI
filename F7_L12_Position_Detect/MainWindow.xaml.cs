@@ -51,6 +51,7 @@ namespace F7_L12_Position_Detect
             vml.Main.InitSoftServer();
             vml.Main.InitRobotServer();
 
+            Sqlserver.MicrosoftSql_DATABASE.connectstr = $"Provider=SQLOLEDB.1;Password=1234;Persist Security Info=True;User ID=sa;Initial Catalog=扫码库;Data Source={vml.Main.DataModel.Settingmodel.SNlistServerIP}";
 
 
 
@@ -204,20 +205,26 @@ namespace F7_L12_Position_Detect
         private void tooltest_Click(object sender, RoutedEventArgs e)
         {
 
-            OpenFileDialog ofd = new OpenFileDialog();
-            ofd.Filter = "*.jpg|*.jpg";
-            if (ofd.ShowDialog() == true)
+            try
             {
-                HTuple W = new HTuple(), H = new HTuple();
+                OpenFileDialog ofd = new OpenFileDialog();
+                ofd.Filter = "*.jpg|*.jpg";
+                if (ofd.ShowDialog() == true)
+                {
+                    HTuple W = new HTuple(), H = new HTuple();
 
-                HObject image;
-                HOperatorSet.GenEmptyObj(out image);
-                HOperatorSet.ReadImage(out image, ofd.FileName);
-                HOperatorSet.GetImageSize(image, out W, out H);
-                //vml.Main.DataModel.Processmodel.ToolIndex = 1;
-                vml.Main.DataModel.Processmodel.RCMD = "A1";
-                vml.Main.OnReceiveProcess(image, (int)H, (int)W);
+                    HObject image;
+                    HOperatorSet.GenEmptyObj(out image);
+                    HOperatorSet.ReadImage(out image, ofd.FileName);
+                    HOperatorSet.GetImageSize(image, out W, out H);
+                    //vml.Main.DataModel.Processmodel.ToolIndex = 1;
+                    vml.Main.DataModel.Processmodel.RCMD = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex].Command;
+                    vml.Main.OnReceiveProcess(image, (int)H, (int)W);
+                }
             }
+            catch (Exception ex){
+                MessageBox.Show($"发生错误，请先选择需要测试的工具再选择测试照片:\r\n{ex.ToString()}");
+                ; }
         }
     }
 }

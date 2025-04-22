@@ -1193,23 +1193,31 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         public void LoadProcessmodel()
         {
-            string filename = $"{Environment.CurrentDirectory}\\配置\\过程数据.xml";
-            string dir = Path.GetDirectoryName(filename);
-            if (!Directory.Exists(dir))
+            try
             {
-                Directory.CreateDirectory(dir);
-            }
-            if (File.Exists(filename))
-            {
-                using (var stream = File.OpenRead(filename))
+                string filename = $"{Environment.CurrentDirectory}\\配置\\过程数据.xml";
+                string dir = Path.GetDirectoryName(filename);
+                if (!Directory.Exists(dir))
                 {
-                    var serializer = new XmlSerializer(typeof(Processmodel));
-                    DataModel.Processmodel = serializer.Deserialize(stream) as Processmodel;
+                    Directory.CreateDirectory(dir);
+                }
+                if (File.Exists(filename))
+                {
+                    using (var stream = File.OpenRead(filename))
+                    {
+                        var serializer = new XmlSerializer(typeof(Processmodel));
+                        DataModel.Processmodel = serializer.Deserialize(stream) as Processmodel;
+                    }
+                }
+                else
+                {
+                    DataModel.Processmodel = new Processmodel();
                 }
             }
-            else
+            catch (Exception ex)
             {
                 DataModel.Processmodel = new Processmodel();
+
             }
         }
         #endregion
@@ -1233,23 +1241,33 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         public void LoadSettingModel()
         {
-            string filename = $"{Environment.CurrentDirectory}\\配置\\配置数据.xml";
-            string dir = Path.GetDirectoryName(filename);
-            if (!Directory.Exists(dir))
+            try
             {
-                Directory.CreateDirectory(dir);
-            }
-            if (File.Exists(filename))
-            {
-                using (var stream = File.OpenRead(filename))
+                string filename = $"{Environment.CurrentDirectory}\\配置\\配置数据.xml";
+                string dir = Path.GetDirectoryName(filename);
+                if (!Directory.Exists(dir))
                 {
-                    var serializer = new XmlSerializer(typeof(SettingModel));
-                    DataModel.Settingmodel = serializer.Deserialize(stream) as SettingModel;
+                    Directory.CreateDirectory(dir);
+                }
+                if (File.Exists(filename))
+                {
+                    using (var stream = File.OpenRead(filename))
+                    {
+                        var serializer = new XmlSerializer(typeof(SettingModel));
+                        DataModel.Settingmodel = serializer.Deserialize(stream) as SettingModel;
+                    }
+                }
+                else
+                {
+                    DataModel.Settingmodel = new SettingModel();
                 }
             }
-            else
+            catch (Exception ex)
             {
                 DataModel.Settingmodel = new SettingModel();
+
+                MessageBox.Show($"配置数据.xml加载失败,软件已重置配置，请进入配置文件按需求修改,再重新打开软件:\r\n{ex.Message}");
+
             }
         }
         #endregion
@@ -1271,23 +1289,32 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         public void LoadRecordModel()
         {
-            string filename = $"{Environment.CurrentDirectory}\\配置\\日志数据.xml";
-            string dir = Path.GetDirectoryName(filename);
-            if (!Directory.Exists(dir))
+            try
             {
-                Directory.CreateDirectory(dir);
-            }
-            if (File.Exists(filename))
-            {
-                using (var stream = File.OpenRead(filename))
+                string filename = $"{Environment.CurrentDirectory}\\配置\\日志数据.xml";
+                string dir = Path.GetDirectoryName(filename);
+                if (!Directory.Exists(dir))
                 {
-                    var serializer = new XmlSerializer(typeof(RecordModel));
-                    DataModel.Recordmodel = serializer.Deserialize(stream) as RecordModel;
+                    Directory.CreateDirectory(dir);
+                }
+                if (File.Exists(filename))
+                {
+                    using (var stream = File.OpenRead(filename))
+                    {
+                        var serializer = new XmlSerializer(typeof(RecordModel));
+                        DataModel.Recordmodel = serializer.Deserialize(stream) as RecordModel;
+                    }
+                }
+                else
+                {
+                    DataModel.Recordmodel = new RecordModel();
                 }
             }
-            else
+            catch (Exception ex)
             {
                 DataModel.Recordmodel = new RecordModel();
+                //MessageBox.Show($"日志数据.xml加载失败,软件已重置配置，请进入配置文件按需求修改,再重新打开软件:\r\n{ex.Message}");
+
             }
         }
         #endregion
@@ -1295,23 +1322,27 @@ namespace F7_L12_Position_Detect.ViewModel
 
         public void SavePrjXmls()
         {
-            #region 删除旧xml文件
-            foreach (string s in Directory.GetFiles($"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}"))
+            try
             {
-                if (s.ToUpper().EndsWith(".XML"))
+                #region 删除旧xml文件
+                foreach (string s in Directory.GetFiles($"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}"))
                 {
-                    try
+                    if (s.ToUpper().EndsWith(".XML"))
                     {
-                        File.Delete(s);
+                        try
+                        {
+                            File.Delete(s);
+                        }
+                        catch (Exception ex) { continue; }
                     }
-                    catch (Exception ex) { continue; }
+                }
+                #endregion
+                for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+                {
+                    SavePrjXml(DataModel.Processmodel.Tools[i], i + 1);
                 }
             }
-            #endregion
-            for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
-            {
-                SavePrjXml(DataModel.Processmodel.Tools[i], i + 1);
-            }
+            catch (Exception ex) {; }
         }
 
         private void SavePrjXml(ToolModel td, int index)
@@ -1506,6 +1537,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     ToolModel tool = DataModel.Processmodel.Tools[i];
 
                     Bitmap bmp;
+
                     Hobject2Bitmap.HobjectToBitmap24(Image, out bmp);
 
                     using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
@@ -1538,6 +1570,40 @@ namespace F7_L12_Position_Detect.ViewModel
                                     //}
                                     writeLog($"二维码读取成功:{barcodelist[0].codestr}");
                                     tool.ToolStatus = ToolStatus.OK;
+
+                                    #region 发送二维码给上位机设备
+                                    DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.BarcodeStr);
+                                    Thread.Sleep(tool.Delaytimes);
+                                    string s = DataModel.Settingmodel.TcpServerSoft.GetMsg();
+
+                                    writeLog($"二维码校验返回错误:{s}");
+
+                                    if (string.IsNullOrEmpty(s) || s != "OK")
+                                    {
+
+                                    }
+                                    else
+                                    {
+
+                                    }
+
+                                    if (!string.IsNullOrEmpty(tool.FinishedCode))
+                                    {
+                                        DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.FinishedCode);
+                                        Thread.Sleep(tool.Delaytimes);
+                                        string sn = DataModel.Settingmodel.TcpServerSoft.GetMsg();
+                                        if (!string.IsNullOrEmpty(sn))
+                                        {
+                                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                            {
+                                                DataModel.Processmodel.SNList.Add(sn);
+                                            }));
+                                        }
+                                    }
+
+                                    #endregion
+
+
                                 }
                                 else
                                 {

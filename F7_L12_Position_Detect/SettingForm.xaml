@@ -118,6 +118,8 @@
                             <RowDefinition/>
                             <RowDefinition/>
                             <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="auto"/>
@@ -149,6 +151,14 @@
                             <TextBox Grid.Row="1" Grid.Column="3"   Margin="2" Text="{Binding BarCodeROI.Col2}" />
 
                         </Grid>
+
+                        <TextBlock Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Right">延时:</TextBlock>
+                        <TextBlock Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Right">结束码:</TextBlock>
+
+                        <TextBox Grid.Row="3" Grid.Column="1" Margin="3" Text="{Binding Delaytimes,UpdateSourceTrigger=PropertyChanged}"></TextBox>
+                        <TextBox Grid.Row="4" Grid.Column="1" Margin="3" Text="{Binding FinishedCode,UpdateSourceTrigger=PropertyChanged}"></TextBox>
+
+
                     </Grid>
                 </GroupBox>
 

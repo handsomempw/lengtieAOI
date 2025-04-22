@@ -11,7 +11,7 @@ namespace Sqlserver
 
     public class MicrosoftSql_DATABASE
     {
-        private static string connectstr = "Provider=SQLOLEDB.1;Password=1234;Persist Security Info=True;User ID=sa;Initial Catalog=扫码库;Data Source=10.23.8.28";
+        public static string connectstr = "Provider=SQLOLEDB.1;Password=1234;Persist Security Info=True;User ID=sa;Initial Catalog=扫码库;Data Source=10.23.8.28";
 
         public static DataTable Read(string sql)
         {
