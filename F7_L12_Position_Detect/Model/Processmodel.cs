@@ -17,6 +17,13 @@ namespace F7_L12_Position_Detect.Model
     public class Processmodel : ObservableObject
     {
 
+        [XmlElement("二维码累积内容")]
+        public string Barcodes { set; get; } = string.Empty;
+
+        //[XmlElement("容器编号")]
+        //public string RQSN { set; get; }=string.Empty;
+
+
         [XmlElement]
         [XmlIgnore]
         public string BarcodeStr { set; get; }
@@ -110,7 +117,7 @@ namespace F7_L12_Position_Detect.Model
         public string Scannerstr { set; get; } = string.Empty;
 
         [XmlElement("SN列表")]
-        public ObservableCollection<string> SNList { set; get; } =new ObservableCollection<string>();
+        public ObservableCollection<string> SNList { set; get; } = new ObservableCollection<string>();
 
         [XmlIgnore]
         [XmlElement("显示照片")]

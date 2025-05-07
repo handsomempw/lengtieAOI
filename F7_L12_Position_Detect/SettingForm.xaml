@@ -120,6 +120,8 @@
                             <RowDefinition/>
                             <RowDefinition/>
                             <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="auto"/>
@@ -155,8 +157,17 @@
                         <TextBlock Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Right">延时:</TextBlock>
                         <TextBlock Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Right">结束码:</TextBlock>
 
+
+
+
+
                         <TextBox Grid.Row="3" Grid.Column="1" Margin="3" Text="{Binding Delaytimes,UpdateSourceTrigger=PropertyChanged}"></TextBox>
                         <TextBox Grid.Row="4" Grid.Column="1" Margin="3" Text="{Binding FinishedCode,UpdateSourceTrigger=PropertyChanged}"></TextBox>
+
+
+                        <CheckBox Grid.Row="5" Grid.ColumnSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding MPMode}">母排扫码模式</CheckBox>
+                        <CheckBox Grid.Row="6" Grid.ColumnSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding SendBarcode}">发送扫码内容</CheckBox>
+
 
 
                     </Grid>

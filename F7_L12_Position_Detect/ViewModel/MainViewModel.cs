@@ -422,7 +422,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                         DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
 
                                         App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                        {
+                                        {                                            
                                             GetSNList(DataModel.Processmodel.Scannerstr);
                                         }));
 
@@ -1569,39 +1569,84 @@ namespace F7_L12_Position_Detect.ViewModel
                                     //    SendMsgSoft(tool.BarcodeStr);
                                     //}
                                     writeLog($"二维码读取成功:{barcodelist[0].codestr}");
-                                    tool.ToolStatus = ToolStatus.OK;
 
-                                    #region 发送二维码给上位机设备
-                                    DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.BarcodeStr);
-                                    Thread.Sleep(tool.Delaytimes);
-                                    string s = DataModel.Settingmodel.TcpServerSoft.GetMsg();
-
-                                    writeLog($"二维码校验返回错误:{s}");
-
-                                    if (string.IsNullOrEmpty(s) || s != "OK")
+                                    if (tool.MPMode)
                                     {
+                                        DataModel.Processmodel.Barcodes += barcodelist[0].codestr + ";";
+                                    }
+                                    if (tool.SendBarcode)
+                                    {
+                                        tool.ToolStatus = ToolStatus.等待中;
+
+                                        if (DataModel.Settingmodel.TcpClientH.Connect(DataModel.Settingmodel.BarcodeReporter.RemoteIP, DataModel.Settingmodel.BarcodeReporter.RemotePort))
+                                        {
+
+                                            DataModel.Settingmodel.TcpClientH.SendMsg($"{DataModel.Processmodel.Scannerstr};{DataModel.Processmodel.Barcodes}\r\n");
+                                            string s = DataModel.Settingmodel.TcpClientH.ReceiveMsg(5000);
+                                            if(!string.IsNullOrEmpty(s))
+                                            {
+                                                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                                {
+                                                    DataModel.Processmodel.SNList.Add(s);
+                                                }));
+                                                tool.ToolStatus = ToolStatus.OK;
+                                                writeLog($"扫码汇报软件返回成品编号:{s}");
+
+                                            }else
+                                            {
+                                                tool.ToolStatus = ToolStatus.NG2;
+                                                writeLog($"扫码汇报软件返回为空");
+
+                                            }
+
+                                            DataModel.Settingmodel.TcpClientH.DisConnect();
+                                        }
+                                        else
+                                        {
+                                            tool.ToolStatus = ToolStatus.NG2;
+                                            writeLog($"连接扫码汇报软件NG2");
+                                        }
+
 
                                     }
                                     else
                                     {
-
+                                        tool.ToolStatus = ToolStatus.OK;
                                     }
 
-                                    if (!string.IsNullOrEmpty(tool.FinishedCode))
-                                    {
-                                        DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.FinishedCode);
-                                        Thread.Sleep(tool.Delaytimes);
-                                        string sn = DataModel.Settingmodel.TcpServerSoft.GetMsg();
-                                        if (!string.IsNullOrEmpty(sn))
-                                        {
-                                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                            {
-                                                DataModel.Processmodel.SNList.Add(sn);
-                                            }));
-                                        }
-                                    }
 
-                                    #endregion
+
+                                    //#region 发送二维码给上位机设备
+                                    //DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.BarcodeStr);
+                                    //Thread.Sleep(tool.Delaytimes);
+                                    //string s = DataModel.Settingmodel.TcpServerSoft.GetMsg();
+
+                                    //writeLog($"二维码校验返回错误:{s}");
+
+                                    //if (string.IsNullOrEmpty(s) || s != "OK")
+                                    //{
+
+                                    //}
+                                    //else
+                                    //{
+
+                                    //}
+
+                                    //if (!string.IsNullOrEmpty(tool.FinishedCode))
+                                    //{
+                                    //    DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.FinishedCode);
+                                    //    Thread.Sleep(tool.Delaytimes);
+                                    //    string sn = DataModel.Settingmodel.TcpServerSoft.GetMsg();
+                                    //    if (!string.IsNullOrEmpty(sn))
+                                    //    {
+                                    //        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                    //        {
+                                    //            DataModel.Processmodel.SNList.Add(sn);
+                                    //        }));
+                                    //    }
+                                    //}
+
+                                    //#endregion
 
 
                                 }
@@ -1609,7 +1654,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                 {
                                     tool.BarcodeStr = string.Empty;
                                     writeLog($"二维码读取失败:{barcodelist[0].codestr}");
-                                    tool.ToolStatus = ToolStatus.NG2;
+                                    tool.ToolStatus = ToolStatus.NG;
 
                                 }
                             }
@@ -1775,7 +1820,6 @@ namespace F7_L12_Position_Detect.ViewModel
                             }
                             else
                             {
-
                                 var NG2 = (from ToolModel in r
                                            where (ToolModel.ToolStatus == ToolStatus.NG2)
                                            select ToolModel);

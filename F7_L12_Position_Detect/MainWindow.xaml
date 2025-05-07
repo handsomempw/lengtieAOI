@@ -199,6 +199,7 @@
         <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" >
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto"/>
+                <RowDefinition Height="auto"/>
                 <RowDefinition/>
                 <RowDefinition Height="auto"/>
 
@@ -295,14 +296,18 @@
 
                 </Grid>
             </GroupBox>
+            <GroupBox Header="累积二维码" Grid.Row="1">
+                <TextBox IsEnabled="False" FontSize="12" TextWrapping="Wrap" MaxWidth="400" MinWidth="300" MinHeight="100"  Text="{Binding DataModel.Processmodel.Barcodes}" />
 
-            <DataGrid ItemsSource="{Binding DataModel.Recordmodel.workLog}" AutoGenerateColumns="False" Grid.Row="1" >
+
+            </GroupBox>
+            <DataGrid ItemsSource="{Binding DataModel.Recordmodel.workLog}" AutoGenerateColumns="False" Grid.Row="2" >
                 <DataGrid.Columns>
                     <DataGridTextColumn Binding="{Binding}" FontSize="12" />
                 </DataGrid.Columns>
             </DataGrid>
 
-            <ListBox ItemsSource="{Binding DataModel.Processmodel.SNList}" Grid.Row="2" MinHeight="40" Padding="5" Margin="2">
+            <ListBox ItemsSource="{Binding DataModel.Processmodel.SNList}" Grid.Row="3" MinHeight="40" Padding="5" Margin="2">
 
             </ListBox>
         </Grid>

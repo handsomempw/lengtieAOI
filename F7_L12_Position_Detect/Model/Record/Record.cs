@@ -28,4 +28,27 @@ namespace F7_L12_Position_Detect.Log
         [XmlElement("通讯内容")]
         public string Msg { set; get; } = string.Empty;
     }
+
+
+    public class Barcode
+    {
+        [XmlElement("类别")]
+        public BarcodeType BarcodeType { set; get; } = BarcodeType.容器编号;
+        [XmlElement("码内容")]
+        public string barcodestr { set; get; } = string.Empty;
+
+        public DateTime dt { set; get; } = DateTime.MinValue;
+
+    }
+
+
+    public enum BarcodeType
+    {
+        容器编号,
+        工装编号,
+        母排编号
+
+    }
+
+
 }

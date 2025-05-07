@@ -54,6 +54,10 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("上位机")]
         public TcpSetting SoftConnect { set; get; } = new TcpSetting();
 
+        [XmlElement("扫码报工服务器")]
+        public TcpSetting BarcodeReporter { set; get; }=new TcpSetting();
+
+
 
         #region PLC配置
         [XmlElement("PLC通讯IP")]
@@ -63,15 +67,15 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("信号交互地址")]
         public int AddressStart { set; get; } = 7080;
 
- 
+
         #endregion
 
 
 
 
 
-        //[XmlIgnore]
-        //public TcpClientHelper.TcpClientH TcpClientH { set; get; } = new TcpClientHelper.TcpClientH();
+        [XmlIgnore]
+        public TcpClientHelper.TcpClientH TcpClientH { set; get; } = new TcpClientHelper.TcpClientH();
 
         [XmlIgnore]
         public TcpServerHelper.TCPServerH TcpServerRobot { set; get; } = new TcpServerHelper.TCPServerH();
