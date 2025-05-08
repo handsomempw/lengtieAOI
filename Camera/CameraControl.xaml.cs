@@ -35,11 +35,14 @@ namespace Camera
             catch (Exception ex) {; }
         }
 
-        public HWindowControlWPF GetHwindow()
+        //public HWindowControlWPF GetHwindow()
+        //{
+        //    return HWindow;
+        //}
+        public HSmartWindowControlWPF GetHwindow()
         {
             return HWindow;
         }
-
         private void GetData()
         {
             try

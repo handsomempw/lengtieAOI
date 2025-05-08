@@ -13,7 +13,8 @@ namespace Camera
     public class CameraModel : ObservableObject
     {
         [XmlIgnore]
-        public HWindowControlWPF HWindow { get; set; }
+        //public HWindowControlWPF HWindow { get; set; }
+        public HSmartWindowControlWPF HWindow { get; set; }
         [XmlIgnore]
         [XmlElement("相机参数")]
         public Hikvision camera { set; get; } = new Hikvision();

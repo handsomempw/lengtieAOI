@@ -76,7 +76,7 @@ namespace Camera
                 HTuple w = 0, h = 0;
                 HOperatorSet.GetImageSize(image, out w, out h);
 
-                CameraModel.HWindow.HalconWindow.SetPart((int)0, (int)0, (int)(h - 1), (int)(w - 1));
+                //CameraModel.HWindow.HalconWindow.SetPart((int)0, (int)0, (int)(h - 1), (int)(w - 1));
                 CameraModel.HWindow.HalconWindow.DispObj(image);
                 return true;
             }

@@ -115,7 +115,7 @@ namespace PositionDetect.ViewModel
 
                 HOperatorSet.GenEmptyObj(out ReduceImage);
                 HOperatorSet.ReduceDomain(DATA.image, ROI, out ReduceImage);
-                //DATA.HWindow.HalconWindow.SetPart(0, 0, (int)hv_width - 1, (int)hv_height - 1);
+                DATA.HWindow.HalconWindow.SetPart(0, 0, (int)hv_width - 1, (int)hv_height - 1);
                 DATA.HWindow.HalconWindow.DispObj(ReduceImage);
 
             }

@@ -15,7 +15,7 @@ namespace PositionDetect
     {
         public HObject image = null;
         public HWindowControlWPF HWindow { get; set; }
-        //public HSmartWindowControlWPF hSmartWindow { get; set; }
+        //public HSmartWindowControlWPF HWindow { get; set; }
 
         private bool _ROImode = false;
         public bool ROImode

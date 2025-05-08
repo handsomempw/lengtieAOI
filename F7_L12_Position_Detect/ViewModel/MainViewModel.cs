@@ -1518,7 +1518,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
             HWindow hwindow = DataModel.Settingmodel.HWindow;
             hwindow.ClearWindow();
-            hwindow.SetPart(0, 0, H - 1, W - 1);
+            //hwindow.SetPart(0, 0, H - 1, W - 1);
             hwindow.DispObj(Image);
             for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
             {
@@ -2017,7 +2017,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
 
                         hwindow.ClearWindow();
-                        hwindow.SetPart(0, 0, (int)height - 1, (int)width - 1);
+                        //hwindow.SetPart(0, 0, (int)height - 1, (int)width - 1);
                         hwindow.DispObj(image);
                     }
                     hwindow.SetLineWidth(2);

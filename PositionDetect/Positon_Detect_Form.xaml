@@ -26,6 +26,7 @@
             <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
         <halcon:HWindowControlWPF Name="HWindow" Grid.Row="0" Grid.RowSpan="2" />
+        <!--<halcon:HSmartWindowControlWPF Name="HWindow" Grid.Row="0" Grid.RowSpan="2" />-->
         <!--<DockPanel>
             <Label Background="Transparent" VerticalAlignment="Center">相机:</Label>
             <ComboBox p:ComboBoxHelper.CornerRadius="15" Height="30" Margin="2" Padding="15,0" DropDownClosed="ComboBox_DropDownClosed"></ComboBox>

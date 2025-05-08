@@ -140,7 +140,7 @@ namespace QRCode
                 HTuple ImageW = new HTuple(), ImageH = new HTuple();
                 HOperatorSet.GetImageSize(ho_Image, out ImageW, out ImageH);
                 Hwindow.ClearWindow();
-                Hwindow.SetPart(0, 0, (int)(ImageH - 1), (int)(ImageW - 1));
+                //Hwindow.SetPart(0, 0, (int)(ImageH - 1), (int)(ImageW - 1));
                 Hwindow.DispObj(ho_Image);
                 Hwindow.SetLineWidth(5);
                 Hwindow.SetDraw("margin");

@@ -280,7 +280,8 @@ namespace Camera
         //public float Gain { set; get; }
         //public float FrameRate { set; get; }
         [XmlIgnore]
-        public HWindowControlWPF ShowWindow = null;
+        //public HWindowControlWPF ShowWindow = null;
+        public HSmartWindowControlWPF ShowWindow = null;
         #endregion
 
         [XmlElement("相机序列号")]
