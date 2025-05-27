@@ -16,7 +16,7 @@ namespace F7_L12_Position_Detect.Model
 {
     public class Processmodel : ObservableObject
     {
-
+        [XmlIgnore]
         [XmlElement("二维码累积内容")]
         public string Barcodes { set; get; } = string.Empty;
 

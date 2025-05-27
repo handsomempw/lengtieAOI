@@ -33,6 +33,7 @@ using System.Windows.Input;
 using System.Data;
 using Color = System.Drawing.Color;
 using System.Diagnostics;
+using Honeywell;
 
 namespace F7_L12_Position_Detect.ViewModel
 {
@@ -418,23 +419,72 @@ namespace F7_L12_Position_Detect.ViewModel
                                     if (DataModel.Processmodel.Trig_IO.IOstatus == 0)
                                     {
                                         DataModel.Processmodel.Scannerstr = string.Empty;
-                                        var r = DataModel.Settingmodel.ScannerModel.Scanner();
-                                        DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
+                                        DataModel.Processmodel.Barcodes = string.Empty;
 
-                                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                        {                                            
-                                            GetSNList(DataModel.Processmodel.Scannerstr);
-                                        }));
 
-                                        if (!r.IsSuccess)
+                                        if (DataModel.Settingmodel.ScannerMode == "HF800")
                                         {
-                                            modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                                            var r = DataModel.Settingmodel.HF800.Scanner();
+                                            DataModel.Processmodel.Scannerstr = r.value.Replace("\r", "").Replace("\n", "");
+                                            if (r.Status != Status.OK)
+                                            {
+                                                modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                                            }
+                                            else
+                                            {
+                                                SendMsgRobot("DOK");
+                                                ClearTools();
+                                            }
                                         }
                                         else
                                         {
-                                            SendMsgRobot("DOK");
-                                            ClearTools();
+                                            var r = DataModel.Settingmodel.ScannerModel.Scanner();
+                                            DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
+                                            if (!r.IsSuccess)
+                                            {
+                                                modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                                            }
+                                            else
+                                            {
+                                                SendMsgRobot("DOK");
+                                                ClearTools();
+                                            }
                                         }
+
+
+                                        //var r = DataModel.Settingmodel.ScannerModel.Scanner();
+                                        //DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
+
+                                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                        {
+                                            bool getsnlistfromremote = true;
+                                            foreach (var t in DataModel.Processmodel.Tools)
+                                            {
+                                                if (t.SendBarcode && t.MPMode)
+                                                {
+                                                    getsnlistfromremote = false;
+                                                }
+                                            }
+                                            DataModel.Processmodel.SNList.Clear();
+
+                                            if (getsnlistfromremote)
+                                            {
+                                                var r1 = GetSNList(DataModel.Processmodel.Scannerstr);
+
+                                            }
+
+
+                                        }));
+
+                                        //if (!r.IsSuccess)
+                                        //{
+                                        //    modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                                        //}
+                                        //else
+                                        //{
+                                        //    SendMsgRobot("DOK");
+                                        //    ClearTools();
+                                        //}
                                     }
                                 }
                             }
@@ -473,10 +523,9 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
-
                 string sql = $"SELECT [成品码] FROM [绑定完表格] WHERE  [物料名称]='容器码' and [条形码]= '{barcode}' ORDER BY [编号]";
                 DataTable dt = Sqlserver.MicrosoftSql_DATABASE.Read(sql);
-                DataModel.Processmodel.SNList.Clear();
+                //DataModel.Processmodel.SNList.Clear();
                 for (int i = 0; i < dt.Rows.Count; i++)
                 {
                     DataModel.Processmodel.SNList.Add(dt.Rows[i][0].ToString());
@@ -1510,205 +1559,235 @@ namespace F7_L12_Position_Detect.ViewModel
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
 
-            #region 图片接收
 
-            //Image
-
-
-
-            HWindow hwindow = DataModel.Settingmodel.HWindow;
-            hwindow.ClearWindow();
-            //hwindow.SetPart(0, 0, H - 1, W - 1);
-            hwindow.DispObj(Image);
-            for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+            try
             {
-                if (DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD)
+
+                #region 图片接收
+
+                //Image
+
+
+                HOperatorSet.CountChannels(Image, out var channels);
+
+                if (channels == 1)
                 {
-                    Stopwatch stopwatch = new Stopwatch();
-                    stopwatch.Start();
+                    HOperatorSet.Compose3(Image, Image, Image, out var multiChannelImage);
+                    Image.Dispose();
+                    Image = multiChannelImage;
+                }
 
-                    if (i == 0)
+
+
+                HWindow hwindow = DataModel.Settingmodel.HWindow;
+                hwindow.ClearWindow();
+                //hwindow.SetPart(0, 0, H - 1, W - 1);
+                hwindow.DispObj(Image);
+                for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+                {
+                    if (DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD)
                     {
-                        DataModel.Processmodel.Status = ToolStatus.识别中;
-                    }
+                        Stopwatch stopwatch = new Stopwatch();
+                        stopwatch.Start();
 
-                    DataModel.Processmodel.ToolIndex = i + 1;
-
-                    ToolModel tool = DataModel.Processmodel.Tools[i];
-
-                    Bitmap bmp;
-
-                    Hobject2Bitmap.HobjectToBitmap24(Image, out bmp);
-
-                    using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
-                    {
-                        tool.CurrentBitmapSource = null;
-                        tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                    }
-
-                    bmp.Dispose();
-
-                    ClearTool(tool);
-                    tool.ToolStatus = ToolStatus.识别中;
-                    try
-                    {
-                        if (tool.TestMode == TestModes.二维码)
+                        if (i == 0)
                         {
-                            #region 读取二维码
-                            List<Reg.Barcode> barcodelist = null;
+                            DataModel.Processmodel.Status = ToolStatus.识别中;
+                        }
 
-                            try
+                        DataModel.Processmodel.ToolIndex = i + 1;
+
+                        ToolModel tool = DataModel.Processmodel.Tools[i];
+
+                        Bitmap bmp;
+                        try
+                        {
+                            Hobject2Bitmap.HobjectToBitmap24(Image, out bmp);
+
+                            using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
                             {
-                                barcodelist = tool.Reg.ReadBarcode(Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
-                                if (barcodelist.Count > 0)
+                                tool.CurrentBitmapSource = null;
+                                tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                            }
+                            bmp.Dispose();
+                        }
+                        catch (Exception ex)
+                        {
+
+                        }
+
+
+                        ClearTool(tool);
+                        tool.ToolStatus = ToolStatus.识别中;
+                        try
+                        {
+                            if (tool.TestMode == TestModes.二维码)
+                            {
+                                #region 读取二维码
+                                List<Reg.Barcode> barcodelist = null;
+
+                                try
                                 {
-                                    tool.BarcodeStr = barcodelist[0].codestr;
-                                    //  NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
-                                    //if (tool.SendBarcodeData)
-                                    //{
-                                    //    SendMsgSoft(tool.BarcodeStr);
-                                    //}
-                                    writeLog($"二维码读取成功:{barcodelist[0].codestr}");
-
-                                    if (tool.MPMode)
+                                    barcodelist = tool.Reg.ReadBarcode(Image, 1, tool.BarCodeROI.Row1, tool.BarCodeROI.Col1, tool.BarCodeROI.Row2, tool.BarCodeROI.Col2, true);
+                                    if (barcodelist.Count > 0)
                                     {
-                                        DataModel.Processmodel.Barcodes += barcodelist[0].codestr + ";";
-                                    }
-                                    if (tool.SendBarcode)
-                                    {
-                                        tool.ToolStatus = ToolStatus.等待中;
+                                        tool.BarcodeStr = barcodelist[0].codestr;
+                                        //  NoticeBox.Show(barcodelist[0].codestr, "二维码读取成功", MessageBoxIcon.Success, true, 5000);
+                                        //if (tool.SendBarcodeData)
+                                        //{
+                                        //    SendMsgSoft(tool.BarcodeStr);
+                                        //}
+                                        writeLog($"二维码读取成功:{barcodelist[0].codestr}");
 
-                                        if (DataModel.Settingmodel.TcpClientH.Connect(DataModel.Settingmodel.BarcodeReporter.RemoteIP, DataModel.Settingmodel.BarcodeReporter.RemotePort))
+                                        if (tool.MPMode)
                                         {
+                                            DataModel.Processmodel.Barcodes += barcodelist[0].codestr + ";";
+                                        }
+                                        if (tool.SendBarcode)
+                                        {
+                                            tool.ToolStatus = ToolStatus.等待中;
 
-                                            DataModel.Settingmodel.TcpClientH.SendMsg($"{DataModel.Processmodel.Scannerstr};{DataModel.Processmodel.Barcodes}\r\n");
-                                            string s = DataModel.Settingmodel.TcpClientH.ReceiveMsg(5000);
-                                            if(!string.IsNullOrEmpty(s))
+                                            if (DataModel.Settingmodel.TcpClientH.Connect(DataModel.Settingmodel.BarcodeReporter.RemoteIP, DataModel.Settingmodel.BarcodeReporter.RemotePort))
                                             {
-                                                App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                                {
-                                                    DataModel.Processmodel.SNList.Add(s);
-                                                }));
-                                                tool.ToolStatus = ToolStatus.OK;
-                                                writeLog($"扫码汇报软件返回成品编号:{s}");
 
-                                            }else
+                                                DataModel.Settingmodel.TcpClientH.SendMsg($"{DataModel.Processmodel.Scannerstr};{DataModel.Processmodel.Barcodes}{tool.FinishedCode}\r\n");
+                                                string s = DataModel.Settingmodel.TcpClientH.ReceiveMsg(10000);
+                                                s = s.Replace("\r", "").Replace("\n", "");
+                                                if (!string.IsNullOrEmpty(s))
+                                                {
+                                                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                                    {
+                                                        DataModel.Processmodel.SNList.Add(s);
+                                                    }));
+                                                    tool.ToolStatus = ToolStatus.OK;
+                                                    writeLog($"扫码汇报软件返回成品编号:{s}");
+                                                    DataModel.Processmodel.Barcodes = string.Empty;
+
+
+                                                }
+                                                else
+                                                {
+                                                    tool.ToolStatus = ToolStatus.NG2;
+                                                    writeLog($"扫码汇报软件返回为空");
+
+                                                }
+
+                                                DataModel.Settingmodel.TcpClientH.DisConnect();
+                                            }
+                                            else
                                             {
                                                 tool.ToolStatus = ToolStatus.NG2;
-                                                writeLog($"扫码汇报软件返回为空");
-
+                                                writeLog($"连接扫码汇报软件NG2");
                                             }
 
-                                            DataModel.Settingmodel.TcpClientH.DisConnect();
+
                                         }
                                         else
                                         {
-                                            tool.ToolStatus = ToolStatus.NG2;
-                                            writeLog($"连接扫码汇报软件NG2");
+                                            tool.ToolStatus = ToolStatus.OK;
                                         }
+
+
+
+                                        //#region 发送二维码给上位机设备
+                                        //DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.BarcodeStr);
+                                        //Thread.Sleep(tool.Delaytimes);
+                                        //string s = DataModel.Settingmodel.TcpServerSoft.GetMsg();
+
+                                        //writeLog($"二维码校验返回错误:{s}");
+
+                                        //if (string.IsNullOrEmpty(s) || s != "OK")
+                                        //{
+
+                                        //}
+                                        //else
+                                        //{
+
+                                        //}
+
+                                        //if (!string.IsNullOrEmpty(tool.FinishedCode))
+                                        //{
+                                        //    DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.FinishedCode);
+                                        //    Thread.Sleep(tool.Delaytimes);
+                                        //    string sn = DataModel.Settingmodel.TcpServerSoft.GetMsg();
+                                        //    if (!string.IsNullOrEmpty(sn))
+                                        //    {
+                                        //        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                        //        {
+                                        //            DataModel.Processmodel.SNList.Add(sn);
+                                        //        }));
+                                        //    }
+                                        //}
+
+                                        //#endregion
 
 
                                     }
                                     else
                                     {
-                                        tool.ToolStatus = ToolStatus.OK;
+                                        tool.BarcodeStr = string.Empty;
+                                        writeLog($"二维码读取失败:{barcodelist[0].codestr}");
+                                        tool.ToolStatus = ToolStatus.NG;
+
                                     }
-
-
-
-                                    //#region 发送二维码给上位机设备
-                                    //DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.BarcodeStr);
-                                    //Thread.Sleep(tool.Delaytimes);
-                                    //string s = DataModel.Settingmodel.TcpServerSoft.GetMsg();
-
-                                    //writeLog($"二维码校验返回错误:{s}");
-
-                                    //if (string.IsNullOrEmpty(s) || s != "OK")
-                                    //{
-
-                                    //}
-                                    //else
-                                    //{
-
-                                    //}
-
-                                    //if (!string.IsNullOrEmpty(tool.FinishedCode))
-                                    //{
-                                    //    DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.FinishedCode);
-                                    //    Thread.Sleep(tool.Delaytimes);
-                                    //    string sn = DataModel.Settingmodel.TcpServerSoft.GetMsg();
-                                    //    if (!string.IsNullOrEmpty(sn))
-                                    //    {
-                                    //        App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                    //        {
-                                    //            DataModel.Processmodel.SNList.Add(sn);
-                                    //        }));
-                                    //    }
-                                    //}
-
-                                    //#endregion
-
-
                                 }
-                                else
+                                catch
                                 {
-                                    tool.BarcodeStr = string.Empty;
-                                    writeLog($"二维码读取失败:{barcodelist[0].codestr}");
-                                    tool.ToolStatus = ToolStatus.NG;
-
+                                    ;
                                 }
-                            }
-                            catch
-                            {
-                                ;
-                            }
 
-                            #endregion
-                        }
-                        else if (tool.TestMode == TestModes.模板匹配)
-                        {
-                            #region 读取位置
-                            /// NG  未安装好  NG2:缺少配件  OK:合格              
-
-                            try
+                                #endregion
+                            }
+                            else if (tool.TestMode == TestModes.模板匹配)
                             {
-                                ShapeMatch.Result shapmatchresult = new ShapeMatch.Result();
-                                tool.ShapeMatch.BasicData.matchcenter_X = tool.InitX;
-                                tool.ShapeMatch.BasicData.matchcenter_Y = tool.InitY;
-                                tool.ShapeMatch.BasicData.matchcenterX_Basic = tool.InitX;
-                                tool.ShapeMatch.BasicData.matchcenterY_Basic = tool.InitY;
-                                tool.ShapeMatch.BasicData.productcenter_X = tool.InitX;
-                                tool.ShapeMatch.BasicData.productcenter_Y = tool.InitY;
-                                //shapmatchresult = tool.ShapeMatch.Match(Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, -180, 180, false);
-                                shapmatchresult = tool.ShapeMatch.Match(Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, (int)-tool.AllowAngleDelta, (int)tool.AllowAngleDelta, false);
-                                var Result_Data = tool.ShapeMatch.Analysis_Result(shapmatchresult);
-                                if (Result_Data != null)
+                                #region 读取位置
+                                /// NG  未安装好  NG2:缺少配件  OK:合格              
+
+                                try
                                 {
-                                    tool.ActualX = Result_Data.X_actual;
-                                    tool.ActualY = Result_Data.Y_actual;
-                                    tool.ActualAngle = (Result_Data.angle / Math.PI * 180.0);
-                                    tool.ActualScore = Result_Data.score;
-                                    tool.DeltaX = Result_Data.deltaX_actual * tool.K / 1000;
-                                    tool.DeltaY = Result_Data.deltaY_actual * tool.K / 1000;
-
-
-                                    if (tool.ActualScore >= tool.MinScore)
+                                    ShapeMatch.Result shapmatchresult = new ShapeMatch.Result();
+                                    tool.ShapeMatch.BasicData.matchcenter_X = tool.InitX;
+                                    tool.ShapeMatch.BasicData.matchcenter_Y = tool.InitY;
+                                    tool.ShapeMatch.BasicData.matchcenterX_Basic = tool.InitX;
+                                    tool.ShapeMatch.BasicData.matchcenterY_Basic = tool.InitY;
+                                    tool.ShapeMatch.BasicData.productcenter_X = tool.InitX;
+                                    tool.ShapeMatch.BasicData.productcenter_Y = tool.InitY;
+                                    //shapmatchresult = tool.ShapeMatch.Match(Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, -180, 180, false);
+                                    shapmatchresult = tool.ShapeMatch.Match(Image, 1, tool.PositionROI.Row1, tool.PositionROI.Col1, tool.PositionROI.Row2, tool.PositionROI.Col2, (int)-tool.AllowAngleDelta, (int)tool.AllowAngleDelta, false);
+                                    var Result_Data = tool.ShapeMatch.Analysis_Result(shapmatchresult);
+                                    if (Result_Data != null)
                                     {
-                                        if (Math.Abs(tool.DeltaX) < tool.Allow_X_Delta &&
-                                            Math.Abs(tool.DeltaY) < tool.Allow_Y_Delta &&
-                                            Math.Abs(tool.ActualAngle) < tool.AllowAngleDelta
-                                            )
+                                        tool.ActualX = Result_Data.X_actual;
+                                        tool.ActualY = Result_Data.Y_actual;
+                                        tool.ActualAngle = (Result_Data.angle / Math.PI * 180.0);
+                                        tool.ActualScore = Result_Data.score;
+                                        tool.DeltaX = Result_Data.deltaX_actual * tool.K / 1000;
+                                        tool.DeltaY = Result_Data.deltaY_actual * tool.K / 1000;
+
+
+                                        if (tool.ActualScore >= tool.MinScore)
                                         {
-                                            //if (tool.SendPositionData)
-                                            //{
-                                            //    SendMsgRobot($"{sendstr},");
-                                            //}
-                                            tool.ToolStatus = ToolStatus.OK;
+                                            if (Math.Abs(tool.DeltaX) < tool.Allow_X_Delta &&
+                                                Math.Abs(tool.DeltaY) < tool.Allow_Y_Delta &&
+                                                Math.Abs(tool.ActualAngle) < tool.AllowAngleDelta
+                                                )
+                                            {
+                                                //if (tool.SendPositionData)
+                                                //{
+                                                //    SendMsgRobot($"{sendstr},");
+                                                //}
+                                                tool.ToolStatus = ToolStatus.OK;
+                                            }
+                                            else
+                                            {
+                                                tool.ToolStatus = ToolStatus.NG;
+
+                                            }
+
                                         }
                                         else
                                         {
-                                            tool.ToolStatus = ToolStatus.NG;
-
+                                            tool.ToolStatus = ToolStatus.NG2;
                                         }
 
                                     }
@@ -1716,209 +1795,213 @@ namespace F7_L12_Position_Detect.ViewModel
                                     {
                                         tool.ToolStatus = ToolStatus.NG2;
                                     }
+                                }
+                                catch
+                                {
+                                    ;
+                                }
 
+
+                                #endregion
+                            }
+                            else if (tool.TestMode == TestModes.面积)
+                            {
+                                #region 读取面积
+
+                                int Areaint = CoculateDimension(Image, tool, hwindow, false);
+                                tool.ActualDimension = Areaint;
+
+                                if (Areaint >= tool.MinDimension && Areaint <= tool.MaxDimension)
+                                {
+                                    tool.ToolStatus = ToolStatus.OK;
                                 }
                                 else
                                 {
-                                    tool.ToolStatus = ToolStatus.NG2;
+                                    tool.ToolStatus = ToolStatus.NG;
                                 }
-                            }
-                            catch
-                            {
-                                ;
-                            }
 
-
-                            #endregion
+                                #endregion
+                            }
                         }
-                        else if (tool.TestMode == TestModes.面积)
+                        catch {; }
+
+                        writeLog($"视觉->视觉:计算完成", false);
+                        string s1 = $"{DataModel.Processmodel.Tools[i].Name}:识别耗时:{stopwatch.ElapsedMilliseconds}ms";
+                        Save_record(s1);
+                        stopwatch.Restart();
+
+                        #region 保存图片
+                        try
                         {
-                            #region 读取面积
-
-                            int Areaint = CoculateDimension(Image, tool, hwindow, false);
-                            tool.ActualDimension = Areaint;
-
-                            if (Areaint >= tool.MinDimension && Areaint <= tool.MaxDimension)
+                            if (tool.ToolStatus == ToolStatus.OK)
                             {
-                                tool.ToolStatus = ToolStatus.OK;
+                                if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
+                                {
+
+                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                                    try
+                                    {
+                                        savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                                    }
+                                    catch {; }
+
+                                    string dir = Path.GetDirectoryName(savefilename);
+                                    if (!Directory.Exists(dir))
+                                    { Directory.CreateDirectory(dir); }
+                                    HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                                }
                             }
                             else
                             {
-                                tool.ToolStatus = ToolStatus.NG;
+                                if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
+                                {
+                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                                    try
+                                    {
+                                        savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+                                    }
+                                    catch {; }
+                                    string dir = Path.GetDirectoryName(savefilename);
+                                    if (!Directory.Exists(dir))
+                                    { Directory.CreateDirectory(dir); }
+                                    HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+
+                                }
                             }
-
-                            #endregion
                         }
-                    }
-                    catch {; }
+                        catch (Exception ex)
+                        {
+                            writeLog($"视觉->保存照片:保存失败：{ex.ToString()}", false);
+                        }
 
-                    writeLog($"视觉->视觉:计算完成", false);
-                    string s1 = $"{DataModel.Processmodel.Tools[i].Name}:识别耗时:{stopwatch.ElapsedMilliseconds}ms";
-                    Save_record(s1);
-                    stopwatch.Restart();
+                        #endregion
 
-                    #region 保存图片
-                    if (tool.ToolStatus == ToolStatus.OK)
-                    {
-                        if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
+                        if (tool.SendStatus)
                         {
 
-                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                            try
+                            int status = -1;
+
+                            var r = (from ToolModel in DataModel.Processmodel.Tools
+                                     where ToolModel.Command == DataModel.Processmodel.RCMD
+                                     select ToolModel);
+                            var wait = (from ToolModel in r
+                                        where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
+                                        select ToolModel);
+
+                            if (wait.Count() == 0)
                             {
-                                savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                            }
-                            catch {; }
+                                var ok = (from ToolModel in r
+                                          where (ToolModel.ToolStatus == ToolStatus.OK)
+                                          select ToolModel);
 
-                            string dir = Path.GetDirectoryName(savefilename);
-                            if (!Directory.Exists(dir))
-                            { Directory.CreateDirectory(dir); }
-                            HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
-                        }
-                    }
-                    else
-                    {
-                        if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
-                        {
-                            string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                            try
+                                if (ok.Count() == r.Count())
+                                {
+                                    status = 0;
+                                }
+                                else
+                                {
+                                    var NG2 = (from ToolModel in r
+                                               where (ToolModel.ToolStatus == ToolStatus.NG2)
+                                               select ToolModel);
+                                    if (NG2.Count() > 0)
+                                    {
+                                        status = 2;
+                                    }
+                                    else
+                                    {
+                                        status = 1;
+                                    }
+
+                                }
+                            }
+
+                            switch (status)
                             {
-                                savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
+
+                                case 0:
+                                    {
+                                        SendMsgRobot(tool.OKCMD.Trim());
+                                        break;
+                                    }
+                                case 1:
+                                    {
+                                        SendMsgRobot(tool.NG1CMD.Trim());
+                                        break;
+                                    }
+                                case 2:
+                                    {
+                                        SendMsgRobot(tool.NG2CMD.Trim());
+                                        break;
+                                    }
+                                default:
+                                    {
+                                        break;
+                                    }
                             }
-                            catch {; }
-                            string dir = Path.GetDirectoryName(savefilename);
-                            if (!Directory.Exists(dir))
-                            { Directory.CreateDirectory(dir); }
-                            HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
-
                         }
-                    }
 
-                    #endregion
 
-                    if (tool.SendStatus)
-                    {
-
-                        int status = -1;
-
-                        var r = (from ToolModel in DataModel.Processmodel.Tools
-                                 where ToolModel.Command == DataModel.Processmodel.RCMD
-                                 select ToolModel);
-                        var wait = (from ToolModel in r
-                                    where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
-                                    select ToolModel);
-
-                        if (wait.Count() == 0)
+                        if (i == DataModel.Processmodel.Tools.Count - 1)
                         {
-                            var ok = (from ToolModel in r
+                            int status = -1;
+                            int c = DataModel.Processmodel.Tools.Count();
+
+
+                            var ok = (from ToolModel in DataModel.Processmodel.Tools
                                       where (ToolModel.ToolStatus == ToolStatus.OK)
                                       select ToolModel);
+                            var NG1 = (from ToolModel in DataModel.Processmodel.Tools
+                                       where (ToolModel.ToolStatus == ToolStatus.NG)
+                                       select ToolModel);
+                            var NG2 = (from ToolModel in DataModel.Processmodel.Tools
+                                       where (ToolModel.ToolStatus == ToolStatus.NG2)
+                                       select ToolModel);
+                            var wait = (from ToolModel in DataModel.Processmodel.Tools
+                                        where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
+                                        select ToolModel);
 
-                            if (ok.Count() == r.Count())
+                            if (ok.Count() == c)
                             {
                                 status = 0;
                             }
+                            else if (NG2.Count() > 0)
+                            {
+                                status = 2;
+                            }
                             else
                             {
-                                var NG2 = (from ToolModel in r
-                                           where (ToolModel.ToolStatus == ToolStatus.NG2)
-                                           select ToolModel);
-                                if (NG2.Count() > 0)
-                                {
-                                    status = 2;
-                                }
-                                else
-                                {
-                                    status = 1;
-                                }
-
+                                status = 1;
                             }
+
+                            if (status == 0)
+                            {
+                                DataModel.Processmodel.Status = ToolStatus.OK;
+                                PLC_write((UInt16)1);
+                            }
+                            else if (status == 0)
+                            {
+                                DataModel.Processmodel.Status = ToolStatus.NG2;
+                                PLC_write((UInt16)3);
+                            }
+                            else
+                            {
+                                DataModel.Processmodel.Status = ToolStatus.NG;
+                                PLC_write((UInt16)2);
+                            }
+
                         }
 
-                        switch (status)
-                        {
+                        writeLog($"视觉->视觉:保存完成", false);
 
-                            case 0:
-                                {
-                                    SendMsgRobot(tool.OKCMD.Trim());
-                                    break;
-                                }
-                            case 1:
-                                {
-                                    SendMsgRobot(tool.NG1CMD.Trim());
-                                    break;
-                                }
-                            case 2:
-                                {
-                                    SendMsgRobot(tool.NG2CMD.Trim());
-                                    break;
-                                }
-                            default:
-                                {
-                                    break;
-                                }
-                        }
-                    }
-
-
-                    if (i == DataModel.Processmodel.Tools.Count - 1)
-                    {
-                        int status = -1;
-                        int c = DataModel.Processmodel.Tools.Count();
-
-
-                        var ok = (from ToolModel in DataModel.Processmodel.Tools
-                                  where (ToolModel.ToolStatus == ToolStatus.OK)
-                                  select ToolModel);
-                        var NG1 = (from ToolModel in DataModel.Processmodel.Tools
-                                   where (ToolModel.ToolStatus == ToolStatus.NG)
-                                   select ToolModel);
-                        var NG2 = (from ToolModel in DataModel.Processmodel.Tools
-                                   where (ToolModel.ToolStatus == ToolStatus.NG2)
-                                   select ToolModel);
-                        var wait = (from ToolModel in DataModel.Processmodel.Tools
-                                    where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
-                                    select ToolModel);
-
-                        if (ok.Count() == c)
-                        {
-                            status = 0;
-                        }
-                        else if (NG2.Count() > 0)
-                        {
-                            status = 2;
-                        }
-                        else
-                        {
-                            status = 1;
-                        }
-
-                        if (status == 0)
-                        {
-                            DataModel.Processmodel.Status = ToolStatus.OK;
-                            PLC_write((UInt16)1);
-                        }
-                        else if (status == 0)
-                        {
-                            DataModel.Processmodel.Status = ToolStatus.NG2;
-                            PLC_write((UInt16)3);
-                        }
-                        else
-                        {
-                            DataModel.Processmodel.Status = ToolStatus.NG;
-                            PLC_write((UInt16)2);
-                        }
+                        string s2 = $"{DataModel.Processmodel.Tools[i].Name}:保存图片发送结果耗时:{stopwatch.ElapsedMilliseconds}ms";
+                        Save_record(s2);
 
                     }
-
-                    writeLog($"视觉->视觉:保存完成", false);
-
-                    string s2 = $"{DataModel.Processmodel.Tools[i].Name}:保存图片发送结果耗时:{stopwatch.ElapsedMilliseconds}ms";
-                    Save_record(s2);
-
                 }
+                #endregion
+
             }
-            #endregion
+            catch (Exception ex) {; }
 
         }
 

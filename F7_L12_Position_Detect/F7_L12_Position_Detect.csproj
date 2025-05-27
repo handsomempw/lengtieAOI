@@ -203,6 +203,10 @@
       <Project>{671e5d0c-031d-49eb-872e-c4940d6c921d}</Project>
       <Name>Camera</Name>
     </ProjectReference>
+    <ProjectReference Include="..\HF800\Honeywell.csproj">
+      <Project>{f9c8e8a3-77c6-4667-a3eb-ad898bc97df2}</Project>
+      <Name>Honeywell</Name>
+    </ProjectReference>
     <ProjectReference Include="..\PositionDetect\PositionDetect.csproj">
       <Project>{ac2ca99b-7a0b-4f36-ae44-23105cca4332}</Project>
       <Name>PositionDetect</Name>

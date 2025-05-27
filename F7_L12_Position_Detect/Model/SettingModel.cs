@@ -30,6 +30,13 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("扫码器")]
         public Scanner.ScannerModel ScannerModel { set; get; } = new Scanner.ScannerModel();
 
+        [XmlElement("霍尼韦尔扫码器")]
+
+        public Honeywell.HF800 HF800 { set; get; } = new Honeywell.HF800();
+
+
+        public string ScannerMode { set; get; } = "HF800";
+
         #region 工程配置
         [XmlElement("工程路径")]
         public string Prjdir { set; get; } = $"{Environment.CurrentDirectory}\\工程文件";

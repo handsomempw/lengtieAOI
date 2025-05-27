@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PositionDetect", "PositionD
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sqlserver", "Sqlserver\Sqlserver.csproj", "{F8216C62-2B91-459C-87F4-ED866540EF51}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Honeywell", "HF800\Honeywell.csproj", "{F9C8E8A3-77C6-4667-A3EB-AD898BC97DF2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -51,6 +53,10 @@ Global
 		{F8216C62-2B91-459C-87F4-ED866540EF51}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F8216C62-2B91-459C-87F4-ED866540EF51}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F8216C62-2B91-459C-87F4-ED866540EF51}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F9C8E8A3-77C6-4667-A3EB-AD898BC97DF2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F9C8E8A3-77C6-4667-A3EB-AD898BC97DF2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F9C8E8A3-77C6-4667-A3EB-AD898BC97DF2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F9C8E8A3-77C6-4667-A3EB-AD898BC97DF2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

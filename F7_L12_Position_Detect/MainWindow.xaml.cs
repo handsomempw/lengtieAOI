@@ -23,6 +23,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using Camera;
 using F7_L12_Position_Detect.Model;
+using Honeywell;
 
 namespace F7_L12_Position_Detect
 {
@@ -46,6 +47,7 @@ namespace F7_L12_Position_Detect
             vml.Main.DataModel.Processmodel.Tools.Add(new Model.Tool.ToolModel());
             vml.Main.DataModel.Processmodel.Tools.Add(new Model.Tool.ToolModel());
             vml.Main.LoadSettingModel();
+            //vml.Main.LoadProcessmodel();
             vml.Main.Load_Prj();
             //vml.Main.ConnectPC();
             vml.Main.InitSoftServer();
@@ -217,7 +219,7 @@ namespace F7_L12_Position_Detect
                     HOperatorSet.GenEmptyObj(out image);
                     HOperatorSet.ReadImage(out image, ofd.FileName);
                     HOperatorSet.GetImageSize(image, out W, out H);
-                    //vml.Main.DataModel.Processmodel.ToolIndex = 1;
+                    vml.Main.DataModel.Processmodel.ToolIndex = vml.Main.DataModel.Processmodel.selectedindex;
                     vml.Main.DataModel.Processmodel.RCMD = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex].Command;
                     vml.Main.OnReceiveProcess(image, (int)H, (int)W);
                 }
@@ -225,6 +227,40 @@ namespace F7_L12_Position_Detect
             catch (Exception ex){
                 MessageBox.Show($"发生错误，请先选择需要测试的工具再选择测试照片:\r\n{ex.ToString()}");
                 ; }
+        }
+
+        private void scannertrig_Click(object sender, RoutedEventArgs e)
+        {
+            if ( vml.Main. DataModel.Settingmodel.ScannerMode == "HF800")
+            {
+                var r = vml.Main.DataModel.Settingmodel.HF800.Scanner();
+                vml.Main.DataModel.Processmodel.Scannerstr = r.value.Replace("\r", "").Replace("\n", "");
+                vml.Main.DataModel.Processmodel.SNList.Clear();
+                vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
+                if (r.Status != Status.OK)
+                {
+                    //modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                }
+                else
+                {
+                    //SendMsgRobot("DOK");
+                   // ClearTools();
+                }
+            }
+            else
+            {
+                var r = vml.Main.DataModel.Settingmodel.ScannerModel.Scanner();
+                vml.Main.DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
+                if (!r.IsSuccess)
+                {
+                 //   modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                }
+                else
+                {
+                    //SendMsgRobot("DOK");
+                    //ClearTools();
+                }
+            }
         }
     }
 }

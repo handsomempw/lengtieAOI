@@ -57,7 +57,7 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         [XmlElement("结束码")]
 
-        public string FinishedCode { set; get; } = string.Empty;
+        public string FinishedCode { set; get; } = "REPORTCODE";
         [XmlElement("母排扫码模式")]
 
         public bool MPMode { set; get; } = true;
