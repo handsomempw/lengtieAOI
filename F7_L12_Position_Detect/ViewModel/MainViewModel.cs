@@ -1462,7 +1462,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             //HOperatorSet.ReadImage(out Image, filename);
                             var dst = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, tool.Image);
                             //Hobject2Bitmap.HobjectToBitmap(tool.Image, out src);
-                            Hobject2Bitmap.HobjectToBitmap(dst, out bmp);
+                            Hobject2Bitmap.HobjectToBitmap24(dst, out bmp);
 
                             tool.CurrentBitmapSource = null;
                             tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
@@ -1634,7 +1634,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         try
                         {
                             var dst = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, Image);
-                            Hobject2Bitmap.HobjectToBitmap(dst, out bmp);
+                            Hobject2Bitmap.HobjectToBitmap24(dst, out bmp);
                             tool.CurrentBitmapSource = null;
                             tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                             bmp?.Dispose();

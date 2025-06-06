@@ -12,23 +12,23 @@ namespace F7_L12_Position_Detect
     public class Hobject2Bitmap
     {
 
-        public static void HobjectToBitmap(HObject ho_image, out Bitmap res)
-        {
-            HTuple C = new HTuple();
-            HOperatorSet.CountChannels(ho_image, out C);
-            if (C == 1)
-            {
-                HobjectToBitmap8(ho_image, out res);
-            }
-            else if (C == 3)
-            {
-                HobjectToBitmap24(ho_image, out res);
-            }
-            else
-            {
-                HobjectToBitmap32(ho_image, out res);
-            }
-        }
+        //public static void HobjectToBitmap(HObject ho_image, out Bitmap res)
+        //{
+        //    HTuple C = new HTuple();
+        //    HOperatorSet.CountChannels(ho_image, out C);
+        //    if (C == 1)
+        //    {
+        //        HobjectToBitmap24(ho_image, out res);
+        //    }
+        //    else if (C == 3)
+        //    {
+        //        HobjectToBitmap24(ho_image, out res);
+        //    }
+        //    else
+        //    {
+        //        HobjectToBitmap32(ho_image, out res);
+        //    }
+        //}
 
 
 
