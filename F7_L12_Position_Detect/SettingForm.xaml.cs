@@ -67,18 +67,49 @@ namespace F7_L12_Position_Detect
                     HOperatorSet.ReadImage(out t.Image, filename);
                     #endregion
 
+
+
+                    //Bitmap bmp;
+                    //Bitmap src;
+                    //HObject Image;
+                    //HOperatorSet.GenEmptyObj(out Image);
+                   
+                    //try
+                    //{
+                    //    HOperatorSet.ReadImage(out Image, filename);
+                    //    var dst = vml.Main.GetReducedImage(vml.Main.DataModel.Settingmodel.ImageSize, vml.Main.DataModel.Settingmodel.ImageSize, Image);
+                    //    Hobject2Bitmap.HobjectToBitmap(Image, out src);
+                    //    Hobject2Bitmap.HobjectToBitmap(dst, out bmp);
+
+                    //    vml.Main.DataModel.Processmodel.tool.CurrentBitmapSource = null;
+                    //    vml.Main.DataModel.Processmodel.tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+
+                    //    vml.Main.DataModel.Processmodel.ShowBitmapSource = null;
+                    //    vml.Main.DataModel.Processmodel.ShowBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(src.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+
+                    //    bmp?.Dispose();
+                    //    dst?.Dispose();
+                    //    src?.Dispose();
+                        
+                    //}
+                    //catch (Exception ex)
+                    //{; }
+
+
+
                     using (Bitmap bmp = (Bitmap)Bitmap.FromFile(filename))
                     {
                         using (Bitmap bmp1 = vml.Main.GetReducedImage(vml.Main.DataModel.Settingmodel.ImageSize, vml.Main.DataModel.Settingmodel.ImageSize, bmp))
                         {
                             //t.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                             vml.Main.DataModel.Processmodel.tool.BitmapSource = null;
-                                vml.Main.DataModel.Processmodel.tool.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                            vml.Main.DataModel.Processmodel.tool.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
 
                         }
                         vml.Main.DataModel.Processmodel.ShowBitmapSource = null;
                         vml.Main.DataModel.Processmodel.ShowBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                     }
+
                     string newfilename = $"{vml.Main.DataModel.Settingmodel.Prjdir}\\{vml.Main.DataModel.Settingmodel.Name}\\Tool{t.Index}.jpg";
                     string dir = System.IO.Path.GetDirectoryName(newfilename);
                     if (!Directory.Exists(dir))

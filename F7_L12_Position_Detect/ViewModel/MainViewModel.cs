@@ -1450,18 +1450,48 @@ namespace F7_L12_Position_Detect.ViewModel
                         HOperatorSet.GenEmptyObj(out tool.Image);
                         HOperatorSet.ReadImage(out tool.Image, jpgfilename);
                         #endregion
-                        using (Bitmap bmp = (Bitmap)Bitmap.FromFile(jpgfilename))
-                        {
-                            using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
-                            {
-                                BitmapSource bs = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                                tool.BitmapSource = null;
-                                tool.CurrentBitmapSource = null;
 
-                                tool.BitmapSource = bs;
-                                tool.CurrentBitmapSource = bs.Clone();
-                            }
+
+                        Bitmap bmp;
+                        Bitmap src;
+                        //HObject Image;
+                        //HOperatorSet.GenEmptyObj(out Image);
+
+                        try
+                        {
+                            //HOperatorSet.ReadImage(out Image, filename);
+                            var dst = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, tool.Image);
+                            //Hobject2Bitmap.HobjectToBitmap(tool.Image, out src);
+                            Hobject2Bitmap.HobjectToBitmap(dst, out bmp);
+
+                            tool.CurrentBitmapSource = null;
+                            tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+
+                            tool.BitmapSource = null;
+                            tool.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+
+                            bmp?.Dispose();
+                            dst?.Dispose();
+                           // src?.Dispose();
                         }
+                        catch (Exception ex)
+                        {; }
+
+
+
+
+                        //using (Bitmap bmp = (Bitmap)Bitmap.FromFile(jpgfilename))
+                        //{
+                        //    using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
+                        //    {
+                        //        BitmapSource bs = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        //        tool.BitmapSource = null;
+                        //        tool.CurrentBitmapSource = null;
+
+                        //        tool.BitmapSource = bs;
+                        //        tool.CurrentBitmapSource = bs.Clone();
+                        //    }
+                        //}
                     }
                     GC.Collect();
                 }
@@ -1599,22 +1629,38 @@ namespace F7_L12_Position_Detect.ViewModel
 
                         ToolModel tool = DataModel.Processmodel.Tools[i];
 
+
                         Bitmap bmp;
                         try
                         {
-                            Hobject2Bitmap.HobjectToBitmap24(Image, out bmp);
-
-                            using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
-                            {
-                                tool.CurrentBitmapSource = null;
-                                tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                            }
-                            bmp.Dispose();
+                            var dst = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, Image);
+                            Hobject2Bitmap.HobjectToBitmap(dst, out bmp);
+                            tool.CurrentBitmapSource = null;
+                            tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                            bmp?.Dispose();
+                            dst?.Dispose();
                         }
-                        catch (Exception ex)
-                        {
+                        catch (Exception e)
+                        {; }
 
-                        }
+
+
+                        //Bitmap bmp;
+                        //try
+                        //{
+                        //    Hobject2Bitmap.HobjectToBitmap24(Image, out bmp);
+
+                        //    using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
+                        //    {
+                        //        tool.CurrentBitmapSource = null;
+                        //        tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        //    }
+                        //    bmp.Dispose();
+                        //}
+                        //catch (Exception ex)
+                        //{
+
+                        //}
 
 
                         ClearTool(tool);
@@ -2155,6 +2201,39 @@ namespace F7_L12_Position_Detect.ViewModel
                 g.Save();
                 g.Dispose();
                 return r;
+            }
+            catch (Exception e)
+            {
+                return null;
+            }
+
+        }
+
+        public HObject GetReducedImage(double W, double H, HObject src)
+        {
+            HObject dst;
+            HOperatorSet.GenEmptyObj(out dst);
+
+            try
+            {
+                HTuple width = new HTuple();
+                HTuple height = new HTuple();
+
+                HOperatorSet.GetImageSize(src, out width, out height);
+                double _wscale = W / width;
+                double _Hscale = H / height;
+                double _scale = Math.Min(_wscale, _Hscale);
+
+                W = width * _scale;
+                H = height * _scale;
+                HOperatorSet.ZoomImageSize(src, out dst, W, H, "constant");
+                //Bitmap r = new Bitmap((int)W, (int)H, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                //Graphics g = Graphics.FromImage(r);
+                //g.Clear(Color.Transparent);
+                //g.DrawImage(src, new Rectangle(0, 0, (int)W, (int)H));
+                //g.Save();
+                //g.Dispose();
+                return dst;
             }
             catch (Exception e)
             {

@@ -12,16 +12,45 @@ namespace F7_L12_Position_Detect
     public class Hobject2Bitmap
     {
 
+        public static void HobjectToBitmap(HObject ho_image, out Bitmap res)
+        {
+            HTuple C = new HTuple();
+            HOperatorSet.CountChannels(ho_image, out C);
+            if (C == 1)
+            {
+                HobjectToBitmap8(ho_image, out res);
+            }
+            else if (C == 3)
+            {
+                HobjectToBitmap24(ho_image, out res);
+            }
+            else
+            {
+                HobjectToBitmap32(ho_image, out res);
+            }
+        }
+
+
+
+
         /// <summary>
         /// hobject彩色图24位转bitmap
         /// </summary>
         /// <param name="ho_image"></param>
         /// <param name="res24"></param>
-        public static  void HobjectToBitmap24(HObject ho_image, out Bitmap res24)
+        public static void HobjectToBitmap24(HObject ho_image, out Bitmap res24)
         {
+            HObject Image = ho_image;
+            HTuple C = new HTuple();
+            HOperatorSet.CountChannels(ho_image, out C);
+            if (C == 1)
+            {
+                HOperatorSet.Compose3(ho_image, ho_image, ho_image, out Image);
+            }
+
             HTuple type, width, height;
             //创建交错格式图像
-            HOperatorSet.InterleaveChannels(ho_image, out HObject InterImage, "rgb", "match", 255);
+            HOperatorSet.InterleaveChannels(Image, out HObject InterImage, "rgb", "match", 255);
             //获取交错格式图像指针
             HOperatorSet.GetImagePointer1(InterImage, out HTuple Pointer, out type, out width, out height);
             IntPtr ptr = Pointer;
@@ -32,7 +61,7 @@ namespace F7_L12_Position_Detect
         /// </summary>
         /// <param name="ho_image"></param>
         /// <param name="res32"></param>
-        public static  void HobjectToBitmap32(HObject ho_image, out Bitmap res32)
+        public static void HobjectToBitmap32(HObject ho_image, out Bitmap res32)
         {
             HTuple type, width, height;
             //创建交错格式图像
@@ -47,7 +76,7 @@ namespace F7_L12_Position_Detect
         /// </summary>
         /// <param name="ho_image"></param>
         /// <param name="res8"></param>
-        public static  void HobjectToBitmap8(HObject ho_image, out Bitmap res8)
+        public static void HobjectToBitmap8(HObject ho_image, out Bitmap res8)
         {
             HTuple type, width, height;
             HOperatorSet.GetImagePointer1(ho_image, out HTuple Pointer, out type, out width, out height);
