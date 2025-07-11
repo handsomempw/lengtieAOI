@@ -260,8 +260,6 @@ namespace F7_L12_Position_Detect.ViewModel
 
 
         #endregion
-
-
         #region Soft
         public void SendMsgSoft(string cmd)
         {
@@ -374,9 +372,6 @@ namespace F7_L12_Position_Detect.ViewModel
 
 
         #endregion
-
-
-
         #region PLC通讯
         public void PLC_Start()
         {
@@ -572,7 +567,6 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         #endregion
-
         #region 清空测试工具状态
 
         public void ClearToolStatus()

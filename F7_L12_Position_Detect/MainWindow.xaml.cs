@@ -111,7 +111,6 @@ namespace F7_L12_Position_Detect
                 SettingForm settingForm = new SettingForm();
                 //settingForm.Topmost = true;
                 settingForm.ShowDialog();
-
                 //settingForm.Show();
 
 
