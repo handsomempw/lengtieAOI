@@ -223,14 +223,16 @@ namespace F7_L12_Position_Detect
                     vml.Main.OnReceiveProcess(image, (int)H, (int)W);
                 }
             }
-            catch (Exception ex){
+            catch (Exception ex)
+            {
                 MessageBox.Show($"发生错误，请先选择需要测试的工具再选择测试照片:\r\n{ex.ToString()}");
-                ; }
+                ;
+            }
         }
 
         private void scannertrig_Click(object sender, RoutedEventArgs e)
         {
-            if ( vml.Main. DataModel.Settingmodel.ScannerMode == "HF800")
+            if (vml.Main.DataModel.Settingmodel.ScannerMode == "HF800")
             {
                 var r = vml.Main.DataModel.Settingmodel.HF800.Scanner();
                 vml.Main.DataModel.Processmodel.Scannerstr = r.value.Replace("\r", "").Replace("\n", "");
@@ -243,7 +245,7 @@ namespace F7_L12_Position_Detect
                 else
                 {
                     //SendMsgRobot("DOK");
-                   // ClearTools();
+                    // ClearTools();
                 }
             }
             else
@@ -252,13 +254,21 @@ namespace F7_L12_Position_Detect
                 vml.Main.DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
                 if (!r.IsSuccess)
                 {
-                 //   modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                    //   modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
                 }
                 else
                 {
                     //SendMsgRobot("DOK");
                     //ClearTools();
                 }
+            }
+        }
+
+        private void ClearBarcodes_Click(object sender, RoutedEventArgs e)
+        {
+            if (MessageBoxX.Show("是否确定清空累积二维码？", "提示", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
+            {
+                vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
             }
         }
     }

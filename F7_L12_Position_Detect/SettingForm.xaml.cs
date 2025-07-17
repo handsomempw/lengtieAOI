@@ -254,8 +254,33 @@ namespace F7_L12_Position_Detect
                 System.Windows.Controls.Image img = sender as System.Windows.Controls.Image;
                 X = Convert.ToInt32(e.GetPosition(show_image_ctr).X);
                 Y = Convert.ToInt32(e.GetPosition(img).Y);
+
             }
+
+
+            try
+            {
+                System.Windows.Controls.Image img = sender as System.Windows.Controls.Image;
+
+                X = Convert.ToInt32(e.GetPosition(show_image_ctr).X);
+                Y = Convert.ToInt32(e.GetPosition(img).Y);
+                var t = vml.Main.DataModel.Processmodel.tool;
+                t.Tposition.X = X;
+                t.Tposition.Y = Y;
+
+                var c = vml.Main.GetPixelData(X, Y);
+                t.TColor = c;
+            }
+            catch (Exception ex)
+            {
+
+            }
+
+
         }
+
+
+
         private void ContentControl_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             Debug.WriteLine("Left");

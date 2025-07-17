@@ -250,7 +250,13 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         public HObject Image = null;
 
-
+        /// <summary>
+        /// 光标位置
+        /// </summary>
+        [XmlIgnore]
+        public Kposition Tposition { set; get; } = new Kposition() { X = 0, Y = 0 };
+        [XmlIgnore]
+        public KColor TColor { set; get; } = new KColor();
 
 
         #region 发送数据

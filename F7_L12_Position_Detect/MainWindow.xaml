@@ -296,11 +296,12 @@
 
                 </Grid>
             </GroupBox>
+          
             <GroupBox Header="累积二维码" Grid.Row="1">
                 <TextBox IsEnabled="False" FontSize="12" TextWrapping="Wrap" MaxWidth="400" MinWidth="300" MinHeight="100"  Text="{Binding DataModel.Processmodel.Barcodes}" />
-
-
             </GroupBox>
+            <Button x:Name="ClearBarcodes" Grid.Row="1" Background="OrangeRed" Foreground="WhiteSmoke" Padding="20,5" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="3"
+                   Click="ClearBarcodes_Click" >清空二维码</Button>
             <DataGrid ItemsSource="{Binding DataModel.Recordmodel.workLog}" AutoGenerateColumns="False" Grid.Row="2" >
                 <DataGrid.Columns>
                     <DataGridTextColumn Binding="{Binding}" FontSize="12" />
@@ -313,7 +314,16 @@
         </Grid>
         <halcon:HWindowControlWPF Grid.Row="2" Name="Hwindow" Visibility="Hidden" />
         <C:CameraControl Grid.Row="3" Name="cameractr" DataContext="{Binding DataModel.Settingmodel.camedata}"/>
-        <ListBox Grid.Row="2"  Grid.Column="0" Grid.ColumnSpan="2" 
+       
+        <DockPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3">
+            <TextBlock   Text="{Binding DataModel.Processmodel.Status}" 
+                   HorizontalAlignment="Left"
+                   Margin="20,5,5,5"
+                   FontSize="20"
+                   Foreground="{Binding  DataModel.Processmodel.StatusColor }"
+                   
+                   />
+            <ListBox
                  p:ListBoxHelper.CornerRadius="5" HorizontalAlignment="Center" 
                  VerticalAlignment="Center"
                   Background="White" BorderThickness="0"
@@ -322,40 +332,35 @@
                  SelectedIndex="{Binding DataModel.Processmodel.selectedindex}"  
                  MouseDoubleClick="ListBox_MouseDoubleClick" Margin="5,0,5,0"  
                  ItemsSource="{Binding DataModel.Processmodel.Tools}" >
-            <ListBox.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <StackPanel  Orientation="Horizontal"/>
-                </ItemsPanelTemplate>
-            </ListBox.ItemsPanel>
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <!--<ctr:Toolcontrol MinHeight="140" MinWidth="140" DataContext="{Binding}"/>-->
-                    <!--<Rectangle Width="10" Height="10" />-->
-                    <Grid DataContext="{Binding}">
-                        <TextBlock  Background="{Binding StatusColor}" Text="{Binding Index,StringFormat={}{0:00}}" Padding="2">
-                            <TextBlock.ToolTip>
-                                <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Orientation="Vertical" >
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <TextBlock    Foreground="Orange" Text="{Binding Index }"/>
-                                        <TextBlock    Foreground="DarkBlue" Text="{Binding Name }" Margin="0,0,10,0"/>
-                                        <TextBlock HorizontalAlignment="Center">模板照片</TextBlock>
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel  Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <!--<ctr:Toolcontrol MinHeight="140" MinWidth="140" DataContext="{Binding}"/>-->
+                        <!--<Rectangle Width="10" Height="10" />-->
+                        <Grid DataContext="{Binding}">
+                            <TextBlock  Background="{Binding StatusColor}" Text="{Binding Index,StringFormat={}{0:00}}" Padding="2">
+                                <TextBlock.ToolTip>
+                                    <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Orientation="Vertical" >
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <TextBlock    Foreground="Orange" Text="{Binding Index }"/>
+                                            <TextBlock    Foreground="DarkBlue" Text="{Binding Name }" Margin="0,0,10,0"/>
+                                            <TextBlock HorizontalAlignment="Center">模板照片</TextBlock>
+                                        </StackPanel>
+                                        <Image   HorizontalAlignment="Center" Source="{Binding BitmapSource}"/>
                                     </StackPanel>
-                                    <Image   HorizontalAlignment="Center" Source="{Binding BitmapSource}"/>
-                                </StackPanel>
-                            </TextBlock.ToolTip>
+                                </TextBlock.ToolTip>
                         </TextBlock>
-                    </Grid>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
 
-        </ListBox>
-        <TextBlock Grid.Row="2" Grid.Column="0"  Text="{Binding DataModel.Processmodel.Status}" 
-                   HorizontalAlignment="Left"
-                   Margin="20,5,5,5"
-                   FontSize="20"
-                   Foreground="{Binding  DataModel.Processmodel.StatusColor }"
-                   
-                   />
+            </ListBox>
+        </DockPanel>
+        
         <WrapPanel Grid.Row="4" HorizontalAlignment="Center" Grid.ColumnSpan="3" >
 
             <!--<TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ImageNum,StringFormat=照片数:{0}}"  />-->

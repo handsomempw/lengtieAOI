@@ -27,4 +27,27 @@ namespace F7_L12_Position_Detect.Model
 
 
     }
+
+
+    public class Kposition : ObservableObject
+    {
+        /// <summary>
+        /// X坐标
+        /// </summary>
+        public int X { set; get; } = 0;
+        /// <summary>
+        /// Y坐标
+        /// </summary>
+        public int Y { set; get; } = 0;
+    }
+
+    public class KColor : ObservableObject
+    {
+        public byte R { set; get; } = 0;
+        public byte G { set; get; } = 0;
+        public byte B { set; get; } = 0;
+
+    }
+
+
 }

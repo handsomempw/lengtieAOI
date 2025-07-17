@@ -2070,6 +2070,36 @@ namespace F7_L12_Position_Detect.ViewModel
 
         #endregion
 
+
+        #region
+        public KColor GetPixelData(int X, int Y)
+        {
+            try
+            {
+                int w = DataModel.Processmodel.ShowBitmapSource.PixelWidth;
+                int h = DataModel.Processmodel.ShowBitmapSource.PixelHeight;
+                int stride = (w * DataModel.Processmodel.ShowBitmapSource.Format.BitsPerPixel + 7) / 8;
+
+                byte[] pixels = new byte[h * stride];
+                DataModel.Processmodel.ShowBitmapSource.CopyPixels(pixels, stride, 0);
+
+                int pixelindex = Y * stride + X * (DataModel.Processmodel.ShowBitmapSource.Format.BitsPerPixel / 8);
+                byte r = pixels[pixelindex + 2];
+                byte g = pixels[pixelindex + 1];
+                byte b = pixels[pixelindex + 0];
+
+                return new KColor() { R = r, G = g, B = b };
+            }
+            catch { return null; }
+        }
+
+
+
+
+        #endregion
+
+
+
         #region Ãæ»ý¼ÆËã
 
         public int CoculateDimension(HObject image, ToolModel tool, HWindow hwindow, bool redraw = true)
