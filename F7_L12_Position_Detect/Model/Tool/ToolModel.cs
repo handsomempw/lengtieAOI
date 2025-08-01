@@ -2,6 +2,7 @@
 using HalconDotNet;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -24,7 +25,14 @@ namespace F7_L12_Position_Detect.Model.Tool
 
         public byte ProductPositionNO { set; get; } = 0;
 
+        [XmlElement("相机序列号")]
+        public string CameraSerialNumber { set; get; } = ""; // 工具必须明确指定相机序列号
 
+        [XmlIgnore]
+        public ObservableCollection<string> AvailableCameras { set; get; } = new ObservableCollection<string>();
+
+        [XmlIgnore]
+        public int SelectedCameraIndex { set; get; } = -1; // -1表示使用全局默认相机
 
         [XmlIgnore]
         public QRCode.Reg Reg = new QRCode.Reg();

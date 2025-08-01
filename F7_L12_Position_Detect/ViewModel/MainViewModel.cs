@@ -70,7 +70,7 @@ namespace F7_L12_Position_Detect.ViewModel
             //ADD_MAIN_CMD = new RelayCommand(ADD_MAIN_process);
         }
 
-        [XmlElement("Êı¾İÄ£ĞÍ")]
+        [XmlElement("æ•°æ®æ¨¡å‹")]
         public DataModel DataModel { get; set; } = new DataModel();
 
 
@@ -87,7 +87,7 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
             {
-                if (DataModel.Processmodel.Tools[i].TestMode == TestModes.Ä£°åÆ¥Åä)
+                if (DataModel.Processmodel.Tools[i].TestMode == TestModes.æ¨¡æ¿åŒ¹é…)
                 {
                     try
                     {
@@ -98,24 +98,24 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                         else
                         {
-                            writeLog($"Ä£ĞÍÎÄ¼ş²»´æÔÚ:{DataModel.Settingmodel.Name}\\Tool{DataModel.Processmodel.Tools[i].Index}.shm");
+                            writeLog($"æ¨¡å‹æ–‡ä»¶ä¸å­˜åœ¨:{DataModel.Settingmodel.Name}\\Tool{DataModel.Processmodel.Tools[i].Index}.shm");
                         }
                     }
                     catch (Exception ex)
                     {
-                        writeLog($"Ä£ĞÍÎÄ¼ş¼ÓÔØÊ§°Ü:{DataModel.Settingmodel.Name}\\Tool{DataModel.Processmodel.Tools[i].Index}.shm;{ex.Message}");
+                        writeLog($"æ¨¡å‹æ–‡ä»¶åŠ è½½å¤±è´¥:{DataModel.Settingmodel.Name}\\Tool{DataModel.Processmodel.Tools[i].Index}.shm;{ex.Message}");
                         continue;
                     }
                 }
             }
         }
 
-        #region Í¨Ñ¶
-        #region »úÆ÷ÈË
+        #region é€šè®¯
+        #region æœºå™¨äºº
         public void SendMsgRobot(string cmd)
         {
             DataModel.Settingmodel.TcpServerRobot.SendMessage(cmd);
-            writeLog($"ÊÓ¾õ->»úÆ÷ÈË:{cmd}");
+            writeLog($"è§†è§‰->æœºå™¨äºº:{cmd}");
         }
 
         public void InitRobotServer()
@@ -132,7 +132,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 try
                 {
                     DataModel.Settingmodel.TcpServerRobot.StartListener(DataModel.Settingmodel.RobotConnect.LocalIP, DataModel.Settingmodel.RobotConnect.LocalPort);
-                    writeLog("TCP·şÎñ¶ËÆô¶¯ÕìÌı[µÈ´ı»úÆ÷ÈËÁ¬Ïß]");
+                    writeLog("TCPæœåŠ¡ç«¯å¯åŠ¨ä¾¦å¬[ç­‰å¾…æœºå™¨äººè¿çº¿]");
                 }
                 catch (Exception ex2)
                 {
@@ -146,14 +146,14 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
                 TCPevent TCPevent = (TCPevent)e;
-                if (TCPevent.Msg == "¿Í»§¶ËÁ¬½Ó")
+                if (TCPevent.Msg == "å®¢æˆ·ç«¯è¿æ¥")
                 {
-                    writeLog("»úÆ÷ÈËÒÑ¾­Á¬½Ó");
+                    writeLog("æœºå™¨äººå·²ç»è¿æ¥");
                     DataModel.Settingmodel.RobotConnect.IsConnected = true;
                 }
-                else if (TCPevent.Msg == "¿Í»§¶ËÖØĞÂÁ¬½Ó")
+                else if (TCPevent.Msg == "å®¢æˆ·ç«¯é‡æ–°è¿æ¥")
                 {
-                    writeLog("»úÆ÷ÈËÖØĞÂÁ¬½Ó");
+                    writeLog("æœºå™¨äººé‡æ–°è¿æ¥");
                     DataModel.Settingmodel.RobotConnect.IsConnected = true;
                 }
             }
@@ -165,14 +165,14 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
                 TCPevent TCPevent = (TCPevent)e;
-                if (TCPevent.Msg == "¿Í»§¶ËµôÏß")
+                if (TCPevent.Msg == "å®¢æˆ·ç«¯æ‰çº¿")
                 {
-                    writeLog("»úÆ÷ÈËÒÑ¾­ÀëÏß");
+                    writeLog("æœºå™¨äººå·²ç»ç¦»çº¿");
                     DataModel.Settingmodel.RobotConnect.IsConnected = false;
                 }
-                else if (TCPevent.Msg == "·¢ËÍÊ§°Ü£¬¿Í»§¶ËµôÏß")
+                else if (TCPevent.Msg == "å‘é€å¤±è´¥ï¼Œå®¢æˆ·ç«¯æ‰çº¿")
                 {
-                    writeLog("·¢ËÍÊ§°Ü£¬¿Í»§¶ËµôÏß");
+                    writeLog("å‘é€å¤±è´¥ï¼Œå®¢æˆ·ç«¯æ‰çº¿");
                     DataModel.Settingmodel.RobotConnect.IsConnected = false;
                 }
                 else
@@ -190,15 +190,15 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 TCPevent TCPevent = (TCPevent)e;
                 string cmd = (string)TCPevent.Msg;
-                writeLog($"»úÆ÷ÈË->ÊÓ¾õ:{cmd}");
-                //   NoticeBox.Show((string)TCPevent.Msg, "½ÓÊÕ»úÆ÷ÈËĞÅÏ¢", MessageBoxIcon.Info, true, 3000);
+                writeLog($"æœºå™¨äºº->è§†è§‰:{cmd}");
+                //   NoticeBox.Show((string)TCPevent.Msg, "æ¥æ”¶æœºå™¨äººä¿¡æ¯", MessageBoxIcon.Info, true, 3000);
                 DataModel.Processmodel.ToolIndex = -1;
 
                 DataModel.Processmodel.RCMD = cmd;
 
                 if (cmd.StartsWith("SA_"))
                 {
-                    #region ÇĞ»»Åä·½»òÅä·½¼ì²â
+                    #region åˆ‡æ¢é…æ–¹æˆ–é…æ–¹æ£€æµ‹
                     #endregion
                 }
                 else if (cmd == "ZERO")
@@ -216,15 +216,19 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 ClearTools();
                             }
-                            writeLog($"»úÆ÷ÈË->ÊÓ¾õ:{cmd}¿ªÊ¼ÉèÖÃ²ÎÊı", false);
+                            writeLog($"æœºå™¨äºº->è§†è§‰:{cmd}å¼€å§‹è®¾ç½®å‚æ•°", false);
                             DataModel.Processmodel.ToolIndex = i + 1;
+
+                            // æ£€æŸ¥å·¥å…·æ˜¯å¦æŒ‡å®šäº†ç‰¹å®šç›¸æœºï¼Œå¦‚æœæ˜¯åˆ™åˆ‡æ¢ç›¸æœº
+                            SwitchCameraForTool(DataModel.Processmodel.Tools[i]);
+
                             DataModel.Settingmodel.camedata.CameraModel.exposuretime = DataModel.Processmodel.Tools[i].ExposureTime;
                             DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = DataModel.Processmodel.Tools[i].ExposureTime;
                             DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
                             Thread.Sleep(DataModel.Settingmodel.delaytime);
-                            writeLog($"»úÆ÷ÈË->ÊÓ¾õ:{cmd}¿ªÊ¼´¥·¢", false);
+                            writeLog($"æœºå™¨äºº->è§†è§‰:{cmd}å¼€å§‹è§¦å‘", false);
                             DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
-                            writeLog($"»úÆ÷ÈË->ÊÓ¾õ:{cmd}´¥·¢Íê³É", false);
+                            writeLog($"æœºå™¨äºº->è§†è§‰:{cmd}è§¦å‘å®Œæˆ", false);
 
                             break;
                         }
@@ -253,8 +257,73 @@ namespace F7_L12_Position_Detect.ViewModel
             tool.ActualY = 0;
             tool.ActualAngle = 0;
             tool.ActualDimension = 0;
-            tool.ToolStatus = ToolStatus.µÈ´ıÖĞ;
+            tool.ToolStatus = ToolStatus.ç­‰å¾…ä¸­;
 
+        }
+
+        /// <summary>
+        /// æ ¹æ®å·¥å…·é…ç½®åˆ‡æ¢ç›¸æœº
+        /// </summary>
+        /// <param name="tool">å·¥å…·å¯¹è±¡</param>
+        private void SwitchCameraForTool(ToolModel tool)
+        {
+            try
+            {
+                // æ£€æŸ¥å·¥å…·æ˜¯å¦é…ç½®äº†ç›¸æœºåºåˆ—å·
+                if (string.IsNullOrEmpty(tool.CameraSerialNumber))
+                {
+                    writeLog($"å·¥å…·{tool.Index}æœªé…ç½®ç›¸æœºåºåˆ—å·ï¼Œè¯·åœ¨å·¥å…·è®¾ç½®ä¸­é€‰æ‹©ç›¸æœº", false);
+                    return;
+                }
+
+                var cameraData = DataModel.Settingmodel.camedata;
+                var camera = cameraData.CameraModel.camera;
+
+                // æŸ¥æ‰¾åŒ¹é…çš„ç›¸æœºç´¢å¼•
+                int targetIndex = -1;
+                for (int j = 0; j < camera.cbDeviceList.Count; j++)
+                {
+                    if (camera.cbDeviceList[j].Contains(tool.CameraSerialNumber))
+                    {
+                        targetIndex = j;
+                        break;
+                    }
+                }
+
+                // å¦‚æœæ‰¾åˆ°åŒ¹é…çš„ç›¸æœºä¸”ä¸å½“å‰é€‰æ‹©ä¸åŒï¼Œåˆ™åˆ‡æ¢ç›¸æœº
+                if (targetIndex >= 0 && camera.SelectedIndex != targetIndex)
+                {
+                    writeLog($"å·¥å…·{tool.Index}åˆ‡æ¢åˆ°ç›¸æœº: {camera.cbDeviceList[targetIndex]}", false);
+
+                    // å…³é—­å½“å‰ç›¸æœº
+                    camera.bnClose_Click();
+                    Thread.Sleep(500); // ç­‰å¾…ç›¸æœºå…³é—­
+
+                    // åˆ‡æ¢åˆ°ç›®æ ‡ç›¸æœº
+                    camera.SelectedIndex = targetIndex;
+
+                    // æ‰“å¼€æ–°ç›¸æœº
+                    camera.bnOpen_Click();
+                    Thread.Sleep(500); // ç­‰å¾…ç›¸æœºæ‰“å¼€
+
+                    // å¯åŠ¨å–æµ
+                    camera.bnStartGrab_Click();
+
+                    writeLog($"å·¥å…·{tool.Index}ç›¸æœºåˆ‡æ¢å®Œæˆ", false);
+                }
+                else if (targetIndex >= 0)
+                {
+                    writeLog($"å·¥å…·{tool.Index}ç›¸æœºå·²æ˜¯ç›®æ ‡ç›¸æœºï¼Œæ— éœ€åˆ‡æ¢", false);
+                }
+                else
+                {
+                    writeLog($"å·¥å…·{tool.Index}æŒ‡å®šçš„ç›¸æœºåºåˆ—å·{tool.CameraSerialNumber}æœªæ‰¾åˆ°ï¼Œè¯·æ£€æŸ¥ç›¸æœºè¿æ¥", false);
+                }
+            }
+            catch (Exception ex)
+            {
+                writeLog($"å·¥å…·{tool.Index}ç›¸æœºåˆ‡æ¢å¤±è´¥: {ex.Message}", false);
+            }
         }
 
 
@@ -264,7 +333,7 @@ namespace F7_L12_Position_Detect.ViewModel
         public void SendMsgSoft(string cmd)
         {
             DataModel.Settingmodel.TcpServerSoft.SendMessage(cmd);
-            writeLog($"ÊÓ¾õ->ÉÏÎ»»ú:{cmd}");
+            writeLog($"è§†è§‰->ä¸Šä½æœº:{cmd}");
         }
 
         public void InitSoftServer()
@@ -281,7 +350,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 try
                 {
                     DataModel.Settingmodel.TcpServerSoft.StartListener(DataModel.Settingmodel.SoftConnect.LocalIP, DataModel.Settingmodel.SoftConnect.LocalPort);
-                    writeLog("TCP·şÎñ¶ËÆô¶¯ÕìÌı[µÈ´ıÉÏÎ»»úÁ¬Ïß]");
+                    writeLog("TCPæœåŠ¡ç«¯å¯åŠ¨ä¾¦å¬[ç­‰å¾…ä¸Šä½æœºè¿çº¿]");
                 }
                 catch (Exception ex2)
                 {
@@ -295,14 +364,14 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
                 TCPevent TCPevent = (TCPevent)e;
-                if (TCPevent.Msg == "¿Í»§¶ËÁ¬½Ó")
+                if (TCPevent.Msg == "å®¢æˆ·ç«¯è¿æ¥")
                 {
-                    writeLog("ÉÏÎ»»úÒÑ¾­Á¬½Ó");
+                    writeLog("ä¸Šä½æœºå·²ç»è¿æ¥");
                     DataModel.Settingmodel.SoftConnect.IsConnected = true;
                 }
-                else if (TCPevent.Msg == "¿Í»§¶ËÖØĞÂÁ¬½Ó")
+                else if (TCPevent.Msg == "å®¢æˆ·ç«¯é‡æ–°è¿æ¥")
                 {
-                    writeLog("ÉÏÎ»»úÖØĞÂÁ¬½Ó");
+                    writeLog("ä¸Šä½æœºé‡æ–°è¿æ¥");
                     DataModel.Settingmodel.SoftConnect.IsConnected = true;
                 }
 
@@ -317,14 +386,14 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
                 TCPevent TCPevent = (TCPevent)e;
-                if (TCPevent.Msg == "¿Í»§¶ËµôÏß")
+                if (TCPevent.Msg == "å®¢æˆ·ç«¯æ‰çº¿")
                 {
-                    writeLog("ÉÏÎ»»úÒÑ¾­ÀëÏß");
+                    writeLog("ä¸Šä½æœºå·²ç»ç¦»çº¿");
                     DataModel.Settingmodel.SoftConnect.IsConnected = false;
                 }
-                else if (TCPevent.Msg == "·¢ËÍÊ§°Ü£¬¿Í»§¶ËµôÏß")
+                else if (TCPevent.Msg == "å‘é€å¤±è´¥ï¼Œå®¢æˆ·ç«¯æ‰çº¿")
                 {
-                    writeLog("·¢ËÍÊ§°Ü£¬¿Í»§¶ËµôÏß");
+                    writeLog("å‘é€å¤±è´¥ï¼Œå®¢æˆ·ç«¯æ‰çº¿");
                     DataModel.Settingmodel.SoftConnect.IsConnected = false;
                 }
                 else
@@ -342,8 +411,8 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 TCPevent TCPevent = (TCPevent)e;
                 string cmd = (string)TCPevent.Msg;
-                writeLog($"ÉÏÎ»»ú->ÊÓ¾õ:{cmd}");
-                //  NoticeBox.Show((string)TCPevent.Msg, "½ÓÊÕÉÏÎ»»úĞÅÏ¢", MessageBoxIcon.Info, true, 3000);
+                writeLog($"ä¸Šä½æœº->è§†è§‰:{cmd}");
+                //  NoticeBox.Show((string)TCPevent.Msg, "æ¥æ”¶ä¸Šä½æœºä¿¡æ¯", MessageBoxIcon.Info, true, 3000);
                 //DataModel.Processmodel.ToolIndex = -1;
                 //for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 //{
@@ -372,7 +441,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
 
         #endregion
-        #region PLCÍ¨Ñ¶
+        #region PLCé€šè®¯
         public void PLC_Start()
         {
             Thread t = new Thread(PLC_Process);
@@ -399,7 +468,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (connectresult.IsSuccess)
                     {
-                        #region ¶ÁÈ¡Êı¾İ
+                        #region è¯»å–æ•°æ®
                         var readresult = modbusTcp.ReadUInt16(DataModel.Settingmodel.AddressStart.ToString(), 2);
 
                         if (readresult.IsSuccess)
@@ -485,7 +554,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             }
                             catch {; }
 
-                            #region Êı¾İ¸´ÖÆË¢ĞÂ
+                            #region æ•°æ®å¤åˆ¶åˆ·æ–°
                             DataModel.Processmodel.Trig_IO.IOstatus = Trig;
 
 
@@ -493,14 +562,14 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                         #endregion
                         modbusTcp.ConnectClose();
-                        //#region ÎÕÊÖ
+                        //#region æ¡æ‰‹
                         //modbusTcp.Write((DATA.PLC.AddressStart + 18).ToString(), (UInt16)0);
                         //#endregion
                     }
                     else
                     {
 
-                        #region Í¨Ñ¶Ê§°ÜÊı¾İÖÃÎª-1
+                        #region é€šè®¯å¤±è´¥æ•°æ®ç½®ä¸º-1
                         DataModel.Processmodel.Trig_IO.IOstatus = -1;
 
                         #endregion
@@ -518,7 +587,7 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
-                string sql = $"SELECT [³ÉÆ·Âë] FROM [°ó¶¨Íê±í¸ñ] WHERE  [ÎïÁÏÃû³Æ]='ÈİÆ÷Âë' and [ÌõĞÎÂë]= '{barcode}' ORDER BY [±àºÅ]";
+                string sql = $"SELECT [æˆå“ç ] FROM [ç»‘å®šå®Œè¡¨æ ¼] WHERE  [ç‰©æ–™åç§°]='å®¹å™¨ç ' and [æ¡å½¢ç ]= '{barcode}' ORDER BY [ç¼–å·]";
                 DataTable dt = Sqlserver.MicrosoftSql_DATABASE.Read(sql);
                 //DataModel.Processmodel.SNList.Clear();
                 for (int i = 0; i < dt.Rows.Count; i++)
@@ -533,7 +602,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
         private bool PLC_write(UInt16 result)
         {
-            writeLog($"ÊÓ¾õ->PLC:{result}¡¢{(result == 1 ? "OK" : "NG")}", false);
+            writeLog($"è§†è§‰->PLC:{result}ã€{(result == 1 ? "OK" : "NG")}", false);
 
             int i = 0;
             while (i++ < 4)
@@ -567,7 +636,7 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         #endregion
-        #region Çå¿Õ²âÊÔ¹¤¾ß×´Ì¬
+        #region æ¸…ç©ºæµ‹è¯•å·¥å…·çŠ¶æ€
 
         public void ClearToolStatus()
         {
@@ -581,14 +650,14 @@ namespace F7_L12_Position_Detect.ViewModel
                     t.ActualX = 0;
                     t.ActualY = 0;
                     t.BarcodeStr = "";
-                    t.ToolStatus = ToolStatus.µÈ´ıÖĞ;
+                    t.ToolStatus = ToolStatus.ç­‰å¾…ä¸­;
                 }
                 catch
                 {
                     continue;
                 }
             }
-            DataModel.Processmodel.Status = ToolStatus.µÈ´ıÖĞ;
+            DataModel.Processmodel.Status = ToolStatus.ç­‰å¾…ä¸­;
         }
         #endregion
 
@@ -609,7 +678,7 @@ namespace F7_L12_Position_Detect.ViewModel
         //public bool SendMsgPC(string cmd)
         //{
         //    bool r = DataModel.Settingmodel.TcpClientH.SendMsg(cmd);
-        //    writeLog($"ÊÓ¾õ->Èí¼ş:{cmd}");
+        //    writeLog($"è§†è§‰->è½¯ä»¶:{cmd}");
         //    return r;
 
         //}
@@ -617,7 +686,7 @@ namespace F7_L12_Position_Detect.ViewModel
         //#endregion
 
 
-        #region Í¨ÓÃÊı¾İÈÕÖ¾
+        #region é€šç”¨æ•°æ®æ—¥å¿—
         private object writeLog_Locker = new object();
 
         private object writeBug_Locker = new object();
@@ -643,7 +712,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         });
                     }
 
-                    string filename = $"{Environment.CurrentDirectory}\\ÈÕÖ¾\\ÈÕÖ¾\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
+                    string filename = $"{Environment.CurrentDirectory}\\æ—¥å¿—\\æ—¥å¿—\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
                     string dir = Path.GetDirectoryName(filename);
                     if (!Directory.Exists(dir))
                     {
@@ -679,7 +748,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                         DataModel.Recordmodel.ErrorLog.Insert(0, bugstr);
                     });
-                    string filename = $"{Environment.CurrentDirectory}\\ÈÕÖ¾\\´íÎó\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
+                    string filename = $"{Environment.CurrentDirectory}\\æ—¥å¿—\\é”™è¯¯\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
                     string dir = Path.GetDirectoryName(filename);
                     if (!Directory.Exists(dir))
                     {
@@ -699,7 +768,7 @@ namespace F7_L12_Position_Detect.ViewModel
         #endregion
         #endregion
 
-        #region ½çÃæmenuitem
+        #region ç•Œé¢menuitem
         public RelayCommand NEW_PRJCMD { set; get; } = null;
 
         public void NEW_PRJCMD_process()
@@ -708,7 +777,7 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 if (DataModel.Settingmodel.permission)
                 {
-                    if (MessageBoxX.Show("ÊÇ·ñÈ·¶¨ĞÂ½¨¹¤³Ì?", "ÌáÊ¾", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
+                    if (MessageBoxX.Show("æ˜¯å¦ç¡®å®šæ–°å»ºå·¥ç¨‹?", "æç¤º", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
                     {
                         newPrj newPrj = new newPrj();
                         if (newPrj.ShowDialog() == true)
@@ -717,7 +786,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             string prjdir = $"{DataModel.Settingmodel.Prjdir}\\{prjname}";
                             if (Directory.Exists(prjdir))
                             {
-                                if (MessageBoxX.Show("¹¤³ÌÒÑ¾­´æÔÚ£¬ÊÇ·ñÉ¾³ı¾É¹¤³Ì?", "ÌáÊ¾", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
+                                if (MessageBoxX.Show("å·¥ç¨‹å·²ç»å­˜åœ¨ï¼Œæ˜¯å¦åˆ é™¤æ—§å·¥ç¨‹?", "æç¤º", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
                                 {
                                     Directory.Delete(prjdir, true);
                                 }
@@ -732,7 +801,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                 DataModel.Settingmodel.prjselected = DataModel.Settingmodel.Prjs.Count - 1;
                             }
 
-                            #region ĞÂ½¨¹¤³Ì
+                            #region æ–°å»ºå·¥ç¨‹
                             Directory.CreateDirectory(prjdir);
                             DataModel.Settingmodel.Name = prjname;
                             DataModel.Processmodel.Tools.Clear();
@@ -746,7 +815,7 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex)
             {
-                NoticeBox.Show($"ĞÂ½¨¹¤³ÌÊ§°Ü\r\n{ex.Message}", "´íÎó", MessageBoxIcon.Error, true, 5000);
+                NoticeBox.Show($"æ–°å»ºå·¥ç¨‹å¤±è´¥\r\n{ex.Message}", "é”™è¯¯", MessageBoxIcon.Error, true, 5000);
             }
         }
 
@@ -758,7 +827,7 @@ namespace F7_L12_Position_Detect.ViewModel
             SaveProcessmodel();
             SaveSettingModel();
             SavePrjXmls();
-            NoticeBox.Show($"¹¤³Ì±£´æÍê³É", "³É¹¦", MessageBoxIcon.Success, true, 5000);
+            NoticeBox.Show($"å·¥ç¨‹ä¿å­˜å®Œæˆ", "æˆåŠŸ", MessageBoxIcon.Success, true, 5000);
 
         }
 
@@ -793,10 +862,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (index < 0)
                 {
 
-                    NoticeBox.Show($"ÇëÏÈÑ¡ÔñĞèÒªÉ¾³ıµÄ¹¤¾ß", "Ê§°Ü", MessageBoxIcon.Error, true, 5000);
+                    NoticeBox.Show($"è¯·å…ˆé€‰æ‹©éœ€è¦åˆ é™¤çš„å·¥å…·", "å¤±è´¥", MessageBoxIcon.Error, true, 5000);
                     return;
                 }
-                if (MessageBoxX.Show("ÊÇ·ñÈ·¶¨É¾³ı¹¤¾ß£¿", "ÌáÊ¾", System.Windows.MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == System.Windows.MessageBoxResult.Yes)
+                if (MessageBoxX.Show("æ˜¯å¦ç¡®å®šåˆ é™¤å·¥å…·ï¼Ÿ", "æç¤º", System.Windows.MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == System.Windows.MessageBoxResult.Yes)
                 {
 
                     string jpgsrc1 = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index + 1}.jpg";
@@ -866,7 +935,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (DataModel.Processmodel.selectedindex < 0)
                 {
 
-                    NoticeBox.Show($"ÇëÏÈÑ¡ÔñĞèÒª²åÈë¹¤¾ßµÄÎ»ÖÃ", "Ê§°Ü", MessageBoxIcon.Error, true, 5000);
+                    NoticeBox.Show($"è¯·å…ˆé€‰æ‹©éœ€è¦æ’å…¥å·¥å…·çš„ä½ç½®", "å¤±è´¥", MessageBoxIcon.Error, true, 5000);
                     return;
                 }
 
@@ -912,10 +981,10 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
-                if (MessageBoxX.Show("ÊÇ·ñÈ·¶¨Çå¿ÕËùÓĞ¹¤¾ß£¿", "ÌáÊ¾", System.Windows.MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == System.Windows.MessageBoxResult.Yes)
+                if (MessageBoxX.Show("æ˜¯å¦ç¡®å®šæ¸…ç©ºæ‰€æœ‰å·¥å…·ï¼Ÿ", "æç¤º", System.Windows.MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == System.Windows.MessageBoxResult.Yes)
                 {
                     DataModel.Processmodel.Tools.Clear();
-                    #region É¾³ı¶ÔÓ¦Ä¿Â¼ÏÂÃæµÄ¹¤¾ßÎÄ¼ş
+                    #region åˆ é™¤å¯¹åº”ç›®å½•ä¸‹é¢çš„å·¥å…·æ–‡ä»¶
                     string dir = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}";
                     var files = Directory.GetFiles(dir);
                     for (int i = 0; i < files.Length; i++)
@@ -943,11 +1012,11 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (DataModel.Processmodel.selectedindex < 0)
                 {
 
-                    NoticeBox.Show($"ÇëÏÈÑ¡ÔñĞèÒª¸´ÖÆµÄ¹¤¾ß", "Ê§°Ü", MessageBoxIcon.Error, true, 5000);
+                    NoticeBox.Show($"è¯·å…ˆé€‰æ‹©éœ€è¦å¤åˆ¶çš„å·¥å…·", "å¤±è´¥", MessageBoxIcon.Error, true, 5000);
                     return;
                 }
 
-                if (MessageBoxX.Show("ÊÇ·ñÈ·¶¨¸´ÖÆÑ¡ÖĞµÄ¹¤¾ß£¿", "ÌáÊ¾", System.Windows.MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == System.Windows.MessageBoxResult.Yes)
+                if (MessageBoxX.Show("æ˜¯å¦ç¡®å®šå¤åˆ¶é€‰ä¸­çš„å·¥å…·ï¼Ÿ", "æç¤º", System.Windows.MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == System.Windows.MessageBoxResult.Yes)
                 {
 
                     CopyTool(DataModel.Processmodel.selectedindex + 1, New_Tool_Model(DataModel.Processmodel.Tools[DataModel.Processmodel.selectedindex]));
@@ -967,7 +1036,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (DataModel.Processmodel.selectedindex < 0)
                 {
 
-                    NoticeBox.Show($"ÇëÏÈÑ¡ÔñĞèÒª²åÈë¹¤¾ßµÄÎ»ÖÃ", "Ê§°Ü", MessageBoxIcon.Error, true, 5000);
+                    NoticeBox.Show($"è¯·å…ˆé€‰æ‹©éœ€è¦æ’å…¥å·¥å…·çš„ä½ç½®", "å¤±è´¥", MessageBoxIcon.Error, true, 5000);
                     return;
                 }
 
@@ -1103,15 +1172,15 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (!string.IsNullOrEmpty(s1))
                     {
-                        error += $"¹¤¾ß{initindex}ĞŞ¸ÄĞòºÅ´íÎó:{s1}";
+                        error += $"å·¥å…·{initindex}ä¿®æ”¹åºå·é”™è¯¯:{s1}";
                     }
                     if (!string.IsNullOrEmpty(s2))
                     {
-                        error += $"¹¤¾ß{initindex}ĞŞ¸ÄĞòºÅ´íÎó:{s2}";
+                        error += $"å·¥å…·{initindex}ä¿®æ”¹åºå·é”™è¯¯:{s2}";
                     }
                     if (!string.IsNullOrEmpty(s3))
                     {
-                        error += $"¹¤¾ß{initindex}ĞŞ¸ÄĞòºÅ´íÎó:{s3}";
+                        error += $"å·¥å…·{initindex}ä¿®æ”¹åºå·é”™è¯¯:{s3}";
                     }
                 }
             }
@@ -1139,7 +1208,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
         #endregion
 
-        #region º¯Êı
+        #region å‡½æ•°
 
 
         public void Load_Prj()
@@ -1157,7 +1226,7 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// ¹¤³ÌĞ£Ñé
+        /// å·¥ç¨‹æ ¡éªŒ
         /// </summary>
         public void CheckPrj()
         {
@@ -1185,22 +1254,22 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 if (checkprj)
                 {
-                    NoticeBox.Show($"¹¤³ÌĞ£Ñé³É¹¦:{DataModel.Settingmodel.Name}", "³É¹¦", MessageBoxIcon.Success, true, 5000);
+                    NoticeBox.Show($"å·¥ç¨‹æ ¡éªŒæˆåŠŸ:{DataModel.Settingmodel.Name}", "æˆåŠŸ", MessageBoxIcon.Success, true, 5000);
                 }
                 else
                 {
-                    NoticeBox.Show($"¹¤³ÌĞ£ÑéÊ§°Ü:{DataModel.Settingmodel.Name}", "Ê§°Ü", MessageBoxIcon.Error, true, 5000);
+                    NoticeBox.Show($"å·¥ç¨‹æ ¡éªŒå¤±è´¥:{DataModel.Settingmodel.Name}", "å¤±è´¥", MessageBoxIcon.Error, true, 5000);
                 }
             }
             catch (Exception ex)
             {
-                NoticeBox.Show($"¹¤³ÌÄ¿Â¼¼ÓÔØÊ§°Ü:{ex.Message}", "Ê§°Ü", MessageBoxIcon.Error, true, 5000);
+                NoticeBox.Show($"å·¥ç¨‹ç›®å½•åŠ è½½å¤±è´¥:{ex.Message}", "å¤±è´¥", MessageBoxIcon.Error, true, 5000);
 
             }
         }
 
         /// <summary>
-        /// Ë¢ĞÂ¹¤³ÌÑ¡ÔñÏî
+        /// åˆ·æ–°å·¥ç¨‹é€‰æ‹©é¡¹
         /// </summary>
         public void Prjs_selectedindex()
         {
@@ -1215,13 +1284,13 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         #endregion
 
-        #region Êı¾İ±£´æ¼ÓÔØ
+        #region æ•°æ®ä¿å­˜åŠ è½½
 
-        #region ¹ı³ÌÊı¾İ
+        #region è¿‡ç¨‹æ•°æ®
         public void SaveProcessmodel()
         {
 
-            string filename = $"{Environment.CurrentDirectory}\\ÅäÖÃ\\¹ı³ÌÊı¾İ.xml";
+            string filename = $"{Environment.CurrentDirectory}\\é…ç½®\\è¿‡ç¨‹æ•°æ®.xml";
             string dir = Path.GetDirectoryName(filename);
             if (!Directory.Exists(dir))
             {
@@ -1238,7 +1307,7 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
-                string filename = $"{Environment.CurrentDirectory}\\ÅäÖÃ\\¹ı³ÌÊı¾İ.xml";
+                string filename = $"{Environment.CurrentDirectory}\\é…ç½®\\è¿‡ç¨‹æ•°æ®.xml";
                 string dir = Path.GetDirectoryName(filename);
                 if (!Directory.Exists(dir))
                 {
@@ -1265,11 +1334,11 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         #endregion
 
-        #region ÅäÖÃÊı¾İ
+        #region é…ç½®æ•°æ®
         public void SaveSettingModel()
         {
 
-            string filename = $"{Environment.CurrentDirectory}\\ÅäÖÃ\\ÅäÖÃÊı¾İ.xml";
+            string filename = $"{Environment.CurrentDirectory}\\é…ç½®\\é…ç½®æ•°æ®.xml";
             string dir = Path.GetDirectoryName(filename);
             if (!Directory.Exists(dir))
             {
@@ -1286,7 +1355,7 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
-                string filename = $"{Environment.CurrentDirectory}\\ÅäÖÃ\\ÅäÖÃÊı¾İ.xml";
+                string filename = $"{Environment.CurrentDirectory}\\é…ç½®\\é…ç½®æ•°æ®.xml";
                 string dir = Path.GetDirectoryName(filename);
                 if (!Directory.Exists(dir))
                 {
@@ -1309,16 +1378,16 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 DataModel.Settingmodel = new SettingModel();
 
-                MessageBox.Show($"ÅäÖÃÊı¾İ.xml¼ÓÔØÊ§°Ü,Èí¼şÒÑÖØÖÃÅäÖÃ£¬Çë½øÈëÅäÖÃÎÄ¼ş°´ĞèÇóĞŞ¸Ä,ÔÙÖØĞÂ´ò¿ªÈí¼ş:\r\n{ex.Message}");
+                MessageBox.Show($"é…ç½®æ•°æ®.xmlåŠ è½½å¤±è´¥,è½¯ä»¶å·²é‡ç½®é…ç½®ï¼Œè¯·è¿›å…¥é…ç½®æ–‡ä»¶æŒ‰éœ€æ±‚ä¿®æ”¹,å†é‡æ–°æ‰“å¼€è½¯ä»¶:\r\n{ex.Message}");
 
             }
         }
         #endregion
 
-        #region ÈÕÖ¾Êı¾İ
+        #region æ—¥å¿—æ•°æ®
         public void SaveRecordModel()
         {
-            string filename = $"{Environment.CurrentDirectory}\\ÅäÖÃ\\ÈÕÖ¾Êı¾İ.xml";
+            string filename = $"{Environment.CurrentDirectory}\\é…ç½®\\æ—¥å¿—æ•°æ®.xml";
             string dir = Path.GetDirectoryName(filename);
             if (!Directory.Exists(dir))
             {
@@ -1334,7 +1403,7 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
-                string filename = $"{Environment.CurrentDirectory}\\ÅäÖÃ\\ÈÕÖ¾Êı¾İ.xml";
+                string filename = $"{Environment.CurrentDirectory}\\é…ç½®\\æ—¥å¿—æ•°æ®.xml";
                 string dir = Path.GetDirectoryName(filename);
                 if (!Directory.Exists(dir))
                 {
@@ -1356,18 +1425,18 @@ namespace F7_L12_Position_Detect.ViewModel
             catch (Exception ex)
             {
                 DataModel.Recordmodel = new RecordModel();
-                //MessageBox.Show($"ÈÕÖ¾Êı¾İ.xml¼ÓÔØÊ§°Ü,Èí¼şÒÑÖØÖÃÅäÖÃ£¬Çë½øÈëÅäÖÃÎÄ¼ş°´ĞèÇóĞŞ¸Ä,ÔÙÖØĞÂ´ò¿ªÈí¼ş:\r\n{ex.Message}");
+                //MessageBox.Show($"æ—¥å¿—æ•°æ®.xmlåŠ è½½å¤±è´¥,è½¯ä»¶å·²é‡ç½®é…ç½®ï¼Œè¯·è¿›å…¥é…ç½®æ–‡ä»¶æŒ‰éœ€æ±‚ä¿®æ”¹,å†é‡æ–°æ‰“å¼€è½¯ä»¶:\r\n{ex.Message}");
 
             }
         }
         #endregion
-        #region Åä·½±£´æ¼ÓÔØ
+        #region é…æ–¹ä¿å­˜åŠ è½½
 
         public void SavePrjXmls()
         {
             try
             {
-                #region É¾³ı¾ÉxmlÎÄ¼ş
+                #region åˆ é™¤æ—§xmlæ–‡ä»¶
                 foreach (string s in Directory.GetFiles($"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}"))
                 {
                     if (s.ToUpper().EndsWith(".XML"))
@@ -1439,7 +1508,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         tool.Index = (index++) + 1;
                         DataModel.Processmodel.Tools.Add(tool);
                         string jpgfilename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index}.jpg";
-                        #region ¼ÓÔØÄ£ĞÍÍ¼Æ¬
+                        #region åŠ è½½æ¨¡å‹å›¾ç‰‡
                         tool.Image?.Dispose();
                         HOperatorSet.GenEmptyObj(out tool.Image);
                         HOperatorSet.ReadImage(out tool.Image, jpgfilename);
@@ -1551,7 +1620,7 @@ namespace F7_L12_Position_Detect.ViewModel
         #endregion
         #endregion
 
-        #region Ïà»úÊı¾İ´¦Àí
+        #region ç›¸æœºæ•°æ®å¤„ç†
         public void start()
         {
             DataModel.Settingmodel.camedata.CameraModel.camera.ImageReceived += OnReceive;
@@ -1561,7 +1630,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
             try
             {
-                writeLog($"Ïà»ú->ÊÓ¾õ:½ÓÊÕÕÕÆ¬", false);
+                writeLog($"ç›¸æœº->è§†è§‰:æ¥æ”¶ç…§ç‰‡", false);
 
                 MyEventArgs myEventArgs = e as MyEventArgs;
 
@@ -1575,7 +1644,7 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex)
             {
-                writeError($"[{DataModel.Processmodel.RCMD}]Ê¶±ğ´íÎó:{ex.ToString()}");
+                writeError($"[{DataModel.Processmodel.RCMD}]è¯†åˆ«é”™è¯¯:{ex.ToString()}");
             }
         }
 
@@ -1587,7 +1656,7 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
 
-                #region Í¼Æ¬½ÓÊÕ
+                #region å›¾ç‰‡æ¥æ”¶
 
                 //Image
 
@@ -1616,7 +1685,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                         if (i == 0)
                         {
-                            DataModel.Processmodel.Status = ToolStatus.Ê¶±ğÖĞ;
+                            DataModel.Processmodel.Status = ToolStatus.è¯†åˆ«ä¸­;
                         }
 
                         DataModel.Processmodel.ToolIndex = i + 1;
@@ -1658,12 +1727,12 @@ namespace F7_L12_Position_Detect.ViewModel
 
 
                         ClearTool(tool);
-                        tool.ToolStatus = ToolStatus.Ê¶±ğÖĞ;
+                        tool.ToolStatus = ToolStatus.è¯†åˆ«ä¸­;
                         try
                         {
-                            if (tool.TestMode == TestModes.¶şÎ¬Âë)
+                            if (tool.TestMode == TestModes.äºŒç»´ç )
                             {
-                                #region ¶ÁÈ¡¶şÎ¬Âë
+                                #region è¯»å–äºŒç»´ç 
                                 List<Reg.Barcode> barcodelist = null;
 
                                 try
@@ -1672,12 +1741,12 @@ namespace F7_L12_Position_Detect.ViewModel
                                     if (barcodelist.Count > 0)
                                     {
                                         tool.BarcodeStr = barcodelist[0].codestr;
-                                        //  NoticeBox.Show(barcodelist[0].codestr, "¶şÎ¬Âë¶ÁÈ¡³É¹¦", MessageBoxIcon.Success, true, 5000);
+                                        //  NoticeBox.Show(barcodelist[0].codestr, "äºŒç»´ç è¯»å–æˆåŠŸ", MessageBoxIcon.Success, true, 5000);
                                         //if (tool.SendBarcodeData)
                                         //{
                                         //    SendMsgSoft(tool.BarcodeStr);
                                         //}
-                                        writeLog($"¶şÎ¬Âë¶ÁÈ¡³É¹¦:{barcodelist[0].codestr}");
+                                        writeLog($"äºŒç»´ç è¯»å–æˆåŠŸ:{barcodelist[0].codestr}");
 
                                         if (tool.MPMode)
                                         {
@@ -1685,7 +1754,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                         }
                                         if (tool.SendBarcode)
                                         {
-                                            tool.ToolStatus = ToolStatus.µÈ´ıÖĞ;
+                                            tool.ToolStatus = ToolStatus.ç­‰å¾…ä¸­;
 
                                             if (DataModel.Settingmodel.TcpClientH.Connect(DataModel.Settingmodel.BarcodeReporter.RemoteIP, DataModel.Settingmodel.BarcodeReporter.RemotePort))
                                             {
@@ -1700,7 +1769,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                                         DataModel.Processmodel.SNList.Add(s);
                                                     }));
                                                     tool.ToolStatus = ToolStatus.OK;
-                                                    writeLog($"É¨Âë»ã±¨Èí¼ş·µ»Ø³ÉÆ·±àºÅ:{s}");
+                                                    writeLog($"æ‰«ç æ±‡æŠ¥è½¯ä»¶è¿”å›æˆå“ç¼–å·:{s}");
                                                     DataModel.Processmodel.Barcodes = string.Empty;
 
 
@@ -1708,7 +1777,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                                 else
                                                 {
                                                     tool.ToolStatus = ToolStatus.NG2;
-                                                    writeLog($"É¨Âë»ã±¨Èí¼ş·µ»ØÎª¿Õ");
+                                                    writeLog($"æ‰«ç æ±‡æŠ¥è½¯ä»¶è¿”å›ä¸ºç©º");
 
                                                 }
 
@@ -1717,7 +1786,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                             else
                                             {
                                                 tool.ToolStatus = ToolStatus.NG2;
-                                                writeLog($"Á¬½ÓÉ¨Âë»ã±¨Èí¼şNG2");
+                                                writeLog($"è¿æ¥æ‰«ç æ±‡æŠ¥è½¯ä»¶NG2");
                                             }
 
 
@@ -1729,12 +1798,12 @@ namespace F7_L12_Position_Detect.ViewModel
 
 
 
-                                        //#region ·¢ËÍ¶şÎ¬Âë¸øÉÏÎ»»úÉè±¸
+                                        //#region å‘é€äºŒç»´ç ç»™ä¸Šä½æœºè®¾å¤‡
                                         //DataModel.Settingmodel.TcpServerSoft.SendMessage(tool.BarcodeStr);
                                         //Thread.Sleep(tool.Delaytimes);
                                         //string s = DataModel.Settingmodel.TcpServerSoft.GetMsg();
 
-                                        //writeLog($"¶şÎ¬ÂëĞ£Ñé·µ»Ø´íÎó:{s}");
+                                        //writeLog($"äºŒç»´ç æ ¡éªŒè¿”å›é”™è¯¯:{s}");
 
                                         //if (string.IsNullOrEmpty(s) || s != "OK")
                                         //{
@@ -1766,7 +1835,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                     else
                                     {
                                         tool.BarcodeStr = string.Empty;
-                                        writeLog($"¶şÎ¬Âë¶ÁÈ¡Ê§°Ü:{barcodelist[0].codestr}");
+                                        writeLog($"äºŒç»´ç è¯»å–å¤±è´¥:{barcodelist[0].codestr}");
                                         tool.ToolStatus = ToolStatus.NG;
 
                                     }
@@ -1778,10 +1847,10 @@ namespace F7_L12_Position_Detect.ViewModel
 
                                 #endregion
                             }
-                            else if (tool.TestMode == TestModes.Ä£°åÆ¥Åä)
+                            else if (tool.TestMode == TestModes.æ¨¡æ¿åŒ¹é…)
                             {
-                                #region ¶ÁÈ¡Î»ÖÃ
-                                /// NG  Î´°²×°ºÃ  NG2:È±ÉÙÅä¼ş  OK:ºÏ¸ñ              
+                                #region è¯»å–ä½ç½®
+                                /// NG  æœªå®‰è£…å¥½  NG2:ç¼ºå°‘é…ä»¶  OK:åˆæ ¼              
 
                                 try
                                 {
@@ -1844,9 +1913,9 @@ namespace F7_L12_Position_Detect.ViewModel
 
                                 #endregion
                             }
-                            else if (tool.TestMode == TestModes.Ãæ»ı)
+                            else if (tool.TestMode == TestModes.é¢ç§¯)
                             {
-                                #region ¶ÁÈ¡Ãæ»ı
+                                #region è¯»å–é¢ç§¯
 
                                 int Areaint = CoculateDimension(Image, tool, hwindow, false);
                                 tool.ActualDimension = Areaint;
@@ -1865,12 +1934,12 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                         catch {; }
 
-                        writeLog($"ÊÓ¾õ->ÊÓ¾õ:¼ÆËãÍê³É", false);
-                        string s1 = $"{DataModel.Processmodel.Tools[i].Name}:Ê¶±ğºÄÊ±:{stopwatch.ElapsedMilliseconds}ms";
+                        writeLog($"è§†è§‰->è§†è§‰:è®¡ç®—å®Œæˆ", false);
+                        string s1 = $"{DataModel.Processmodel.Tools[i].Name}:è¯†åˆ«è€—æ—¶:{stopwatch.ElapsedMilliseconds}ms";
                         Save_record(s1);
                         stopwatch.Restart();
 
-                        #region ±£´æÍ¼Æ¬
+                        #region ä¿å­˜å›¾ç‰‡
                         try
                         {
                             if (tool.ToolStatus == ToolStatus.OK)
@@ -1911,7 +1980,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                         catch (Exception ex)
                         {
-                            writeLog($"ÊÓ¾õ->±£´æÕÕÆ¬:±£´æÊ§°Ü£º{ex.ToString()}", false);
+                            writeLog($"è§†è§‰->ä¿å­˜ç…§ç‰‡:ä¿å­˜å¤±è´¥ï¼š{ex.ToString()}", false);
                         }
 
                         #endregion
@@ -1925,7 +1994,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                      where ToolModel.Command == DataModel.Processmodel.RCMD
                                      select ToolModel);
                             var wait = (from ToolModel in r
-                                        where (ToolModel.ToolStatus == ToolStatus.µÈ´ıÖĞ || ToolModel.ToolStatus == ToolStatus.Ê¶±ğÖĞ)
+                                        where (ToolModel.ToolStatus == ToolStatus.ç­‰å¾…ä¸­ || ToolModel.ToolStatus == ToolStatus.è¯†åˆ«ä¸­)
                                         select ToolModel);
 
                             if (wait.Count() == 0)
@@ -1997,7 +2066,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                        where (ToolModel.ToolStatus == ToolStatus.NG2)
                                        select ToolModel);
                             var wait = (from ToolModel in DataModel.Processmodel.Tools
-                                        where (ToolModel.ToolStatus == ToolStatus.µÈ´ıÖĞ || ToolModel.ToolStatus == ToolStatus.Ê¶±ğÖĞ)
+                                        where (ToolModel.ToolStatus == ToolStatus.ç­‰å¾…ä¸­ || ToolModel.ToolStatus == ToolStatus.è¯†åˆ«ä¸­)
                                         select ToolModel);
 
                             if (ok.Count() == c)
@@ -2031,9 +2100,9 @@ namespace F7_L12_Position_Detect.ViewModel
 
                         }
 
-                        writeLog($"ÊÓ¾õ->ÊÓ¾õ:±£´æÍê³É", false);
+                        writeLog($"è§†è§‰->è§†è§‰:ä¿å­˜å®Œæˆ", false);
 
-                        string s2 = $"{DataModel.Processmodel.Tools[i].Name}:±£´æÍ¼Æ¬·¢ËÍ½á¹ûºÄÊ±:{stopwatch.ElapsedMilliseconds}ms";
+                        string s2 = $"{DataModel.Processmodel.Tools[i].Name}:ä¿å­˜å›¾ç‰‡å‘é€ç»“æœè€—æ—¶:{stopwatch.ElapsedMilliseconds}ms";
                         Save_record(s2);
 
                     }
@@ -2051,7 +2120,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (DataModel.Settingmodel.SaveProcessData)
             {
                 DateTime dt = DateTime.Now;
-                string filename = $"{Environment.CurrentDirectory}\\Ê¶±ğ¹ı³ÌÈÕÖ¾\\{dt.ToString("yyyy-MM-dd")}\\{dt.ToString("yyyyMMddHH")}.txt";
+                string filename = $"{Environment.CurrentDirectory}\\è¯†åˆ«è¿‡ç¨‹æ—¥å¿—\\{dt.ToString("yyyy-MM-dd")}\\{dt.ToString("yyyyMMddHH")}.txt";
                 string dir = Path.GetDirectoryName(filename);
                 if (!Directory.Exists(dir))
                 {
@@ -2100,7 +2169,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
 
 
-        #region Ãæ»ı¼ÆËã
+        #region é¢ç§¯è®¡ç®—
 
         public int CoculateDimension(HObject image, ToolModel tool, HWindow hwindow, bool redraw = true)
         {

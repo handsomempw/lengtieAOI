@@ -49,6 +49,119 @@ namespace F7_L12_Position_Detect
             InitializeComponent();
             vml = this.FindResource("Locator") as ViewModelLocator;
             t = (ToolModel)DataContext;
+            InitializeCameraList();
+
+            // 监听相机选择变更事件
+            t.PropertyChanged += Tool_PropertyChanged;
+        }
+
+        private void InitializeCameraList()
+        {
+            try
+            {
+                // 获取全局相机数据并更新相机列表
+                var cameraData = vml.Main.DataModel.Settingmodel.camedata;
+
+                // 清空并重新填充相机列表，直接添加所有枚举到的相机设备
+                t.AvailableCameras.Clear();
+                foreach (var camera in cameraData.CameraModel.camera.cbDeviceList)
+                {
+                    t.AvailableCameras.Add(camera);
+                }
+
+                // 设置当前选择：查找匹配的相机序列号
+                t.SelectedCameraIndex = -1; // 默认未选择
+                if (!string.IsNullOrEmpty(t.CameraSerialNumber))
+                {
+                    // 查找匹配的相机序列号
+                    for (int i = 0; i < t.AvailableCameras.Count; i++)
+                    {
+                        if (t.AvailableCameras[i].Contains(t.CameraSerialNumber))
+                        {
+                            t.SelectedCameraIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                // 如果没有找到匹配的相机或者没有配置相机，选择第一个可用相机
+                if (t.SelectedCameraIndex == -1 && t.AvailableCameras.Count > 0)
+                {
+                    t.SelectedCameraIndex = 0;
+                    // 自动设置第一个相机的序列号
+                    UpdateCameraSerialNumber();
+                }
+            }
+            catch (Exception ex)
+            {
+                // 如果初始化失败，清空列表
+                t.AvailableCameras.Clear();
+                t.SelectedCameraIndex = -1;
+            }
+        }
+
+        /// <summary>
+        /// 处理工具属性变更事件
+        /// </summary>
+        private void Tool_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ToolModel.SelectedCameraIndex))
+            {
+                UpdateCameraSerialNumber();
+            }
+        }
+
+        /// <summary>
+        /// 根据选择的相机索引更新相机序列号
+        /// </summary>
+        private void UpdateCameraSerialNumber()
+        {
+            try
+            {
+                if (t.SelectedCameraIndex >= 0 && t.SelectedCameraIndex < t.AvailableCameras.Count)
+                {
+                    // 从相机名称中提取序列号
+                    string cameraName = t.AvailableCameras[t.SelectedCameraIndex];
+                    string serialNumber = ExtractSerialNumberFromCameraName(cameraName);
+                    t.CameraSerialNumber = serialNumber;
+                }
+                else
+                {
+                    // 无效索引时清空序列号
+                    t.CameraSerialNumber = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                // 出错时清空序列号
+                t.CameraSerialNumber = "";
+            }
+        }
+
+        /// <summary>
+        /// 从相机名称中提取序列号
+        /// </summary>
+        /// <param name="cameraName">相机名称，格式如 "GEV: 厂商名 型号 (序列号)" 或 "U3V: 厂商名 型号 (序列号)"</param>
+        /// <returns>序列号</returns>
+        private string ExtractSerialNumberFromCameraName(string cameraName)
+        {
+            try
+            {
+                // 查找最后一个括号中的内容作为序列号
+                int startIndex = cameraName.LastIndexOf('(');
+                int endIndex = cameraName.LastIndexOf(')');
+
+                if (startIndex >= 0 && endIndex > startIndex)
+                {
+                    return cameraName.Substring(startIndex + 1, endIndex - startIndex - 1);
+                }
+            }
+            catch
+            {
+                // 解析失败时返回空字符串
+            }
+
+            return "";
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)

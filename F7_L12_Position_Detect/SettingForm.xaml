@@ -91,6 +91,7 @@
                         <RowDefinition/>
                         <RowDefinition/>
                         <RowDefinition/>
+                        <RowDefinition/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto"/>
@@ -102,6 +103,7 @@
                     <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">触发指令:</TextBlock>
                     <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">相机曝光时间:</TextBlock>
                     <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">产品位置序号:</TextBlock>
+                    <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right">相机选择:</TextBlock>
 
                     <TextBlock Grid.Row="0" Grid.Column="1" Margin="2" Text="{Binding Index  }"/>
                     <ComboBox Grid.Row="1"  Grid.Column="1" Margin="2"  Text="{Binding TestMode,UpdateSourceTrigger=PropertyChanged}" IsEditable="True"  IsReadOnly="True" 
@@ -111,6 +113,11 @@
                     <TextBox Grid.Row="3" Grid.Column="1"   Margin="2" Text="{Binding Command}" />
                     <TextBox Grid.Row="4" Grid.Column="1"   Margin="2" Text="{Binding ExposureTime}" />
                     <TextBox Grid.Row="5" Grid.Column="1"   Margin="2" Text="{Binding ProductPositionNO}" />
+                    <ComboBox Grid.Row="6" Grid.Column="1" Margin="2"
+                              ItemsSource="{Binding AvailableCameras}"
+                              SelectedIndex="{Binding SelectedCameraIndex, UpdateSourceTrigger=PropertyChanged}"
+                              DisplayMemberPath="."
+                              p:ComboBoxHelper.Watermark="请选择相机设备" />
 
                 </Grid>
                 <GroupBox Header="二维码识别" Grid.Row="2" p:GroupBoxHelper.HeaderBackground="YellowGreen" BorderBrush="YellowGreen" Margin="0,5"
