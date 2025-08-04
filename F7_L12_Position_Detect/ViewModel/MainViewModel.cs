@@ -484,79 +484,106 @@ namespace F7_L12_Position_Detect.ViewModel
                             int Trig = readresult.Content[0];
                             try
                             {
-                                if (Trig == 1)
+                                if (Trig > 0)
                                 {
+                                    // 立即复位触发信号
                                     modbusTcp.Write((DataModel.Settingmodel.AddressStart).ToString(), (UInt16)0);
 
                                     if (DataModel.Processmodel.Trig_IO.IOstatus == 0)
                                     {
-                                        DataModel.Processmodel.Scannerstr = string.Empty;
-                                        DataModel.Processmodel.Barcodes = string.Empty;
-
-
-                                        if (DataModel.Settingmodel.ScannerMode == "HF800")
+                                        // 根据寄存器值映射PLC指令
+                                        string plcCommand = "";
+                                        switch (Trig)
                                         {
-                                            var r = DataModel.Settingmodel.HF800.Scanner();
-                                            DataModel.Processmodel.Scannerstr = r.value.Replace("\r", "").Replace("\n", "");
-                                            if (r.Status != Status.OK)
-                                            {
-                                                modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                                            }
-                                            else
-                                            {
-                                                SendMsgRobot("DOK");
-                                                ClearTools();
-                                            }
-                                        }
-                                        else
-                                        {
-                                            var r = DataModel.Settingmodel.ScannerModel.Scanner();
-                                            DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
-                                            if (!r.IsSuccess)
-                                            {
-                                                modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                                            }
-                                            else
-                                            {
-                                                SendMsgRobot("DOK");
-                                                ClearTools();
-                                            }
+                                            case 1: plcCommand = "ALL"; break;  // 向后兼容：执行所有工具
+                                            case 2: plcCommand = "A1"; break;   // 执行A1组工具
+                                            case 3: plcCommand = "A2"; break;   // 执行A2组工具
+                                            case 4: plcCommand = "A3"; break;   // 执行A3组工具
+                                            case 5: plcCommand = "A4"; break;   // 执行A4组工具
+                                            default:
+                                                writeLog($"PLC->视觉:未识别的触发值{Trig}", false);
+                                                break;
                                         }
 
-
-                                        //var r = DataModel.Settingmodel.ScannerModel.Scanner();
-                                        //DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
-
-                                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                        if (!string.IsNullOrEmpty(plcCommand))
                                         {
-                                            bool getsnlistfromremote = true;
-                                            foreach (var t in DataModel.Processmodel.Tools)
+                                            writeLog($"PLC->视觉:接收指令{plcCommand}(触发值:{Trig})", false);
+
+                                            // 设置当前执行指令（复用现有RCMD机制）
+                                            DataModel.Processmodel.RCMD = plcCommand;
+
+                                            // 清空扫码相关数据
+                                            DataModel.Processmodel.Scannerstr = string.Empty;
+                                            DataModel.Processmodel.Barcodes = string.Empty;
+
+                                            // 处理扫码器（保持原有逻辑）
+                                            if (DataModel.Settingmodel.ScannerMode == "HF800")
                                             {
-                                                if (t.SendBarcode && t.MPMode)
+                                                var r = DataModel.Settingmodel.HF800.Scanner();
+                                                DataModel.Processmodel.Scannerstr = r.value.Replace("\r", "").Replace("\n", "");
+                                                if (r.Status != Status.OK)
                                                 {
-                                                    getsnlistfromremote = false;
+                                                    modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                                                }
+                                                else
+                                                {
+                                                    SendMsgRobot("DOK");
+                                                    ClearTools();
                                                 }
                                             }
-                                            DataModel.Processmodel.SNList.Clear();
-
-                                            if (getsnlistfromremote)
+                                            else
                                             {
-                                                var r1 = GetSNList(DataModel.Processmodel.Scannerstr);
-
+                                                var r = DataModel.Settingmodel.ScannerModel.Scanner();
+                                                DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
+                                                if (!r.IsSuccess)
+                                                {
+                                                    modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                                                }
+                                                else
+                                                {
+                                                    SendMsgRobot("DOK");
+                                                    ClearTools();
+                                                }
                                             }
 
+                                            //var r = DataModel.Settingmodel.ScannerModel.Scanner();
+                                            //DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
 
-                                        }));
+                                            // 处理SN列表（保持原有逻辑）
+                                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                            {
+                                                bool getsnlistfromremote = true;
+                                                foreach (var t in DataModel.Processmodel.Tools)
+                                                {
+                                                    if (t.SendBarcode && t.MPMode)
+                                                    {
+                                                        getsnlistfromremote = false;
+                                                    }
+                                                }
+                                                DataModel.Processmodel.SNList.Clear();
 
-                                        //if (!r.IsSuccess)
-                                        //{
-                                        //    modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                                        //}
-                                        //else
-                                        //{
-                                        //    SendMsgRobot("DOK");
-                                        //    ClearTools();
-                                        //}
+                                                if (getsnlistfromremote)
+                                                {
+                                                    var r1 = GetSNList(DataModel.Processmodel.Scannerstr);
+
+                                                }
+
+
+                                            }));
+
+                                            //if (!r.IsSuccess)
+                                            //{
+                                            //    modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
+                                            //}
+                                            //else
+                                            //{
+                                            //    SendMsgRobot("DOK");
+                                            //    ClearTools();
+                                            //}
+
+                                            // 执行匹配指令的工具（新增核心逻辑）
+                                            ExecuteToolsByCommand(plcCommand);
+                                        }
                                     }
                                 }
                             }
@@ -606,6 +633,83 @@ namespace F7_L12_Position_Detect.ViewModel
 
             }
             catch { return false; }
+        }
+
+        /// <summary>
+        /// 按指令执行匹配的工具（PLC指令匹配模式）
+        /// </summary>
+        /// <param name="command">指令名称，如"A1"、"A2"或"ALL"</param>
+        private void ExecuteToolsByCommand(string command)
+        {
+            try
+            {
+                bool foundTool = false;
+                int firstMatchedToolIndex = -1;
+
+                // 查找匹配的工具
+                for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+                {
+                    bool isMatch = false;
+
+                    if (command == "ALL")
+                    {
+                        // ALL指令匹配所有工具（向后兼容）
+                        isMatch = true;
+                    }
+                    else
+                    {
+                        // 按Command字段匹配
+                        isMatch = DataModel.Processmodel.Tools[i].Command == command;
+                    }
+
+                    if (isMatch)
+                    {
+                        if (!foundTool)
+                        {
+                            foundTool = true;
+                            firstMatchedToolIndex = i;
+
+                            if (i == 0)
+                            {
+                                ClearTools();  // 第一个工具时清理状态
+                            }
+
+                            writeLog($"PLC->视觉:{command}开始设置参数", false);
+                            DataModel.Processmodel.ToolIndex = i + 1;
+
+                            // 检查工具是否指定了特定相机，如果是则切换相机
+                            SwitchCameraForTool(DataModel.Processmodel.Tools[i]);
+
+                            // 设置曝光参数
+                            DataModel.Settingmodel.camedata.CameraModel.exposuretime = DataModel.Processmodel.Tools[i].ExposureTime;
+                            DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = DataModel.Processmodel.Tools[i].ExposureTime;
+                            DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
+
+                            Thread.Sleep(DataModel.Settingmodel.delaytime);
+
+                            writeLog($"PLC->视觉:{command}开始触发", false);
+                            // 触发拍照（所有匹配工具共用一次拍照）
+                            DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
+                            writeLog($"PLC->视觉:{command}触发完成", false);
+
+                            break;  // 找到第一个匹配工具后触发拍照即可
+                        }
+                    }
+                }
+
+                if (!foundTool)
+                {
+                    writeLog($"PLC->视觉:未找到匹配指令{command}的工具", false);
+                }
+                else
+                {
+                    writeLog($"PLC->视觉:指令{command}执行完成，匹配工具将在图像处理时执行", false);
+                }
+            }
+            catch (Exception ex)
+            {
+                writeError($"PLC->视觉:执行指令{command}时发生错误:{ex.Message}");
+            }
         }
 
         private bool PLC_write(UInt16 result)
