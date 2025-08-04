@@ -450,6 +450,10 @@ namespace F7_L12_Position_Detect.ViewModel
 
         #endregion
         #region PLC通讯
+        // 添加执行状态锁，防止竞态条件
+        private volatile bool _isExecuting = false;
+        private readonly object _executionLock = new object();
+
         public void PLC_Start()
         {
             Thread t = new Thread(PLC_Process);
@@ -488,6 +492,17 @@ namespace F7_L12_Position_Detect.ViewModel
                                 {
                                     // 立即复位触发信号
                                     modbusTcp.Write((DataModel.Settingmodel.AddressStart).ToString(), (UInt16)0);
+
+                                    // 检查是否正在执行，防止竞态条件
+                                    lock (_executionLock)
+                                    {
+                                        if (_isExecuting)
+                                        {
+                                            writeLog($"PLC->视觉:系统正在执行中，忽略触发值{Trig}", false);
+                                            continue; // 跳过本次触发
+                                        }
+                                        _isExecuting = true; // 设置执行状态
+                                    }
 
                                     if (DataModel.Processmodel.Trig_IO.IOstatus == 0)
                                     {
@@ -584,10 +599,24 @@ namespace F7_L12_Position_Detect.ViewModel
                                             // 执行匹配指令的工具（新增核心逻辑）
                                             ExecuteToolsByCommand(plcCommand);
                                         }
+
+                                        // 执行完成后释放锁
+                                        lock (_executionLock)
+                                        {
+                                            _isExecuting = false;
+                                        }
                                     }
                                 }
                             }
-                            catch {; }
+                            catch (Exception ex)
+                            {
+                                writeError($"PLC触发处理异常: {ex.Message}");
+                                // 确保在异常情况下释放执行锁
+                                lock (_executionLock)
+                                {
+                                    _isExecuting = false;
+                                }
+                            }
 
                             #region 数据复制刷新
                             DataModel.Processmodel.Trig_IO.IOstatus = Trig;
@@ -612,7 +641,15 @@ namespace F7_L12_Position_Detect.ViewModel
                     //modbusTcp?.ConnectClose();
 
                 }
-                catch {; }
+                catch (Exception ex)
+                {
+                    writeError($"PLC通讯异常: {ex.Message}");
+                    // 确保在通讯异常情况下也释放执行锁
+                    lock (_executionLock)
+                    {
+                        _isExecuting = false;
+                    }
+                }
                 Thread.Sleep(100);
             }
 
@@ -679,6 +716,9 @@ namespace F7_L12_Position_Detect.ViewModel
 
                             // 检查工具是否指定了特定相机，如果是则切换相机
                             SwitchCameraForTool(DataModel.Processmodel.Tools[i]);
+
+                            // 等待相机切换完成，防止时序问题
+                            Thread.Sleep(100);
 
                             // 设置曝光参数
                             DataModel.Settingmodel.camedata.CameraModel.exposuretime = DataModel.Processmodel.Tools[i].ExposureTime;
@@ -1763,7 +1803,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
-
+            HObject processImage = null;
 
             try
             {
@@ -1778,8 +1818,11 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (channels == 1)
                 {
                     HOperatorSet.Compose3(Image, Image, Image, out var multiChannelImage);
-                    Image.Dispose();
-                    Image = multiChannelImage;
+                    processImage = multiChannelImage; // 使用局部变量管理
+                }
+                else
+                {
+                    processImage = Image; // 直接使用原图像
                 }
 
 
@@ -2222,7 +2265,18 @@ namespace F7_L12_Position_Detect.ViewModel
                 #endregion
 
             }
-            catch (Exception ex) {; }
+            catch (Exception ex)
+            {
+                writeError($"[{DataModel.Processmodel.RCMD}]图像处理异常:{ex.Message}");
+            }
+            finally
+            {
+                // 确保资源释放
+                if (processImage != null && processImage != Image)
+                {
+                    processImage.Dispose();
+                }
+            }
 
         }
 
