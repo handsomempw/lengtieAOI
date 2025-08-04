@@ -295,16 +295,24 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"工具{tool.Index}切换到相机: {camera.cbDeviceList[targetIndex]}", false);
 
-                    // 关闭当前相机
+                    // 关闭当前相机 - 使用状态轮询替代固定延时
                     camera.bnClose_Click();
-                    Thread.Sleep(500); // 等待相机关闭
+                    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    while (stopwatch.ElapsedMilliseconds < 3000 && camera.bnCloseEnabled)
+                    {
+                        Thread.Sleep(50); // 50ms轮询间隔
+                    }
 
                     // 切换到目标相机
                     camera.SelectedIndex = targetIndex;
 
-                    // 打开新相机
+                    // 打开新相机 - 使用状态轮询替代固定延时
                     camera.bnOpen_Click();
-                    Thread.Sleep(500); // 等待相机打开
+                    stopwatch.Restart();
+                    while (stopwatch.ElapsedMilliseconds < 3000 && !camera.bnCloseEnabled)
+                    {
+                        Thread.Sleep(50); // 50ms轮询间隔
+                    }
 
                     // 启动取流
                     camera.bnStartGrab_Click();
