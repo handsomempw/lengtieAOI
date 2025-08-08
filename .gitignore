@@ -362,3 +362,4 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /.cunzhi-memory
+/F7_L12_Position_Detect/dll

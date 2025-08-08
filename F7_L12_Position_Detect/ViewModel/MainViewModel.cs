@@ -33,6 +33,7 @@ using System.Windows.Input;
 using System.Data;
 using Color = System.Drawing.Color;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Honeywell;
 
 namespace F7_L12_Position_Detect.ViewModel
@@ -680,6 +681,14 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
+                // 检查是否可以开始检测（需要有SN）
+                if (!CanStartDetection())
+                {
+                    writeLog($"PLC->视觉:检测被阻止，原因：{(string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) ? "未输入产品SN" : "报工正在进行中")}", false);
+                    PLC_write((UInt16)2); // 返回NG状态
+                    return;
+                }
+
                 bool foundTool = false;
                 int firstMatchedToolIndex = -1;
 
@@ -2240,9 +2249,20 @@ namespace F7_L12_Position_Detect.ViewModel
                             if (status == 0)
                             {
                                 DataModel.Processmodel.Status = ToolStatus.OK;
-                                PLC_write((UInt16)1);
+
+                                // 检测成功后执行报工逻辑
+                                if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
+                                    CanStartDetection())
+                                {
+                                    _ = Task.Run(async () => await ExecuteReportWorkAsync("合格"));
+                                }
+                                else
+                                {
+                                    // 如果没有SN或报工未启用，仍然返回PLC
+                                    PLC_write((UInt16)1);
+                                }
                             }
-                            else if (status == 0)
+                            else if (status == 2)
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG2;
                                 PLC_write((UInt16)3);
@@ -2500,5 +2520,116 @@ namespace F7_L12_Position_Detect.ViewModel
             }
 
         }
+
+        #region 报工相关方法
+
+        /// <summary>
+        /// 刷新上岗人员信息
+        /// </summary>
+        public async Task RefreshWorkerInfoAsync()
+        {
+            try
+            {
+                writeLog("开始刷新上岗人员信息", false);
+
+                // 调用MES系统获取上岗人员信息
+                var workerInfo = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.get_worker_info(
+                    DataModel.Settingmodel.ReportWorkConfig.StationCode,
+                    out MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.worker_info worker);
+
+                if (workerInfo)
+                {
+                    DataModel.Processmodel.CurrentWorkerName = worker.worker_name;
+                    DataModel.Processmodel.CurrentWorkerID = worker.worker_ID;
+                    writeLog($"上岗人员信息刷新成功: {worker.worker_name}({worker.worker_ID})", false);
+                }
+                else
+                {
+                    DataModel.Processmodel.CurrentWorkerName = "未上岗";
+                    DataModel.Processmodel.CurrentWorkerID = "";
+                    writeLog("未查询到上岗人员信息", false);
+                }
+            }
+            catch (Exception ex)
+            {
+                writeError($"刷新上岗人员信息失败: {ex.Message}");
+                DataModel.Processmodel.CurrentWorkerName = "查询失败";
+                DataModel.Processmodel.CurrentWorkerID = "";
+            }
+        }
+
+        /// <summary>
+        /// 检查是否可以开始检测
+        /// </summary>
+        private bool CanStartDetection()
+        {
+            return !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
+                   !DataModel.Processmodel.IsReportingWork;
+        }
+
+        /// <summary>
+        /// 执行报工操作
+        /// </summary>
+        private async Task<bool> ExecuteReportWorkAsync(string qualityResult = "合格")
+        {
+            if (DataModel.Processmodel.IsReportingWork)
+            {
+                writeLog("报工正在进行中，跳过本次报工", false);
+                return false;
+            }
+
+            try
+            {
+                DataModel.Processmodel.IsReportingWork = true;
+                writeLog($"开始报工: SN={DataModel.Processmodel.CurrentProductSN}, 结果={qualityResult}", false);
+
+                var reportResult = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.Save_EquipmentRecord_mes(
+                    DataModel.Settingmodel.ReportWorkConfig.StationCode,     // 工位码
+                    "", // 工单号 - 由MES系统内部获取
+                    DataModel.Processmodel.CurrentProductSN,                 // 产品SN
+                    DataModel.Settingmodel.ReportWorkConfig.ProcedureName,   // 工序名称
+                    DataModel.Settingmodel.ReportWorkConfig.EquipmentNumber, // 设备编号
+                    qualityResult,                                           // 检测结果
+                    DataModel.Settingmodel.ReportWorkConfig.StationCode      // 工序编号
+                );
+
+                if (reportResult)
+                {
+                    string logMessage = $"[{DateTime.Now:HH:mm:ss}] SN:{DataModel.Processmodel.CurrentProductSN} 报工成功";
+                    DataModel.Processmodel.ReportWorkSuccessLog.Insert(0, logMessage);
+
+                    // 保持最多50条记录
+                    while (DataModel.Processmodel.ReportWorkSuccessLog.Count > 50)
+                    {
+                        DataModel.Processmodel.ReportWorkSuccessLog.RemoveAt(DataModel.Processmodel.ReportWorkSuccessLog.Count - 1);
+                    }
+
+                    writeLog($"报工成功: SN={DataModel.Processmodel.CurrentProductSN}", false);
+
+                    // 清空当前SN，准备下一个产品
+                    DataModel.Processmodel.CurrentProductSN = string.Empty;
+
+                    return true;
+                }
+                else
+                {
+                    writeError($"报工失败: SN={DataModel.Processmodel.CurrentProductSN}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                writeError($"报工异常: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                DataModel.Processmodel.IsReportingWork = false;
+            }
+        }
+
+
+
+        #endregion
     }
 }

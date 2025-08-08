@@ -107,8 +107,63 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("扫码检索服务器地址")]
         public string SNlistServerIP { set; get; } = "10.23.8.28";
 
+        [XmlElement("报工配置")]
+        public ReportWorkConfig ReportWorkConfig { set; get; } = new ReportWorkConfig();
 
+    }
 
+    /// <summary>
+    /// 报工配置类
+    /// </summary>
+    public class ReportWorkConfig : ObservableObject
+    {
+        private string _stationCode = "ST001";
+        [XmlElement("工位号")]
+        public string StationCode
+        {
+            get { return _stationCode; }
+            set
+            {
+                _stationCode = value;
+                RaisePropertyChanged(() => StationCode);
+            }
+        }
+
+        private string _procedureName = "视觉检测";
+        [XmlElement("工序名称")]
+        public string ProcedureName
+        {
+            get { return _procedureName; }
+            set
+            {
+                _procedureName = value;
+                RaisePropertyChanged(() => ProcedureName);
+            }
+        }
+
+        private string _equipmentNumber = "VIS001";
+        [XmlElement("设备编号")]
+        public string EquipmentNumber
+        {
+            get { return _equipmentNumber; }
+            set
+            {
+                _equipmentNumber = value;
+                RaisePropertyChanged(() => EquipmentNumber);
+            }
+        }
+
+        private bool _enableAutoReportWork = true;
+        [XmlElement("启用自动报工")]
+        public bool EnableAutoReportWork
+        {
+            get { return _enableAutoReportWork; }
+            set
+            {
+                _enableAutoReportWork = value;
+                RaisePropertyChanged(() => EnableAutoReportWork);
+            }
+        }
     }
 
     public enum IOstatus

@@ -123,5 +123,64 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("显示照片")]
         public BitmapSource ShowBitmapSource { set; get; }
 
+        // 报工相关属性
+        private string _currentProductSN = string.Empty;
+        [XmlElement("当前产品SN")]
+        public string CurrentProductSN
+        {
+            get { return _currentProductSN; }
+            set
+            {
+                _currentProductSN = value;
+                RaisePropertyChanged(() => CurrentProductSN);
+                RaisePropertyChanged(() => CanStartDetection);
+            }
+        }
+
+        private string _currentWorkerName = string.Empty;
+        [XmlIgnore]
+        public string CurrentWorkerName
+        {
+            get { return _currentWorkerName; }
+            set
+            {
+                _currentWorkerName = value;
+                RaisePropertyChanged(() => CurrentWorkerName);
+            }
+        }
+
+        private string _currentWorkerID = string.Empty;
+        [XmlIgnore]
+        public string CurrentWorkerID
+        {
+            get { return _currentWorkerID; }
+            set
+            {
+                _currentWorkerID = value;
+                RaisePropertyChanged(() => CurrentWorkerID);
+            }
+        }
+
+        private bool _isReportingWork = false;
+        [XmlIgnore]
+        public bool IsReportingWork
+        {
+            get { return _isReportingWork; }
+            set
+            {
+                _isReportingWork = value;
+                RaisePropertyChanged(() => IsReportingWork);
+            }
+        }
+
+        [XmlIgnore]
+        public bool CanStartDetection
+        {
+            get { return !string.IsNullOrEmpty(CurrentProductSN) && !IsReportingWork; }
+        }
+
+        [XmlElement("报工成功记录")]
+        public ObservableCollection<string> ReportWorkSuccessLog { set; get; } = new ObservableCollection<string>();
+
     }
 }
