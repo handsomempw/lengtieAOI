@@ -22,6 +22,11 @@
             <local:Bool2Visible_Converter            x:Key="Bool2Visible_Converter"/>
             <local:Bool2Visible_Converter_INV        x:Key="Bool2Visible_Converter_INV"/>
             <local:BoolINV_Converter                 x:Key="BoolINV_Converter"/>
+            <local:Bool2DetectionStatus              x:Key="Bool2DetectionStatus"/>
+            <local:Bool2StatusColor                  x:Key="Bool2StatusColor"/>
+            <local:Bool2ConfigBackground             x:Key="Bool2ConfigBackground"/>
+            <local:Bool2ConfigBorder                 x:Key="Bool2ConfigBorder"/>
+            <local:Bool2ConfigForeground             x:Key="Bool2ConfigForeground"/>
             <local:permission2lockorunlock_Converter x:Key="permission2lockorunlock_Converter"/>
             <local:TestMode2Visibility_Barcode       x:Key="TestMode2Visibility_Barcode"/>
             <local:TestMode2Visibility_Dimension     x:Key="TestMode2Visibility_Dimension"/>

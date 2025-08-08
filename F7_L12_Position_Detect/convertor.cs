@@ -447,4 +447,134 @@ namespace F7_L12_Position_Detect
         二维码,
         模板匹配
     }
+
+    /// <summary>
+    /// 布尔值转检测状态文本转换器
+    /// </summary>
+    [ValueConversion(typeof(bool), typeof(string))]
+    public class Bool2DetectionStatus : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+            { throw new ArgumentNullException("value can not be null"); }
+            if ((bool)value)
+            {
+                return "可以检测";
+            }
+            else
+            {
+                return "请输入SN";
+            }
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 布尔值转状态颜色转换器
+    /// </summary>
+    [ValueConversion(typeof(bool), typeof(SolidColorBrush))]
+    public class Bool2StatusColor : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+            { throw new ArgumentNullException("value can not be null"); }
+            if ((bool)value)
+            {
+                return Brushes.Green;
+            }
+            else
+            {
+                return Brushes.Red;
+            }
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 布尔值转配置背景色转换器
+    /// </summary>
+    [ValueConversion(typeof(bool), typeof(SolidColorBrush))]
+    public class Bool2ConfigBackground : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+            { throw new ArgumentNullException("value can not be null"); }
+            if ((bool)value)
+            {
+                return new SolidColorBrush(Color.FromRgb(255, 255, 224)); // 淡黄色，表示可编辑
+            }
+            else
+            {
+                return Brushes.LightGray; // 灰色，表示只读
+            }
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 布尔值转配置边框色转换器
+    /// </summary>
+    [ValueConversion(typeof(bool), typeof(SolidColorBrush))]
+    public class Bool2ConfigBorder : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+            { throw new ArgumentNullException("value can not be null"); }
+            if ((bool)value)
+            {
+                return Brushes.Orange; // 橙色边框，表示可编辑
+            }
+            else
+            {
+                return Brushes.Gray; // 灰色边框，表示只读
+            }
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 布尔值转配置前景色转换器
+    /// </summary>
+    [ValueConversion(typeof(bool), typeof(SolidColorBrush))]
+    public class Bool2ConfigForeground : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+            { throw new ArgumentNullException("value can not be null"); }
+            if ((bool)value)
+            {
+                return Brushes.DarkBlue; // 深蓝色，表示可编辑
+            }
+            else
+            {
+                return Brushes.Gray; // 灰色，表示只读
+            }
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
 }

@@ -84,6 +84,9 @@ namespace F7_L12_Position_Detect
 
             vml.Main.PLC_Start();
 
+            // 启动时自动刷新上岗人员信息
+            _ = Task.Run(async () => await vml.Main.RefreshWorkerInfoAsync());
+
         }
 
 
@@ -270,6 +273,91 @@ namespace F7_L12_Position_Detect
             {
                 vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
             }
+        }
+
+        // 报工相关事件处理
+        private void btnClearSN_Click(object sender, RoutedEventArgs e)
+        {
+            if (MessageBoxX.Show("是否确定清空产品SN？", "提示", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
+            {
+                vml.Main.DataModel.Processmodel.CurrentProductSN = string.Empty;
+            }
+        }
+
+        private async void btnRefreshWorker_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // 调用刷新上岗人员的方法
+                await vml.Main.RefreshWorkerInfoAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBoxX.Show($"刷新上岗人员失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // 配置参数变更事件处理
+        private void txtStationCode_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                // 延迟保存，避免频繁保存
+                SaveConfigWithDelay();
+            }
+        }
+
+        private void txtProcedureName_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                SaveConfigWithDelay();
+            }
+        }
+
+        private void txtEquipmentNumber_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                SaveConfigWithDelay();
+            }
+        }
+
+        private void chkEnableAutoReportWork_Checked(object sender, RoutedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                SaveConfigWithDelay();
+            }
+        }
+
+        private void chkEnableAutoReportWork_Unchecked(object sender, RoutedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                SaveConfigWithDelay();
+            }
+        }
+
+        private System.Windows.Threading.DispatcherTimer _saveTimer;
+        private void SaveConfigWithDelay()
+        {
+            // 如果定时器已存在，重置它
+            if (_saveTimer != null)
+            {
+                _saveTimer.Stop();
+            }
+            else
+            {
+                _saveTimer = new System.Windows.Threading.DispatcherTimer();
+                _saveTimer.Interval = TimeSpan.FromSeconds(2); // 2秒延迟
+                _saveTimer.Tick += (s, e) =>
+                {
+                    _saveTimer.Stop();
+                    vml.Main.SaveSettingModel();
+                };
+            }
+            _saveTimer.Start();
         }
     }
 }
