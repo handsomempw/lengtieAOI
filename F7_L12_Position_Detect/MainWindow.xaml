@@ -220,6 +220,7 @@
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto"/>
@@ -239,7 +240,14 @@
                                VerticalAlignment="Center" Margin="5" FontWeight="Bold" FontSize="13"
                                Foreground="{Binding DataModel.Processmodel.CanStartDetection, Converter={StaticResource Bool2StatusColor}}"/>
 
-                    <Button Grid.Row="2" Grid.ColumnSpan="2" Name="btnClearSN" Content="清空SN"
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="扫码状态:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1"
+                               Text="{Binding DataModel.Processmodel.ScanCodeStatus}"
+                               VerticalAlignment="Center" Margin="5" FontWeight="Bold" FontSize="13"
+                               Foreground="{Binding DataModel.Processmodel.ScanCodeStatusColor}"/>
+
+                    <Button Grid.Row="3" Grid.ColumnSpan="2" Name="btnClearSN" Content="清空SN"
                             Click="btnClearSN_Click" Margin="5" Padding="5" FontSize="12"/>
                 </Grid>
             </GroupBox>

@@ -35,6 +35,7 @@ using Color = System.Drawing.Color;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Honeywell;
+using F7_L12_Position_Detect.Service;
 
 namespace F7_L12_Position_Detect.ViewModel
 {
@@ -73,6 +74,9 @@ namespace F7_L12_Position_Detect.ViewModel
 
         [XmlElement("数据模型")]
         public DataModel DataModel { get; set; } = new DataModel();
+
+        // MES服务实例
+        private readonly MESService _mesService = new MESService();
 
 
         public void InitHwindow(HWindow _HWindow)
@@ -532,12 +536,18 @@ namespace F7_L12_Position_Detect.ViewModel
                                             DataModel.Processmodel.Scannerstr = string.Empty;
                                             DataModel.Processmodel.Barcodes = string.Empty;
 
-                                            // 处理扫码器（保持原有逻辑）
+                                            // 处理扫码器并集成MES服务
+                                            string scanCode = string.Empty;
+                                            bool scanSuccess = false;
+
                                             if (DataModel.Settingmodel.ScannerMode == "HF800")
                                             {
                                                 var r = DataModel.Settingmodel.HF800.Scanner();
-                                                DataModel.Processmodel.Scannerstr = r.value.Replace("\r", "").Replace("\n", "");
-                                                if (r.Status != Status.OK)
+                                                scanCode = r.value.Replace("\r", "").Replace("\n", "");
+                                                DataModel.Processmodel.Scannerstr = scanCode;
+                                                scanSuccess = (r.Status == Status.OK);
+
+                                                if (!scanSuccess)
                                                 {
                                                     modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
                                                 }
@@ -550,8 +560,11 @@ namespace F7_L12_Position_Detect.ViewModel
                                             else
                                             {
                                                 var r = DataModel.Settingmodel.ScannerModel.Scanner();
-                                                DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
-                                                if (!r.IsSuccess)
+                                                scanCode = r.receivestring.Replace("\r", "").Replace("\n", "");
+                                                DataModel.Processmodel.Scannerstr = scanCode;
+                                                scanSuccess = r.IsSuccess;
+
+                                                if (!scanSuccess)
                                                 {
                                                     modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
                                                 }
@@ -560,6 +573,19 @@ namespace F7_L12_Position_Detect.ViewModel
                                                     SendMsgRobot("DOK");
                                                     ClearTools();
                                                 }
+                                            }
+
+                                            // 如果扫码成功，调用MES服务处理
+                                            if (scanSuccess && !string.IsNullOrEmpty(scanCode))
+                                            {
+                                                ProcessScanCodeWithMES(scanCode);
+                                            }
+                                            else if (!scanSuccess)
+                                            {
+                                                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                                {
+                                                    DataModel.Processmodel.ScanCodeStatus = "扫码失败";
+                                                }));
                                             }
 
                                             //var r = DataModel.Settingmodel.ScannerModel.Scanner();
@@ -671,6 +697,83 @@ namespace F7_L12_Position_Detect.ViewModel
 
             }
             catch { return false; }
+        }
+
+        /// <summary>
+        /// 处理扫码并集成MES服务
+        /// 包括SN解析和工序校验
+        /// </summary>
+        /// <param name="scanCode">扫码内容</param>
+        private async void ProcessScanCodeWithMES(string scanCode)
+        {
+            await ProcessScanCodeWithMESAsync(scanCode);
+        }
+
+        /// <summary>
+        /// 处理扫码并集成MES服务（异步公共方法）
+        /// 包括SN解析和工序校验
+        /// </summary>
+        /// <param name="scanCode">扫码内容</param>
+        public async Task ProcessScanCodeWithMESAsync(string scanCode)
+        {
+            try
+            {
+                // 更新扫码状态为处理中
+                DataModel.Processmodel.ScanCodeStatus = "正在处理...";
+
+                // 获取工序名称
+                string procedureName = DataModel.Settingmodel.ReportWorkConfig.ProcedureName;
+
+                // 调用MES服务进行完整处理
+                var (scanResult, validationResult) = await _mesService.ProcessScanCodeWithValidationAsync(scanCode, procedureName);
+
+                // 处理扫码结果
+                if (scanResult.Success)
+                {
+                    // SN获取成功，更新到界面
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        DataModel.Processmodel.CurrentProductSN = scanResult.SN;
+                        DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                        writeLog($"扫码处理成功: SN={scanResult.SN}");
+                    }));
+
+                    // 处理工序校验结果
+                    if (validationResult != null)
+                    {
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            if (validationResult.Success)
+                            {
+                                DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
+                                writeLog($"工序校验通过: SN={scanResult.SN}, 工序={procedureName}");
+                            }
+                            else
+                            {
+                                DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
+                                writeLog($"工序校验失败: {validationResult.ErrorMessage}");
+                            }
+                        }));
+                    }
+                }
+                else
+                {
+                    // SN获取失败
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                        writeLog($"扫码处理失败: {scanResult.ErrorMessage}");
+                    }));
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    DataModel.Processmodel.ScanCodeStatus = "处理异常";
+                    writeLog($"扫码处理异常: {ex.Message}");
+                }));
+            }
         }
 
         /// <summary>

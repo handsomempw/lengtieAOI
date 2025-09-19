@@ -179,6 +179,43 @@ namespace F7_L12_Position_Detect.Model
             get { return !string.IsNullOrEmpty(CurrentProductSN) && !IsReportingWork; }
         }
 
+        // 扫码状态相关属性
+        private string _scanCodeStatus = "等待扫码";
+        [XmlIgnore]
+        public string ScanCodeStatus
+        {
+            get { return _scanCodeStatus; }
+            set
+            {
+                _scanCodeStatus = value;
+                RaisePropertyChanged(() => ScanCodeStatus);
+                RaisePropertyChanged(() => ScanCodeStatusColor);
+            }
+        }
+
+        [XmlIgnore]
+        public SolidColorBrush ScanCodeStatusColor
+        {
+            get
+            {
+                switch (_scanCodeStatus)
+                {
+                    case "扫码成功":
+                    case "SN获取成功":
+                    case "工序校验通过":
+                        return Brushes.Green;
+                    case "扫码失败":
+                    case "SN获取失败":
+                    case "工序校验失败":
+                        return Brushes.Red;
+                    case "正在处理...":
+                        return Brushes.Orange;
+                    default:
+                        return Brushes.Gray;
+                }
+            }
+        }
+
         [XmlElement("报工成功记录")]
         public ObservableCollection<string> ReportWorkSuccessLog { set; get; } = new ObservableCollection<string>();
 

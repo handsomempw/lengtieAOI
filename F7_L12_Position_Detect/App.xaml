@@ -27,6 +27,7 @@
             <local:Bool2ConfigBackground             x:Key="Bool2ConfigBackground"/>
             <local:Bool2ConfigBorder                 x:Key="Bool2ConfigBorder"/>
             <local:Bool2ConfigForeground             x:Key="Bool2ConfigForeground"/>
+            <local:ScanCodeStatus2Color              x:Key="ScanCodeStatus2Color"/>
             <local:permission2lockorunlock_Converter x:Key="permission2lockorunlock_Converter"/>
             <local:TestMode2Visibility_Barcode       x:Key="TestMode2Visibility_Barcode"/>
             <local:TestMode2Visibility_Dimension     x:Key="TestMode2Visibility_Dimension"/>

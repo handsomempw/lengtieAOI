@@ -123,6 +123,7 @@
     <Compile Include="Model\Setting\ImageSaveSetting.cs" />
     <Compile Include="Model\Setting\TcpSetting.cs" />
     <Compile Include="Model\Tool\ToolModel.cs" />
+    <Compile Include="Service\MESService.cs" />
     <Compile Include="SettingForm.xaml.cs">
       <DependentUpon>SettingForm.xaml</DependentUpon>
     </Compile>

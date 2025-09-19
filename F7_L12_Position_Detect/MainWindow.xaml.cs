@@ -233,37 +233,37 @@ namespace F7_L12_Position_Detect
             }
         }
 
-        private void scannertrig_Click(object sender, RoutedEventArgs e)
+        private async void scannertrig_Click(object sender, RoutedEventArgs e)
         {
+            string scanCode = string.Empty;
+            bool scanSuccess = false;
+
             if (vml.Main.DataModel.Settingmodel.ScannerMode == "HF800")
             {
                 var r = vml.Main.DataModel.Settingmodel.HF800.Scanner();
-                vml.Main.DataModel.Processmodel.Scannerstr = r.value.Replace("\r", "").Replace("\n", "");
+                scanCode = r.value.Replace("\r", "").Replace("\n", "");
+                vml.Main.DataModel.Processmodel.Scannerstr = scanCode;
                 vml.Main.DataModel.Processmodel.SNList.Clear();
                 vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
-                if (r.Status != Status.OK)
-                {
-                    //modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                }
-                else
-                {
-                    //SendMsgRobot("DOK");
-                    // ClearTools();
-                }
+                scanSuccess = (r.Status == Status.OK);
             }
             else
             {
                 var r = vml.Main.DataModel.Settingmodel.ScannerModel.Scanner();
-                vml.Main.DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
-                if (!r.IsSuccess)
-                {
-                    //   modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                }
-                else
-                {
-                    //SendMsgRobot("DOK");
-                    //ClearTools();
-                }
+                scanCode = r.receivestring.Replace("\r", "").Replace("\n", "");
+                vml.Main.DataModel.Processmodel.Scannerstr = scanCode;
+                scanSuccess = r.IsSuccess;
+            }
+
+            // 如果扫码成功，调用MES服务处理
+            if (scanSuccess && !string.IsNullOrEmpty(scanCode))
+            {
+                // 调用MainViewModel中的MES处理方法
+                await vml.Main.ProcessScanCodeWithMESAsync(scanCode);
+            }
+            else if (!scanSuccess)
+            {
+                vml.Main.DataModel.Processmodel.ScanCodeStatus = "扫码失败";
             }
         }
 
