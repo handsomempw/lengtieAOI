@@ -32,6 +32,9 @@
             <local:TestMode2Visibility_Dimension     x:Key="TestMode2Visibility_Dimension"/>
             <local:TestMode2Visibility_ShapeMatch    x:Key="TestMode2Visibility_ShapeMatch"/>
 
+            <!-- 阴影效果资源 -->
+            <DropShadowEffect x:Key="DropShadowEffect" Color="Gray" Direction="315" ShadowDepth="2" Opacity="0.5" BlurRadius="3"/>
+
         </ResourceDictionary>
     </Application.Resources>
 </Application>

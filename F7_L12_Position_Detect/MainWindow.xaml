@@ -208,12 +208,13 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <!-- 报工标题 -->
-            <TextBlock Grid.Row="0" Text="生产报工" FontSize="16" FontWeight="Bold"
-                       HorizontalAlignment="Center" Margin="0,5" Foreground="DarkBlue"/>
+            <!-- 报工标题 - 增强显著程度 -->
+            <TextBlock Grid.Row="0" Text="生产报工" FontSize="22" FontWeight="Bold"
+                       HorizontalAlignment="Center" Margin="0,8" Foreground="DarkBlue"
+                       Effect="{DynamicResource DropShadowEffect}"/>
 
-            <!-- SN输入区域 -->
-            <GroupBox Grid.Row="1" Header="产品信息" Margin="0,5">
+            <!-- SN输入区域 - 减小字体突出主次 -->
+            <GroupBox Grid.Row="1" Header="产品信息" Margin="0,5" FontSize="13" FontWeight="Normal">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="auto"/>
@@ -225,24 +226,26 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="产品SN:" VerticalAlignment="Center" Margin="5"/>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="产品SN:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="0" Grid.Column="1" Name="txtProductSN"
                              Text="{Binding DataModel.Processmodel.CurrentProductSN, UpdateSourceTrigger=PropertyChanged}"
                              Margin="5" Padding="5" FontSize="14"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="检测状态:" VerticalAlignment="Center" Margin="5"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="检测状态:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBlock Grid.Row="1" Grid.Column="1"
                                Text="{Binding DataModel.Processmodel.CanStartDetection, Converter={StaticResource Bool2DetectionStatus}}"
-                               VerticalAlignment="Center" Margin="5" FontWeight="Bold"
+                               VerticalAlignment="Center" Margin="5" FontWeight="Bold" FontSize="13"
                                Foreground="{Binding DataModel.Processmodel.CanStartDetection, Converter={StaticResource Bool2StatusColor}}"/>
 
                     <Button Grid.Row="2" Grid.ColumnSpan="2" Name="btnClearSN" Content="清空SN"
-                            Click="btnClearSN_Click" Margin="5" Padding="5"/>
+                            Click="btnClearSN_Click" Margin="5" Padding="5" FontSize="12"/>
                 </Grid>
             </GroupBox>
 
-            <!-- 报工配置区域 -->
-            <GroupBox Grid.Row="2" Header="报工配置" Margin="0,5">
+            <!-- 报工配置区域 - 减小字体突出主次 -->
+            <GroupBox Grid.Row="2" Header="报工配置" Margin="0,5" FontSize="13" FontWeight="Normal">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="auto"/>
@@ -255,7 +258,8 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="工位号:" VerticalAlignment="Center" Margin="5"/>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="工位号:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="0" Grid.Column="1" Name="txtStationCode"
                              Text="{Binding DataModel.Settingmodel.ReportWorkConfig.StationCode, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{Binding DataModel.Settingmodel.permission}"
@@ -264,7 +268,8 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="工序名称:" VerticalAlignment="Center" Margin="5"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="工序名称:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="1" Grid.Column="1" Name="txtProcedureName"
                              Text="{Binding DataModel.Settingmodel.ReportWorkConfig.ProcedureName, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{Binding DataModel.Settingmodel.permission}"
@@ -273,7 +278,8 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="设备编号:" VerticalAlignment="Center" Margin="5"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="设备编号:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="2" Grid.Column="1" Name="txtEquipmentNumber"
                              Text="{Binding DataModel.Settingmodel.ReportWorkConfig.EquipmentNumber, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{Binding DataModel.Settingmodel.permission}"
@@ -282,19 +288,20 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="自动报工:" VerticalAlignment="Center" Margin="5"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="自动报工:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
                     <CheckBox Grid.Row="3" Grid.Column="1" Name="chkEnableAutoReportWork"
                               IsChecked="{Binding DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork}"
                               IsEnabled="{Binding DataModel.Settingmodel.permission}"
                               Checked="chkEnableAutoReportWork_Checked"
                               Unchecked="chkEnableAutoReportWork_Unchecked"
-                              VerticalAlignment="Center" Margin="5"
+                              VerticalAlignment="Center" Margin="5" FontSize="12"
                               Foreground="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigForeground}}"/>
                 </Grid>
             </GroupBox>
 
-            <!-- 上岗人员信息 -->
-            <GroupBox Grid.Row="3" Header="上岗人员" Margin="0,5">
+            <!-- 上岗人员信息 - 减小字体突出主次 -->
+            <GroupBox Grid.Row="3" Header="上岗人员" Margin="0,5" FontSize="13" FontWeight="Normal">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="auto"/>
@@ -306,29 +313,31 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="姓名:" VerticalAlignment="Center" Margin="5"/>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="姓名:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBlock Grid.Row="0" Grid.Column="1"
                                Text="{Binding DataModel.Processmodel.CurrentWorkerName}"
-                               VerticalAlignment="Center" Margin="5" FontWeight="Bold"/>
+                               VerticalAlignment="Center" Margin="5" FontWeight="Bold" FontSize="13"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="工号:" VerticalAlignment="Center" Margin="5"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="工号:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBlock Grid.Row="1" Grid.Column="1"
                                Text="{Binding DataModel.Processmodel.CurrentWorkerID}"
-                               VerticalAlignment="Center" Margin="5" FontWeight="Bold"/>
+                               VerticalAlignment="Center" Margin="5" FontWeight="Bold" FontSize="13"/>
 
                     <Button Grid.Row="2" Grid.ColumnSpan="2" Name="btnRefreshWorker" Content="刷新上岗人员"
-                            Click="btnRefreshWorker_Click" Margin="5" Padding="5"/>
+                            Click="btnRefreshWorker_Click" Margin="5" Padding="5" FontSize="12"/>
                 </Grid>
             </GroupBox>
 
-            <!-- 报工成功记录 -->
-            <GroupBox Grid.Row="4" Header="报工记录" Margin="0,5">
+            <!-- 报工成功记录 - 减小字体突出主次 -->
+            <GroupBox Grid.Row="4" Header="报工记录" Margin="0,5" FontSize="13" FontWeight="Normal">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ListBox ItemsSource="{Binding DataModel.Processmodel.ReportWorkSuccessLog}"
                              Background="Transparent" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" FontSize="12" Margin="2"
+                                <TextBlock Text="{Binding}" FontSize="11" Margin="2"
                                            Foreground="Green" TextWrapping="Wrap"/>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
