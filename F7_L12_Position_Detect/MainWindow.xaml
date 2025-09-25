@@ -36,7 +36,7 @@
                     <ColumnDefinition Width="auto"/>
                 </Grid.ColumnDefinitions>
                 <Menu p:WindowX.IsDragMoveArea="False" FontSize="20"   VerticalAlignment="Center" Margin="20,0,0,0" Background="Transparent" BorderThickness="0">
-                    <MenuItem Header="法拉电子-上料视觉定位系统" p:MenuItemHelper.HoverBackground="Transparent" Background="Transparent" Foreground="WhiteSmoke" BorderThickness="0">
+                    <MenuItem Header="法拉电子-视觉检测报工" p:MenuItemHelper.HoverBackground="Transparent" Background="Transparent" Foreground="WhiteSmoke" BorderThickness="0">
                         <MenuItem Header="新建工程" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"  Visibility="{Binding  Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.permission,Converter={StaticResource Bool2Visible_Converter}}" Command="{Binding Source={StaticResource Locator},Path=Main.NEW_PRJCMD}"/>
                         <MenuItem Header="保存工程" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"                                                                                           Command="{Binding Source={StaticResource Locator},Path=Main.SAVE_PRJCMD}"/>
                         <!--<MenuItem Header="注册主控" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"  Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter}}" Command="{Binding Source={StaticResource Locator},Path=Main.REGISTER_MAIN_CMD}" />
@@ -231,6 +231,7 @@
                                Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="0" Grid.Column="1" Name="txtProductSN"
                              Text="{Binding DataModel.Processmodel.CurrentProductSN, UpdateSourceTrigger=PropertyChanged}"
+                             TextChanged="txtProductSN_TextChanged"
                              Margin="5" Padding="5" FontSize="14"/>
 
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="检测状态:" VerticalAlignment="Center"

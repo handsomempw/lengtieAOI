@@ -339,6 +339,68 @@ namespace F7_L12_Position_Detect
             }
         }
 
+        // 产品SN输入框文本变化事件处理 - 检测扫码枪输入的换行符
+        private async void txtProductSN_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            try
+            {
+                if (sender is TextBox textBox)
+                {
+                    string inputText = textBox.Text;
+
+                    // 检测是否包含换行符（扫码枪输入完成的标志）
+                    if (inputText.Contains("\n") || inputText.Contains("\r"))
+                    {
+                        // 清除换行符，获取纯净的扫码内容
+                        string cleanScanCode = inputText.Replace("\r", "").Replace("\n", "").Trim();
+
+                        if (!string.IsNullOrEmpty(cleanScanCode))
+                        {
+                            // 更新输入框内容（移除换行符）
+                            textBox.Text = cleanScanCode;
+
+                            // 调用扫码处理流程：编码转换为SN码并进行工序校验
+                            await ProcessScanCodeFromInput(cleanScanCode);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // 记录错误但不中断用户操作
+                vml?.Main?.writeLog($"产品SN输入处理异常: {ex.Message}", true);
+            }
+        }
+
+        /// <summary>
+        /// 处理从输入框获取的扫码内容
+        /// 执行编码转换和工序校验流程
+        /// </summary>
+        /// <param name="scanCode">扫码内容</param>
+        private async Task ProcessScanCodeFromInput(string scanCode)
+        {
+            try
+            {
+                // 调用MainViewModel中的扫码处理方法
+                if (vml?.Main != null)
+                {
+                    // 更新扫码相关数据
+                    vml.Main.DataModel.Processmodel.Scannerstr = scanCode;
+                    vml.Main.DataModel.Processmodel.SNList.Clear();
+                    vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
+
+                    // 调用MES服务处理扫码：包括编码转换为SN和工序校验
+                    await vml.Main.ProcessScanCodeWithMESAsync(scanCode);
+
+                    vml.Main.writeLog($"自动处理扫码输入: {scanCode}", false);
+                }
+            }
+            catch (Exception ex)
+            {
+                vml?.Main?.writeLog($"处理扫码输入异常: {ex.Message}", true);
+            }
+        }
+
         private System.Windows.Threading.DispatcherTimer _saveTimer;
         private void SaveConfigWithDelay()
         {
