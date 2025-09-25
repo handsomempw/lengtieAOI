@@ -2633,31 +2633,65 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
+                // 显示正在刷新状态
+                DataModel.Processmodel.RefreshWorkerStatus = "正在刷新...";
                 writeLog("开始刷新上岗人员信息", false);
 
-                // 调用MES系统获取上岗人员信息
-                var workerInfo = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.get_worker_info(
-                    DataModel.Settingmodel.ReportWorkConfig.StationCode,
-                    out MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.worker_info worker);
+                // 异步执行数据库查询，避免阻塞UI
+                await Task.Run(() =>
+                {
+                    // 调用MES系统获取上岗人员信息
+                    var workerInfo = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.get_worker_info(
+                        DataModel.Settingmodel.ReportWorkConfig.StationCode,
+                        out MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.worker_info worker);
 
-                if (workerInfo)
-                {
-                    DataModel.Processmodel.CurrentWorkerName = worker.worker_name;
-                    DataModel.Processmodel.CurrentWorkerID = worker.worker_ID;
-                    writeLog($"上岗人员信息刷新成功: {worker.worker_name}({worker.worker_ID})", false);
-                }
-                else
-                {
-                    DataModel.Processmodel.CurrentWorkerName = "未上岗";
-                    DataModel.Processmodel.CurrentWorkerID = "";
-                    writeLog("未查询到上岗人员信息", false);
-                }
+                    // 在UI线程更新界面
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (workerInfo)
+                        {
+                            DataModel.Processmodel.CurrentWorkerName = worker.worker_name;
+                            DataModel.Processmodel.CurrentWorkerID = worker.worker_ID;
+                            DataModel.Processmodel.RefreshWorkerStatus = "刷新成功";
+                            writeLog($"上岗人员信息刷新成功: {worker.worker_name}({worker.worker_ID})", false);
+                        }
+                        else
+                        {
+                            DataModel.Processmodel.CurrentWorkerName = "未上岗";
+                            DataModel.Processmodel.CurrentWorkerID = "";
+                            DataModel.Processmodel.RefreshWorkerStatus = "未查询到上岗人员";
+                            writeLog("未查询到上岗人员信息", false);
+                        }
+
+                        // 3秒后清除状态提示
+                        Task.Delay(3000).ContinueWith(_ =>
+                        {
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                DataModel.Processmodel.RefreshWorkerStatus = "";
+                            }));
+                        });
+                    }));
+                });
             }
             catch (Exception ex)
             {
-                writeError($"刷新上岗人员信息失败: {ex.Message}");
-                DataModel.Processmodel.CurrentWorkerName = "查询失败";
-                DataModel.Processmodel.CurrentWorkerID = "";
+                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    writeError($"刷新上岗人员信息失败: {ex.Message}");
+                    DataModel.Processmodel.CurrentWorkerName = "查询失败";
+                    DataModel.Processmodel.CurrentWorkerID = "";
+                    DataModel.Processmodel.RefreshWorkerStatus = "刷新失败";
+
+                    // 3秒后清除状态提示
+                    Task.Delay(3000).ContinueWith(_ =>
+                    {
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            DataModel.Processmodel.RefreshWorkerStatus = "";
+                        }));
+                    });
+                }));
             }
         }
 

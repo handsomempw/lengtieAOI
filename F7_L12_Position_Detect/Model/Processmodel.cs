@@ -219,5 +219,39 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("报工成功记录")]
         public ObservableCollection<string> ReportWorkSuccessLog { set; get; } = new ObservableCollection<string>();
 
+        // 刷新上岗人员状态
+        private string _refreshWorkerStatus = "";
+        [XmlIgnore]
+        public string RefreshWorkerStatus
+        {
+            get { return _refreshWorkerStatus; }
+            set
+            {
+                _refreshWorkerStatus = value;
+                RaisePropertyChanged(() => RefreshWorkerStatus);
+                RaisePropertyChanged(() => RefreshWorkerStatusColor);
+            }
+        }
+
+        [XmlIgnore]
+        public SolidColorBrush RefreshWorkerStatusColor
+        {
+            get
+            {
+                switch (_refreshWorkerStatus)
+                {
+                    case "刷新成功":
+                        return Brushes.Green;
+                    case "刷新失败":
+                    case "查询失败":
+                        return Brushes.Red;
+                    case "正在刷新...":
+                        return Brushes.Orange;
+                    default:
+                        return Brushes.Transparent;
+                }
+            }
+        }
+
     }
 }

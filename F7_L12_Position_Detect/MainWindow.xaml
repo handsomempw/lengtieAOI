@@ -232,6 +232,7 @@
                     <TextBox Grid.Row="0" Grid.Column="1" Name="txtProductSN"
                              Text="{Binding DataModel.Processmodel.CurrentProductSN, UpdateSourceTrigger=PropertyChanged}"
                              TextChanged="txtProductSN_TextChanged"
+                             AcceptsReturn="True"
                              Margin="5" Padding="5" FontSize="14"/>
 
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="检测状态:" VerticalAlignment="Center"
@@ -334,8 +335,20 @@
                                Text="{Binding DataModel.Processmodel.CurrentWorkerID}"
                                VerticalAlignment="Center" Margin="5" FontWeight="Bold" FontSize="13"/>
 
-                    <Button Grid.Row="2" Grid.ColumnSpan="2" Name="btnRefreshWorker" Content="刷新上岗人员"
-                            Click="btnRefreshWorker_Click" Margin="5" Padding="5" FontSize="12"/>
+                    <Grid Grid.Row="2" Grid.ColumnSpan="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Name="btnRefreshWorker" Content="刷新上岗人员"
+                                Click="btnRefreshWorker_Click" Margin="5" Padding="5" FontSize="12"/>
+
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding DataModel.Processmodel.RefreshWorkerStatus}"
+                                   Foreground="{Binding DataModel.Processmodel.RefreshWorkerStatusColor}"
+                                   VerticalAlignment="Center" Margin="5" FontSize="11" FontWeight="Bold"/>
+                    </Grid>
                 </Grid>
             </GroupBox>
 
