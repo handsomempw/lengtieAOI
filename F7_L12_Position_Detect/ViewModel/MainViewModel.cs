@@ -472,6 +472,13 @@ namespace F7_L12_Position_Detect.ViewModel
 
             while (true)
             {
+                // 检查报工模块状态：只有有SN且工序校验成功才进行PLC轮询
+                if (!HasValidSNAndValidation())
+                {
+                    Thread.Sleep(1000); // 等待状态满足，减少CPU占用
+                    continue;
+                }
+
                 ModbusTcpNet modbusTcp = new ModbusTcpNet();
                 try
                 {
@@ -485,130 +492,27 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (connectresult.IsSuccess)
                     {
-                        #region 读取数据
-                        var readresult = modbusTcp.ReadUInt16(DataModel.Settingmodel.AddressStart.ToString(), 2);
-
-                        if (readresult.IsSuccess)
+                        #region 读取数据 - 多地址轮询模式
+                        // 检查基础地址 - 全部检测触发
+                        var resultBase = modbusTcp.ReadUInt16(DataModel.Settingmodel.AddressStart.ToString(), 1);
+                        if (resultBase.IsSuccess && resultBase.Content[0] > 0)
                         {
-                            int Trig = readresult.Content[0];
-                            try
-                            {
-                                if (Trig > 0)
-                                {
-                                    // 立即复位触发信号
-                                    modbusTcp.Write((DataModel.Settingmodel.AddressStart).ToString(), (UInt16)0);
+                            ProcessPLCTrigger("ALL", DataModel.Settingmodel.AddressStart, resultBase.Content[0], modbusTcp);
+                        }
 
-                                    // 检查是否正在执行，防止竞态条件
-                                    lock (_executionLock)
-                                    {
-                                        if (_isExecuting)
-                                        {
-                                            writeLog($"PLC->视觉:系统正在执行中，忽略触发值{Trig}", false);
-                                            continue; // 跳过本次触发
-                                        }
-                                        _isExecuting = true; // 设置执行状态
-                                    }
+                        // 检查基础地址+1 - A1一阶段检测触发
+                        var resultA1 = modbusTcp.ReadUInt16((DataModel.Settingmodel.AddressStart + 1).ToString(), 1);
+                        if (resultA1.IsSuccess && resultA1.Content[0] > 0)
+                        {
+                            ProcessPLCTrigger("A1", DataModel.Settingmodel.AddressStart + 1, resultA1.Content[0], modbusTcp);
+                        }
 
-                                    if (DataModel.Processmodel.Trig_IO.IOstatus == 0)
-                                    {
-                                        // 根据寄存器值映射PLC指令
-                                        string plcCommand = "";
-                                        switch (Trig)
-                                        {
-                                            case 1: plcCommand = "ALL"; break;  // 向后兼容：执行所有工具
-                                            case 2: plcCommand = "A1"; break;   // 执行A1组工具
-                                            case 3: plcCommand = "A2"; break;   // 执行A2组工具
-                                            case 4: plcCommand = "A3"; break;   // 执行A3组工具
-                                            case 5: plcCommand = "A4"; break;   // 执行A4组工具
-                                            default:
-                                                writeLog($"PLC->视觉:未识别的触发值{Trig}", false);
-                                                break;
-                                        }
-
-                                        if (!string.IsNullOrEmpty(plcCommand))
-                                        {
-                                            writeLog($"PLC->视觉:接收指令{plcCommand}(触发值:{Trig})", false);
-
-                                            // 设置当前执行指令（复用现有RCMD机制）
-                                            DataModel.Processmodel.RCMD = plcCommand;
-
-                                            // 清空扫码相关数据
-                                            DataModel.Processmodel.Scannerstr = string.Empty;
-                                            DataModel.Processmodel.Barcodes = string.Empty;
-
-                                            // 处理扫码器并集成MES服务（简化版本）
-                                            string scanCode = string.Empty;
-                                            bool scanSuccess = false;
-
-                                            if (DataModel.Settingmodel.ScannerMode == "HF800")
-                                            {
-                                                var r = DataModel.Settingmodel.HF800.Scanner();
-                                                scanCode = r.value.Replace("\r", "").Replace("\n", "");
-                                                DataModel.Processmodel.Scannerstr = scanCode;
-                                                scanSuccess = (r.Status == Status.OK);
-                                            }
-                                            else
-                                            {
-                                                var r = DataModel.Settingmodel.ScannerModel.Scanner();
-                                                scanCode = r.receivestring.Replace("\r", "").Replace("\n", "");
-                                                DataModel.Processmodel.Scannerstr = scanCode;
-                                                scanSuccess = r.IsSuccess;
-                                            }
-
-                                            // 如果扫码成功，调用MES服务处理
-                                            if (scanSuccess && !string.IsNullOrEmpty(scanCode))
-                                            {
-                                                ProcessScanCodeWithMES(scanCode);
-
-                                                // 等待工序校验完成（简单等待机制）
-                                                int waitCount = 0;
-                                                while (DataModel.Processmodel.ScanCodeStatus == "正在处理..." && waitCount < 50)
-                                                {
-                                                    Thread.Sleep(100);
-                                                    waitCount++;
-                                                }
-
-                                                writeLog($"PLC->视觉:扫码处理完成，状态：{DataModel.Processmodel.ScanCodeStatus}", false);
-                                            }
-                                            else
-                                            {
-                                                App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                                {
-                                                    DataModel.Processmodel.ScanCodeStatus = "扫码失败";
-                                                }));
-                                                writeLog($"PLC->视觉:扫码失败，但继续执行视觉检测", false);
-                                            }
-
-                                            // 无论扫码是否成功，都执行视觉检测
-                                            SendMsgRobot("DOK");
-                                            ClearTools();
-                                            writeLog($"PLC->视觉:执行{plcCommand}指令的视觉检测", false);
-                                            ExecuteToolsByCommand(plcCommand);
-                                        }
-
-                                        // 执行完成后释放锁
-                                        lock (_executionLock)
-                                        {
-                                            _isExecuting = false;
-                                        }
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                writeError($"PLC触发处理异常: {ex.Message}");
-                                // 确保在异常情况下释放执行锁
-                                lock (_executionLock)
-                                {
-                                    _isExecuting = false;
-                                }
-                            }
-
-                            #region 数据复制刷新
-                            DataModel.Processmodel.Trig_IO.IOstatus = Trig;
-
-
-                            #endregion
+                        // 检查基础地址+2 - A2二阶段检测触发
+                        var resultA2 = modbusTcp.ReadUInt16((DataModel.Settingmodel.AddressStart + 2).ToString(), 1);
+                        if (resultA2.IsSuccess && resultA2.Content[0] > 0)
+                        {
+                            ProcessPLCTrigger("A2", DataModel.Settingmodel.AddressStart + 2, resultA2.Content[0], modbusTcp);
+                        }
                         }
                         #endregion
                         modbusTcp.ConnectClose();
@@ -732,6 +636,66 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Processmodel.ScanCodeStatus = "处理异常";
                     writeLog($"扫码处理异常: {ex.Message}");
                 }));
+            }
+        }
+
+        /// <summary>
+        /// 处理PLC触发信号
+        /// </summary>
+        /// <param name="command">指令名称，如"A1"、"A2"或"ALL"</param>
+        /// <param name="address">触发地址</param>
+        /// <param name="triggerValue">触发值</param>
+        /// <param name="modbusTcp">ModbusTcp连接对象</param>
+        private void ProcessPLCTrigger(string command, int address, int triggerValue, ModbusTcpNet modbusTcp)
+        {
+            try
+            {
+                // 立即复位触发信号
+                modbusTcp.Write(address.ToString(), (UInt16)0);
+
+                // 检查是否正在执行，防止竞态条件
+                lock (_executionLock)
+                {
+                    if (_isExecuting)
+                    {
+                        writeLog($"PLC->视觉:系统正在执行中，忽略地址{address}触发值{triggerValue}", false);
+                        return;
+                    }
+                    _isExecuting = true; // 设置执行状态
+                }
+
+                writeLog($"PLC->视觉:接收指令{command}(地址:{address}, 触发值:{triggerValue})", false);
+
+                // 设置当前执行指令（复用现有RCMD机制）
+                DataModel.Processmodel.RCMD = command;
+
+                // 检查报工模块状态，确保有SN且工序校验通过
+                if (!HasValidSNAndValidation())
+                {
+                    writeLog($"PLC->视觉:报工模块状态不满足，跳过{command}指令执行", false);
+                    return;
+                }
+
+                // 直接执行视觉检测，不进行扫码
+                SendMsgRobot("DOK");
+                ClearTools();
+                writeLog($"PLC->视觉:执行{command}指令的视觉检测", false);
+                ExecuteToolsByCommand(command);
+
+                // 更新触发状态显示
+                DataModel.Processmodel.Trig_IO.IOstatus = triggerValue;
+            }
+            catch (Exception ex)
+            {
+                writeError($"PLC触发处理异常: {ex.Message}");
+            }
+            finally
+            {
+                // 确保释放执行锁
+                lock (_executionLock)
+                {
+                    _isExecuting = false;
+                }
             }
         }
 
@@ -2316,32 +2280,40 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 DataModel.Processmodel.Status = ToolStatus.OK;
 
-                                // 检测成功后执行报工逻辑（需要SN转换成功且工序校验通过）
+                                // 更新阶段检测状态
+                                UpdateStageStatus(DataModel.Processmodel.RCMD, true);
+
+                                // 检测成功后执行报工逻辑（需要SN转换成功且工序校验通过且所有阶段完成）
                                 if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
                                     !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
                                     DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
+                                    DataModel.Processmodel.CanExecuteReportWork &&
                                     !DataModel.Processmodel.IsReportingWork)
                                 {
                                     _ = Task.Run(async () => await ExecuteReportWorkAsync("合格"));
                                 }
                                 else
                                 {
-                                    // 如果没有SN或工序校验未通过或报工未启用，不执行报工
+                                    // 如果没有SN或工序校验未通过或阶段未完成或报工未启用，不执行报工
                                     // PLC_write((UInt16)1);
-                                    writeLog("检测完成", false);
+                                    writeLog("检测完成，结果已显示在界面上", false);
                                 }
                             }
                             else if (status == 2)
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG2;
+                                // 更新阶段检测状态
+                                UpdateStageStatus(DataModel.Processmodel.RCMD, false);
                                 // PLC_write((UInt16)3);
-                                writeLog("检测结果：NG2", false);
+                                writeLog("检测结果：NG2，结果已显示在界面上", false);
                             }
                             else
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG;
+                                // 更新阶段检测状态
+                                UpdateStageStatus(DataModel.Processmodel.RCMD, false);
                                 // PLC_write((UInt16)2);
-                                writeLog("检测结果：NG", false);
+                                writeLog("检测结果：NG，结果已显示在界面上", false);
                             }
 
                         }
@@ -2664,6 +2636,55 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
+        /// 检查报工模块是否有有效SN且工序校验成功
+        /// </summary>
+        /// <returns>true表示状态满足，可以进行PLC轮询和视觉检测</returns>
+        private bool HasValidSNAndValidation()
+        {
+            return !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
+                   DataModel.Processmodel.ScanCodeStatus == "工序校验通过";
+        }
+
+        /// <summary>
+        /// 更新阶段检测状态
+        /// </summary>
+        /// <param name="command">检测指令</param>
+        /// <param name="isSuccess">检测是否成功</param>
+        private void UpdateStageStatus(string command, bool isSuccess)
+        {
+            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                switch (command)
+                {
+                    case "A1":
+                        DataModel.Processmodel.A1StageCompleted = isSuccess;
+                        writeLog($"A1阶段检测{(isSuccess ? "成功" : "失败")}", false);
+                        break;
+                    case "A2":
+                        DataModel.Processmodel.A2StageCompleted = isSuccess;
+                        writeLog($"A2阶段检测{(isSuccess ? "成功" : "失败")}", false);
+                        break;
+                    case "ALL":
+                        // ALL指令同时更新所有阶段状态
+                        DataModel.Processmodel.A1StageCompleted = isSuccess;
+                        DataModel.Processmodel.A2StageCompleted = isSuccess;
+                        writeLog($"全部检测{(isSuccess ? "成功" : "失败")}", false);
+                        break;
+                }
+
+                // 如果检测失败，重置报工准备状态
+                if (!isSuccess)
+                {
+                    writeLog("检测失败，支持重复触发检测直到成功", false);
+                }
+                else if (DataModel.Processmodel.CanExecuteReportWork)
+                {
+                    writeLog("所有阶段检测完成，准备报工", false);
+                }
+            }));
+        }
+
+        /// <summary>
         /// 检查是否可以开始检测
         /// </summary>
         private bool CanStartDetection()
@@ -2711,8 +2732,10 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     writeLog($"报工成功: SN={DataModel.Processmodel.CurrentProductSN}", false);
 
-                    // 清空当前SN，准备下一个产品
+                    // 清空当前SN和阶段状态，准备下一个产品
                     DataModel.Processmodel.CurrentProductSN = string.Empty;
+                    DataModel.Processmodel.A1StageCompleted = false;
+                    DataModel.Processmodel.A2StageCompleted = false;
 
                     return true;
                 }

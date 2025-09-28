@@ -219,6 +219,39 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("报工成功记录")]
         public ObservableCollection<string> ReportWorkSuccessLog { set; get; } = new ObservableCollection<string>();
 
+        // 阶段检测状态管理
+        private bool _a1StageCompleted = false;
+        [XmlIgnore]
+        public bool A1StageCompleted
+        {
+            get { return _a1StageCompleted; }
+            set
+            {
+                _a1StageCompleted = value;
+                RaisePropertyChanged(() => A1StageCompleted);
+                RaisePropertyChanged(() => CanExecuteReportWork);
+            }
+        }
+
+        private bool _a2StageCompleted = false;
+        [XmlIgnore]
+        public bool A2StageCompleted
+        {
+            get { return _a2StageCompleted; }
+            set
+            {
+                _a2StageCompleted = value;
+                RaisePropertyChanged(() => A2StageCompleted);
+                RaisePropertyChanged(() => CanExecuteReportWork);
+            }
+        }
+
+        [XmlIgnore]
+        public bool CanExecuteReportWork
+        {
+            get { return A1StageCompleted && A2StageCompleted; }
+        }
+
         // 刷新上岗人员状态
         private string _refreshWorkerStatus = "";
         [XmlIgnore]
