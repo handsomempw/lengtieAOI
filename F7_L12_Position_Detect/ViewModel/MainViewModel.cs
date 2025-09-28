@@ -536,7 +536,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                             DataModel.Processmodel.Scannerstr = string.Empty;
                                             DataModel.Processmodel.Barcodes = string.Empty;
 
-                                            // 处理扫码器并集成MES服务
+                                            // 处理扫码器并集成MES服务（简化版本）
                                             string scanCode = string.Empty;
                                             bool scanSuccess = false;
 
@@ -546,16 +546,6 @@ namespace F7_L12_Position_Detect.ViewModel
                                                 scanCode = r.value.Replace("\r", "").Replace("\n", "");
                                                 DataModel.Processmodel.Scannerstr = scanCode;
                                                 scanSuccess = (r.Status == Status.OK);
-
-                                                if (!scanSuccess)
-                                                {
-                                                    modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                                                }
-                                                else
-                                                {
-                                                    SendMsgRobot("DOK");
-                                                    ClearTools();
-                                                }
                                             }
                                             else
                                             {
@@ -563,67 +553,36 @@ namespace F7_L12_Position_Detect.ViewModel
                                                 scanCode = r.receivestring.Replace("\r", "").Replace("\n", "");
                                                 DataModel.Processmodel.Scannerstr = scanCode;
                                                 scanSuccess = r.IsSuccess;
-
-                                                if (!scanSuccess)
-                                                {
-                                                    modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                                                }
-                                                else
-                                                {
-                                                    SendMsgRobot("DOK");
-                                                    ClearTools();
-                                                }
                                             }
 
                                             // 如果扫码成功，调用MES服务处理
                                             if (scanSuccess && !string.IsNullOrEmpty(scanCode))
                                             {
                                                 ProcessScanCodeWithMES(scanCode);
+
+                                                // 等待工序校验完成（简单等待机制）
+                                                int waitCount = 0;
+                                                while (DataModel.Processmodel.ScanCodeStatus == "正在处理..." && waitCount < 50)
+                                                {
+                                                    Thread.Sleep(100);
+                                                    waitCount++;
+                                                }
+
+                                                writeLog($"PLC->视觉:扫码处理完成，状态：{DataModel.Processmodel.ScanCodeStatus}", false);
                                             }
-                                            else if (!scanSuccess)
+                                            else
                                             {
                                                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
                                                 {
                                                     DataModel.Processmodel.ScanCodeStatus = "扫码失败";
                                                 }));
+                                                writeLog($"PLC->视觉:扫码失败，但继续执行视觉检测", false);
                                             }
 
-                                            //var r = DataModel.Settingmodel.ScannerModel.Scanner();
-                                            //DataModel.Processmodel.Scannerstr = r.receivestring.Replace("\r", "").Replace("\n", "");
-
-                                            // 处理SN列表（保持原有逻辑）
-                                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                            {
-                                                bool getsnlistfromremote = true;
-                                                foreach (var t in DataModel.Processmodel.Tools)
-                                                {
-                                                    if (t.SendBarcode && t.MPMode)
-                                                    {
-                                                        getsnlistfromremote = false;
-                                                    }
-                                                }
-                                                DataModel.Processmodel.SNList.Clear();
-
-                                                if (getsnlistfromremote)
-                                                {
-                                                    var r1 = GetSNList(DataModel.Processmodel.Scannerstr);
-
-                                                }
-
-
-                                            }));
-
-                                            //if (!r.IsSuccess)
-                                            //{
-                                            //    modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)2);
-                                            //}
-                                            //else
-                                            //{
-                                            //    SendMsgRobot("DOK");
-                                            //    ClearTools();
-                                            //}
-
-                                            // 执行匹配指令的工具（新增核心逻辑）
+                                            // 无论扫码是否成功，都执行视觉检测
+                                            SendMsgRobot("DOK");
+                                            ClearTools();
+                                            writeLog($"PLC->视觉:执行{plcCommand}指令的视觉检测", false);
                                             ExecuteToolsByCommand(plcCommand);
                                         }
 
@@ -784,11 +743,12 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
-                // 检查是否可以开始检测（需要有SN）
+                // 检查是否可以开始检测（只检查是否在报工中）
                 if (!CanStartDetection())
                 {
-                    writeLog($"PLC->视觉:检测被阻止，原因：{(string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) ? "未输入产品SN" : "报工正在进行中")}", false);
-                    PLC_write((UInt16)2); // 返回NG状态
+                    writeLog($"PLC->视觉:检测被阻止，原因：报工正在进行中", false);
+                    // 注释掉PLC返回，根据用户要求不向PLC返回OK/NG标志
+                    // PLC_write((UInt16)2); // 返回NG状态
                     return;
                 }
 
@@ -857,6 +817,9 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"PLC->视觉:指令{command}执行完成，匹配工具将在图像处理时执行", false);
                 }
+
+                // 注释掉PLC返回逻辑，不向PLC返回OK/NG标志
+                // 检测结果将通过软件界面显示，而不是返回给PLC
             }
             catch (Exception ex)
             {
@@ -2353,27 +2316,32 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 DataModel.Processmodel.Status = ToolStatus.OK;
 
-                                // 检测成功后执行报工逻辑
+                                // 检测成功后执行报工逻辑（需要SN转换成功且工序校验通过）
                                 if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
-                                    CanStartDetection())
+                                    !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
+                                    DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
+                                    !DataModel.Processmodel.IsReportingWork)
                                 {
                                     _ = Task.Run(async () => await ExecuteReportWorkAsync("合格"));
                                 }
                                 else
                                 {
-                                    // 如果没有SN或报工未启用，仍然返回PLC
-                                    PLC_write((UInt16)1);
+                                    // 如果没有SN或工序校验未通过或报工未启用，不执行报工
+                                    // PLC_write((UInt16)1);
+                                    writeLog("检测完成", false);
                                 }
                             }
                             else if (status == 2)
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG2;
-                                PLC_write((UInt16)3);
+                                // PLC_write((UInt16)3);
+                                writeLog("检测结果：NG2", false);
                             }
                             else
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG;
-                                PLC_write((UInt16)2);
+                                // PLC_write((UInt16)2);
+                                writeLog("检测结果：NG", false);
                             }
 
                         }
@@ -2700,8 +2668,8 @@ namespace F7_L12_Position_Detect.ViewModel
         /// </summary>
         private bool CanStartDetection()
         {
-            return !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
-                   !DataModel.Processmodel.IsReportingWork;
+            // 修改：只要不在报工中就可以开始检测，不强制要求工序校验通过
+            return !DataModel.Processmodel.IsReportingWork;
         }
 
         /// <summary>
