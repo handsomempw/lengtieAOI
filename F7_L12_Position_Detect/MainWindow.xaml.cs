@@ -51,7 +51,7 @@ namespace F7_L12_Position_Detect
             vml.Main.Load_Prj();
             //vml.Main.ConnectPC();
             vml.Main.InitSoftServer();
-            vml.Main.InitRobotServer();
+            // vml.Main.InitRobotServer(); // 机器人服务器已禁用
 
             Sqlserver.MicrosoftSql_DATABASE.connectstr = $"Provider=SQLOLEDB.1;Password=1234;Persist Security Info=True;User ID=sa;Initial Catalog=扫码库;Data Source={vml.Main.DataModel.Settingmodel.SNlistServerIP}";
 

@@ -119,15 +119,16 @@ namespace F7_L12_Position_Detect.ViewModel
         #region 机器人
         public void SendMsgRobot(string cmd)
         {
-            DataModel.Settingmodel.TcpServerRobot.SendMessage(cmd);
-            writeLog($"视觉->机器人:{cmd}");
+            // 机器人通讯已禁用，当前业务只使用PLC通信
+            // DataModel.Settingmodel.TcpServerRobot.SendMessage(cmd);
+            // writeLog($"视觉->机器人:{cmd}");
         }
 
         public void InitRobotServer()
         {
-
+            // 机器人服务器已禁用，当前业务只使用PLC通信
+            /*
             DataModel.Settingmodel.TcpServerRobot = new TCPServerH();
-
 
             DataModel.Settingmodel.TcpServerRobot.ClientConnected += RobotTcpServer_ClientConnected;
             DataModel.Settingmodel.TcpServerRobot.ClientDisconnected += RobotTcpServer_ClientDisconnected;
@@ -144,8 +145,10 @@ namespace F7_L12_Position_Detect.ViewModel
                     writeError(ex2.Message + Environment.NewLine + ex2.StackTrace);
                 }
             }).Start(); ;
-
+            */
         }
+        // 机器人事件处理方法已禁用
+        /*
         private void RobotTcpServer_ClientConnected(TCPServerH sender, object e)
         {
             try
@@ -188,7 +191,10 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex) {; }
         }
+        */
 
+        // 机器人消息接收处理方法已禁用
+        /*
         private void RobotTcpServer_MessageReceived(TCPServerH sender, object e)
         {
             try
@@ -242,6 +248,7 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex) {; }
         }
+        */
 
 
         public void ClearTools()
@@ -469,9 +476,23 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         private void PLC_Process()
         {
+            int statusLogCounter = 0; // 用于控制状态日志频率
+            int lastTriggerValue_Base = 0;
+            int lastTriggerValue_A1 = 0;
+            int lastTriggerValue_A2 = 0;
 
             while (true)
             {
+                // ========== 周期性状态日志 ==========
+                statusLogCounter++;
+                if (statusLogCounter >= 300) // 每30秒记录一次状态 (300 * 100ms = 30s)
+                {
+                    statusLogCounter = 0;
+                    bool hasValidSN = HasValidSNAndValidation();
+                    writeLog($"PLC状态: 报工={hasValidSN}, SN={DataModel.Processmodel.CurrentProductSN}, 执行={_isExecuting}");
+                    WriteDetailLog($"[PLC状态] 报工状态={hasValidSN}, 当前SN={DataModel.Processmodel.CurrentProductSN}, 执行状态={_isExecuting}, 界面触发标志={DataModel.Processmodel.Trig_IO.IOstatus}");
+                }
+
                 // 检查报工模块状态：只有有SN且工序校验成功才进行PLC轮询
                 if (!HasValidSNAndValidation())
                 {
@@ -488,33 +509,64 @@ namespace F7_L12_Position_Detect.ViewModel
                     modbusTcp.Port = DataModel.Settingmodel.PLC_Port;
 
                     modbusTcp.DataFormat = HslCommunication.Core.DataFormat.CDAB;
+                    WriteDetailLog($"[PLC连接] 尝试连接PLC {DataModel.Settingmodel.PLC_IP}:{DataModel.Settingmodel.PLC_Port}");
                     var connectresult = modbusTcp.ConnectServer();
 
                     if (connectresult.IsSuccess)
                     {
+                        WriteDetailLog($"[PLC连接] 连接成功，开始轮询三个地址");
+
                         #region 读取数据 - 多地址轮询模式
                         // 检查基础地址 - 全部检测触发
                         var resultBase = modbusTcp.ReadUInt16(DataModel.Settingmodel.AddressStart.ToString(), 1);
-                        if (resultBase.IsSuccess && resultBase.Content[0] > 0)
+                        if (resultBase.IsSuccess)
                         {
-                            ProcessPLCTrigger("ALL", DataModel.Settingmodel.AddressStart, resultBase.Content[0], modbusTcp);
+                            int currentValue = resultBase.Content[0];
+                            WriteDetailLog($"[PLC轮询] 基础地址{DataModel.Settingmodel.AddressStart}: {currentValue}");
+
+                            if (currentValue > 0 && currentValue != lastTriggerValue_Base)
+                            {
+                                writeLog($"PLC触发: ALL指令 (地址{DataModel.Settingmodel.AddressStart}={currentValue})");
+                                WriteDetailLog($"[PLC触发] 基础地址触发值变化: {lastTriggerValue_Base} -> {currentValue}");
+                                ProcessPLCTrigger("ALL", DataModel.Settingmodel.AddressStart, currentValue, modbusTcp);
+                            }
+                            lastTriggerValue_Base = currentValue;
                         }
 
                         // 检查基础地址+1 - A1一阶段检测触发
                         var resultA1 = modbusTcp.ReadUInt16((DataModel.Settingmodel.AddressStart + 1).ToString(), 1);
-                        if (resultA1.IsSuccess && resultA1.Content[0] > 0)
+                        if (resultA1.IsSuccess)
                         {
-                            ProcessPLCTrigger("A1", DataModel.Settingmodel.AddressStart + 1, resultA1.Content[0], modbusTcp);
+                            int currentValue = resultA1.Content[0];
+                            WriteDetailLog($"[PLC轮询] A1地址{DataModel.Settingmodel.AddressStart + 1}: {currentValue}");
+
+                            if (currentValue > 0 && currentValue != lastTriggerValue_A1)
+                            {
+                                writeLog($"PLC触发: A1指令 (地址{DataModel.Settingmodel.AddressStart + 1}={currentValue})");
+                                WriteDetailLog($"[PLC触发] A1地址触发值变化: {lastTriggerValue_A1} -> {currentValue}");
+                                ProcessPLCTrigger("A1", DataModel.Settingmodel.AddressStart + 1, currentValue, modbusTcp);
+                            }
+                            lastTriggerValue_A1 = currentValue;
                         }
 
                         // 检查基础地址+2 - A2二阶段检测触发
                         var resultA2 = modbusTcp.ReadUInt16((DataModel.Settingmodel.AddressStart + 2).ToString(), 1);
-                        if (resultA2.IsSuccess && resultA2.Content[0] > 0)
+                        if (resultA2.IsSuccess)
                         {
-                            ProcessPLCTrigger("A2", DataModel.Settingmodel.AddressStart + 2, resultA2.Content[0], modbusTcp);
-                        }
+                            int currentValue = resultA2.Content[0];
+                            WriteDetailLog($"[PLC轮询] A2地址{DataModel.Settingmodel.AddressStart + 2}: {currentValue}");
+
+                            if (currentValue > 0 && currentValue != lastTriggerValue_A2)
+                            {
+                                writeLog($"PLC触发: A2指令 (地址{DataModel.Settingmodel.AddressStart + 2}={currentValue})");
+                                WriteDetailLog($"[PLC触发] A2地址触发值变化: {lastTriggerValue_A2} -> {currentValue}");
+                                ProcessPLCTrigger("A2", DataModel.Settingmodel.AddressStart + 2, currentValue, modbusTcp);
+                            }
+                            lastTriggerValue_A2 = currentValue;
                         }
                         #endregion
+
+                        WriteDetailLog($"[PLC连接] 关闭连接");
                         modbusTcp.ConnectClose();
                         //#region 握手
                         //modbusTcp.Write((DATA.PLC.AddressStart + 18).ToString(), (UInt16)0);
@@ -522,10 +574,10 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                     else
                     {
+                        WriteDetailLog($"[PLC连接] 连接失败: {connectresult.Message}");
 
                         #region 通讯失败数据置为-1
                         DataModel.Processmodel.Trig_IO.IOstatus = -1;
-
                         #endregion
                     }
                     //modbusTcp?.ConnectClose();
@@ -534,6 +586,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 catch (Exception ex)
                 {
                     writeError($"PLC通讯异常: {ex.Message}");
+                    WriteDetailLog($"[PLC异常] {ex.Message}\n{ex.StackTrace}");
                     // 确保在通讯异常情况下也释放执行锁
                     lock (_executionLock)
                     {
@@ -651,20 +704,25 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
                 // 立即复位触发信号
-                modbusTcp.Write(address.ToString(), (UInt16)0);
+                WriteDetailLog($"[PLC触发] 准备复位地址{address}为0");
+                var resetResult = modbusTcp.Write(address.ToString(), (UInt16)0);
+                WriteDetailLog($"[PLC触发] 地址{address}复位结果={resetResult.IsSuccess}");
 
                 // 检查是否正在执行，防止竞态条件
                 lock (_executionLock)
                 {
                     if (_isExecuting)
                     {
-                        writeLog($"PLC->视觉:系统正在执行中，忽略地址{address}触发值{triggerValue}", false);
+                        writeLog($"系统忙碌: 忽略{command}指令 (地址{address}={triggerValue})");
+                        WriteDetailLog($"[业务逻辑] 系统正在执行中，忽略地址{address}触发值{triggerValue}");
                         return;
                     }
                     _isExecuting = true; // 设置执行状态
+                    WriteDetailLog($"[业务逻辑] 设置执行状态为true，开始处理{command}指令");
                 }
 
-                writeLog($"PLC->视觉:接收指令{command}(地址:{address}, 触发值:{triggerValue})", false);
+                writeLog($"开始执行: {command}指令 (地址{address}={triggerValue})");
+                WriteDetailLog($"[PLC->视觉] 接收指令{command}(地址:{address}, 触发值:{triggerValue})");
 
                 // 设置当前执行指令（复用现有RCMD机制）
                 DataModel.Processmodel.RCMD = command;
@@ -672,22 +730,28 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 检查报工模块状态，确保有SN且工序校验通过
                 if (!HasValidSNAndValidation())
                 {
-                    writeLog($"PLC->视觉:报工模块状态不满足，跳过{command}指令执行", false);
+                    writeLog($"报工状态不满足: 跳过{command}指令 (SN={DataModel.Processmodel.CurrentProductSN})");
+                    WriteDetailLog($"[业务逻辑] 报工模块状态不满足，跳过{command}指令执行 (SN={DataModel.Processmodel.CurrentProductSN})");
                     return;
                 }
 
-                // 直接执行视觉检测，不进行扫码
+                writeLog($"报工验证通过: 开始{command}视觉检测");
+                WriteDetailLog($"[业务逻辑] 报工状态验证通过，开始执行{command}指令");
+
+                // 直接执行视觉检测，不进行扫码（机器人通信已禁用）
                 SendMsgRobot("DOK");
                 ClearTools();
-                writeLog($"PLC->视觉:执行{command}指令的视觉检测", false);
+                WriteDetailLog($"[视觉检测] 开始执行{command}指令的视觉检测");
                 ExecuteToolsByCommand(command);
 
                 // 更新触发状态显示
+                WriteDetailLog($"[界面更新] 更新界面触发标志从{DataModel.Processmodel.Trig_IO.IOstatus}到{triggerValue}");
                 DataModel.Processmodel.Trig_IO.IOstatus = triggerValue;
             }
             catch (Exception ex)
             {
                 writeError($"PLC触发处理异常: {ex.Message}");
+                WriteDetailLog($"[PLC触发] 处理异常: {ex.Message}");
             }
             finally
             {
@@ -695,6 +759,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 lock (_executionLock)
                 {
                     _isExecuting = false;
+                    WriteDetailLog($"[业务逻辑] 释放执行锁，{command}指令处理完成");
                 }
             }
         }
@@ -707,10 +772,13 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
+                WriteDetailLog($"[工具执行] 开始执行指令{command}，总工具数={DataModel.Processmodel.Tools.Count}");
+
                 // 检查是否可以开始检测（只检查是否在报工中）
                 if (!CanStartDetection())
                 {
-                    writeLog($"PLC->视觉:检测被阻止，原因：报工正在进行中", false);
+                    writeLog($"检测被阻止: 报工正在进行中");
+                    WriteDetailLog($"[工具执行] 检测被阻止，原因：报工正在进行中");
                     // 注释掉PLC返回，根据用户要求不向PLC返回OK/NG标志
                     // PLC_write((UInt16)2); // 返回NG状态
                     return;
@@ -718,8 +786,10 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 bool foundTool = false;
                 int firstMatchedToolIndex = -1;
+                int matchedToolCount = 0;
 
                 // 查找匹配的工具
+                WriteDetailLog($"[工具匹配] 开始查找匹配指令{command}的工具");
                 for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 {
                     bool isMatch = false;
@@ -728,29 +798,36 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         // ALL指令匹配所有工具（向后兼容）
                         isMatch = true;
+                        WriteDetailLog($"[工具匹配] 工具{i}({DataModel.Processmodel.Tools[i].Name}): ALL指令匹配");
                     }
                     else
                     {
                         // 按Command字段匹配
                         isMatch = DataModel.Processmodel.Tools[i].Command == command;
+                        WriteDetailLog($"[工具匹配] 工具{i}({DataModel.Processmodel.Tools[i].Name}): Command={DataModel.Processmodel.Tools[i].Command}, 匹配={isMatch}");
                     }
 
                     if (isMatch)
                     {
+                        matchedToolCount++;
                         if (!foundTool)
                         {
                             foundTool = true;
                             firstMatchedToolIndex = i;
+                            writeLog($"找到匹配工具: {DataModel.Processmodel.Tools[i].Name}");
+                            WriteDetailLog($"[工具执行] 找到第一个匹配工具: 工具{i}({DataModel.Processmodel.Tools[i].Name})");
 
                             if (i == 0)
                             {
+                                WriteDetailLog($"[工具执行] 第一个工具，清理状态");
                                 ClearTools();  // 第一个工具时清理状态
                             }
 
-                            writeLog($"PLC->视觉:{command}开始设置参数", false);
+                            WriteDetailLog($"[相机设置] {command}开始设置参数，工具{i}曝光时间={DataModel.Processmodel.Tools[i].ExposureTime}");
                             DataModel.Processmodel.ToolIndex = i + 1;
 
                             // 检查工具是否指定了特定相机，如果是则切换相机
+                            WriteDetailLog($"[相机切换] 检查工具{i}相机设置: {DataModel.Processmodel.Tools[i].CameraSerialNumber}");
                             SwitchCameraForTool(DataModel.Processmodel.Tools[i]);
 
                             // 等待相机切换完成，防止时序问题
@@ -761,12 +838,14 @@ namespace F7_L12_Position_Detect.ViewModel
                             DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = DataModel.Processmodel.Tools[i].ExposureTime;
                             DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
 
+                            WriteDetailLog($"[相机设置] 曝光参数设置完成，等待{DataModel.Settingmodel.delaytime}ms");
                             Thread.Sleep(DataModel.Settingmodel.delaytime);
 
-                            writeLog($"PLC->视觉:{command}开始触发", false);
+                            writeLog($"开始拍照: {command}指令");
+                            WriteDetailLog($"[相机触发] {command}开始触发拍照");
                             // 触发拍照（所有匹配工具共用一次拍照）
                             DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
-                            writeLog($"PLC->视觉:{command}触发完成", false);
+                            WriteDetailLog($"[相机触发] {command}触发完成");
 
                             break;  // 找到第一个匹配工具后触发拍照即可
                         }
@@ -775,11 +854,13 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 if (!foundTool)
                 {
-                    writeLog($"PLC->视觉:未找到匹配指令{command}的工具", false);
+                    writeLog($"未找到匹配工具: {command}指令");
+                    WriteDetailLog($"[工具执行] 未找到匹配指令{command}的工具");
                 }
                 else
                 {
-                    writeLog($"PLC->视觉:指令{command}执行完成，匹配工具将在图像处理时执行", false);
+                    writeLog($"工具匹配完成: {command}指令 (共{matchedToolCount}个工具)");
+                    WriteDetailLog($"[工具执行] 指令{command}执行完成，共匹配{matchedToolCount}个工具，图像处理将在相机回调中执行");
                 }
 
                 // 注释掉PLC返回逻辑，不向PLC返回OK/NG标志
@@ -787,7 +868,8 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex)
             {
-                writeError($"PLC->视觉:执行指令{command}时发生错误:{ex.Message}");
+                writeError($"工具执行异常: {command}指令 - {ex.Message}");
+                WriteDetailLog($"[工具执行] 执行指令{command}时发生错误:{ex.Message}");
             }
         }
 
@@ -953,6 +1035,38 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
                 catch (Exception)
                 {
+                }
+            }
+        }
+
+        /// <summary>
+        /// 写入详细调试日志到文件，不显示在界面上，避免界面日志过于冗余
+        /// </summary>
+        /// <param name="LogContent">日志内容</param>
+        private object writeDetailLog_Locker = new object();
+        internal void WriteDetailLog(string LogContent)
+        {
+            lock (writeDetailLog_Locker)
+            {
+                try
+                {
+                    string logstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{LogContent}";
+                    string filename = $"{Environment.CurrentDirectory}\\日志\\详细调试\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
+                    string dir = Path.GetDirectoryName(filename);
+                    if (!Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
+                    using (StreamWriter sw = new StreamWriter(filename, true))
+                    {
+                        sw.WriteLine(logstr);
+                        sw.Close();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 详细日志写入失败时，记录到错误日志
+                    writeError($"详细日志写入失败: {ex.Message}");
                 }
             }
         }
@@ -2641,8 +2755,16 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <returns>true表示状态满足，可以进行PLC轮询和视觉检测</returns>
         private bool HasValidSNAndValidation()
         {
-            return !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
-                   DataModel.Processmodel.ScanCodeStatus == "工序校验通过";
+            bool hasSN = !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN);
+            bool isValidated = DataModel.Processmodel.ScanCodeStatus == "工序校验通过";
+            bool result = hasSN && isValidated;
+
+            // 详细调试日志：记录状态检查结果
+            WriteDetailLog($"[报工状态] SN={DataModel.Processmodel.CurrentProductSN ?? "空"}, " +
+                          $"校验状态={DataModel.Processmodel.ScanCodeStatus}, " +
+                          $"有SN={hasSN}, 校验通过={isValidated}, 最终结果={result}");
+
+            return result;
         }
 
         /// <summary>
