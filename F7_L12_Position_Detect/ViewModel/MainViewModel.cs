@@ -1986,7 +1986,20 @@ namespace F7_L12_Position_Detect.ViewModel
                 hwindow.DispObj(Image);
                 for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 {
-                    if (DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD)
+                    // 修复ALL指令匹配逻辑，与ExecuteToolsByCommand保持一致
+                    bool isMatch = false;
+                    if (DataModel.Processmodel.RCMD == "ALL")
+                    {
+                        // ALL指令匹配所有工具（向后兼容）
+                        isMatch = true;
+                    }
+                    else
+                    {
+                        // 按Command字段精确匹配
+                        isMatch = DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD;
+                    }
+
+                    if (isMatch)
                     {
                         Stopwatch stopwatch = new Stopwatch();
                         stopwatch.Start();
@@ -2298,8 +2311,9 @@ namespace F7_L12_Position_Detect.ViewModel
 
                             int status = -1;
 
+                            // 修复ALL指令匹配逻辑，与ExecuteToolsByCommand保持一致
                             var r = (from ToolModel in DataModel.Processmodel.Tools
-                                     where ToolModel.Command == DataModel.Processmodel.RCMD
+                                     where (DataModel.Processmodel.RCMD == "ALL" || ToolModel.Command == DataModel.Processmodel.RCMD)
                                      select ToolModel);
                             var wait = (from ToolModel in r
                                         where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
