@@ -18,6 +18,7 @@ using TcpServerHelper;
 using System.Drawing;
 using System.Reflection;
 using System.Windows.Interop;
+using System.Collections.Generic;
 using System.Windows.Media.Imaging;
 using HalconDotNet;
 using QRCode;
@@ -784,12 +785,20 @@ namespace F7_L12_Position_Detect.ViewModel
                     return;
                 }
 
-                bool foundTool = false;
-                int firstMatchedToolIndex = -1;
-                int matchedToolCount = 0;
+                // 收集所有匹配的工具
+                List<int> matchedToolIndices = new List<int>();
 
                 // 查找匹配的工具
                 WriteDetailLog($"[工具匹配] 开始查找匹配指令{command}的工具");
+
+                // 详细诊断工具配置
+                for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+                {
+                    var tool = DataModel.Processmodel.Tools[i];
+                    WriteDetailLog($"[工具诊断] 工具{i}: Name='{tool.Name}', Command='{tool.Command}', Index={tool.Index}, CameraSerial='{tool.CameraSerialNumber}'");
+                }
+
+                // 第一遍：收集所有匹配的工具
                 for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 {
                     bool isMatch = false;
@@ -809,58 +818,73 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (isMatch)
                     {
-                        matchedToolCount++;
-                        if (!foundTool)
+                        matchedToolIndices.Add(i);
+                        writeLog($"找到匹配工具: {DataModel.Processmodel.Tools[i].Name}");
+                        WriteDetailLog($"[工具执行] 找到匹配工具: 工具{i}({DataModel.Processmodel.Tools[i].Name})");
+                    }
+                }
+
+                // 如果找到匹配的工具，执行它们
+                if (matchedToolIndices.Count > 0)
+                {
+                    WriteDetailLog($"[工具执行] 共找到{matchedToolIndices.Count}个匹配工具，开始逐个执行");
+
+                    // 清理状态（只在开始时清理一次）
+                    WriteDetailLog($"[工具执行] 清理工具状态");
+                    ClearTools();
+
+                    // 逐个执行匹配的工具
+                    for (int idx = 0; idx < matchedToolIndices.Count; idx++)
+                    {
+                        int toolIndex = matchedToolIndices[idx];
+                        var tool = DataModel.Processmodel.Tools[toolIndex];
+
+                        WriteDetailLog($"[工具执行] 执行工具{toolIndex}({tool.Name}) - 第{idx + 1}/{matchedToolIndices.Count}个");
+
+                        // 设置工具索引
+                        DataModel.Processmodel.ToolIndex = toolIndex + 1;
+
+                        // 检查工具是否指定了特定相机，如果是则切换相机
+                        WriteDetailLog($"[相机切换] 检查工具{toolIndex}相机设置: {tool.CameraSerialNumber}");
+                        SwitchCameraForTool(tool);
+
+                        // 等待相机切换完成，防止时序问题
+                        Thread.Sleep(100);
+
+                        // 设置曝光参数
+                        WriteDetailLog($"[相机设置] 工具{toolIndex}设置参数，曝光时间={tool.ExposureTime}");
+                        DataModel.Settingmodel.camedata.CameraModel.exposuretime = tool.ExposureTime;
+                        DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = tool.ExposureTime;
+                        DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
+
+                        WriteDetailLog($"[相机设置] 工具{toolIndex}曝光参数设置完成，等待{DataModel.Settingmodel.delaytime}ms");
+                        Thread.Sleep(DataModel.Settingmodel.delaytime);
+
+                        writeLog($"开始拍照: {command}指令 - 工具{toolIndex + 1}");
+                        WriteDetailLog($"[相机触发] 工具{toolIndex}开始触发拍照");
+
+                        // 触发拍照
+                        DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
+                        WriteDetailLog($"[相机触发] 工具{toolIndex}触发完成");
+
+                        // 如果不是最后一个工具，等待一段时间再执行下一个
+                        if (idx < matchedToolIndices.Count - 1)
                         {
-                            foundTool = true;
-                            firstMatchedToolIndex = i;
-                            writeLog($"找到匹配工具: {DataModel.Processmodel.Tools[i].Name}");
-                            WriteDetailLog($"[工具执行] 找到第一个匹配工具: 工具{i}({DataModel.Processmodel.Tools[i].Name})");
-
-                            if (i == 0)
-                            {
-                                WriteDetailLog($"[工具执行] 第一个工具，清理状态");
-                                ClearTools();  // 第一个工具时清理状态
-                            }
-
-                            WriteDetailLog($"[相机设置] {command}开始设置参数，工具{i}曝光时间={DataModel.Processmodel.Tools[i].ExposureTime}");
-                            DataModel.Processmodel.ToolIndex = i + 1;
-
-                            // 检查工具是否指定了特定相机，如果是则切换相机
-                            WriteDetailLog($"[相机切换] 检查工具{i}相机设置: {DataModel.Processmodel.Tools[i].CameraSerialNumber}");
-                            SwitchCameraForTool(DataModel.Processmodel.Tools[i]);
-
-                            // 等待相机切换完成，防止时序问题
-                            Thread.Sleep(100);
-
-                            // 设置曝光参数
-                            DataModel.Settingmodel.camedata.CameraModel.exposuretime = DataModel.Processmodel.Tools[i].ExposureTime;
-                            DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = DataModel.Processmodel.Tools[i].ExposureTime;
-                            DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
-
-                            WriteDetailLog($"[相机设置] 曝光参数设置完成，等待{DataModel.Settingmodel.delaytime}ms");
-                            Thread.Sleep(DataModel.Settingmodel.delaytime);
-
-                            writeLog($"开始拍照: {command}指令");
-                            WriteDetailLog($"[相机触发] {command}开始触发拍照");
-                            // 触发拍照（所有匹配工具共用一次拍照）
-                            DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
-                            WriteDetailLog($"[相机触发] {command}触发完成");
-
-                            break;  // 找到第一个匹配工具后触发拍照即可
+                            WriteDetailLog($"[工具执行] 等待500ms后执行下一个工具");
+                            Thread.Sleep(500); // 工具间间隔
                         }
                     }
                 }
 
-                if (!foundTool)
+                if (matchedToolIndices.Count == 0)
                 {
                     writeLog($"未找到匹配工具: {command}指令");
                     WriteDetailLog($"[工具执行] 未找到匹配指令{command}的工具");
                 }
                 else
                 {
-                    writeLog($"工具匹配完成: {command}指令 (共{matchedToolCount}个工具)");
-                    WriteDetailLog($"[工具执行] 指令{command}执行完成，共匹配{matchedToolCount}个工具，图像处理将在相机回调中执行");
+                    writeLog($"工具匹配完成: {command}指令 (共{matchedToolIndices.Count}个工具)");
+                    WriteDetailLog($"[工具执行] 指令{command}执行完成，共匹配{matchedToolIndices.Count}个工具，图像处理将在相机回调中执行");
                 }
 
                 // 注释掉PLC返回逻辑，不向PLC返回OK/NG标志
@@ -1788,20 +1812,30 @@ namespace F7_L12_Position_Detect.ViewModel
 
             DataModel.Processmodel.Tools.Clear();
             string dir = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}";
+            WriteDetailLog($"[工具加载] 工程目录: {dir}");
+
             if (!Directory.Exists(dir))
             {
+                WriteDetailLog($"[工具加载] 工程目录不存在: {dir}");
+                writeLog($"⚠️ 工程目录不存在: {dir}");
                 return;
             }
+
             string[] toolfilenames = Directory.GetFiles(dir);
+            WriteDetailLog($"[工具加载] 目录中文件数量: {toolfilenames.Length}");
+
             int count = 0;
             for (int i = 0; i < toolfilenames.Length; i++)
             {
                 FileInfo fi = new FileInfo(toolfilenames[i]);
+                WriteDetailLog($"[工具加载] 文件{i}: {fi.Name}, 扩展名: {fi.Extension}");
                 if (fi.Extension.ToUpper() == ".XML")
                 {
                     count++;
                 }
             }
+
+            WriteDetailLog($"[工具加载] 找到XML文件数量: {count}");
             int index = 0;
             for (int k = 0; k < count; k++)
             {
