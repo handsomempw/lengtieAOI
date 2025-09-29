@@ -2418,13 +2418,33 @@ namespace F7_L12_Position_Detect.ViewModel
                                     DataModel.Processmodel.CanExecuteReportWork &&
                                     !DataModel.Processmodel.IsReportingWork)
                                 {
+                                    writeLog("✅ 检测成功，开始自动报工...", false);
                                     _ = Task.Run(async () => await ExecuteReportWorkAsync("合格"));
                                 }
                                 else
                                 {
-                                    // 如果没有SN或工序校验未通过或阶段未完成或报工未启用，不执行报工
-                                    // PLC_write((UInt16)1);
-                                    writeLog("检测完成，结果已显示在界面上", false);
+                                    // 详细诊断报工条件不满足的原因
+                                    List<string> reasons = new List<string>();
+                                    if (!DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork)
+                                        reasons.Add("自动报工未启用");
+                                    if (string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN))
+                                        reasons.Add("产品SN为空");
+                                    if (DataModel.Processmodel.ScanCodeStatus != "工序校验通过")
+                                        reasons.Add($"工序校验状态: {DataModel.Processmodel.ScanCodeStatus}");
+                                    if (!DataModel.Processmodel.CanExecuteReportWork)
+                                        reasons.Add($"阶段未完成(A1:{DataModel.Processmodel.A1StageCompleted}, A2:{DataModel.Processmodel.A2StageCompleted})");
+                                    if (DataModel.Processmodel.IsReportingWork)
+                                        reasons.Add("报工正在进行中");
+
+                                    string reasonText = reasons.Count > 0 ? $" - 原因: {string.Join(", ", reasons)}" : "";
+                                    writeLog($"⚠️ 检测完成，但未执行报工{reasonText}", false);
+
+                                    // 更新界面状态显示
+                                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                    {
+                                        DataModel.Processmodel.ReportWorkStatus = reasons.Count > 0 ?
+                                            $"未报工: {string.Join(", ", reasons)}" : "检测完成";
+                                    }));
                                 }
                             }
                             else if (status == 2)
@@ -2811,11 +2831,11 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 如果检测失败，重置报工准备状态
                 if (!isSuccess)
                 {
-                    writeLog("检测失败，支持重复触发检测直到成功", false);
+                    writeLog("❌ 检测失败，支持重复触发检测直到成功", false);
                 }
                 else if (DataModel.Processmodel.CanExecuteReportWork)
                 {
-                    writeLog("所有阶段检测完成，准备报工", false);
+                    writeLog("✅ 所有阶段检测完成，准备报工", false);
                 }
             }));
         }
@@ -2843,7 +2863,14 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
                 DataModel.Processmodel.IsReportingWork = true;
-                writeLog($"开始报工: SN={DataModel.Processmodel.CurrentProductSN}, 结果={qualityResult}", false);
+
+                // 更新界面状态
+                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    DataModel.Processmodel.ReportWorkStatus = "正在报工...";
+                }));
+
+                writeLog($"🔄 开始报工: SN={DataModel.Processmodel.CurrentProductSN}, 结果={qualityResult}", false);
 
                 var reportResult = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.Save_EquipmentRecord_mes(
                     DataModel.Settingmodel.ReportWorkConfig.StationCode,     // 工位码
@@ -2858,32 +2885,81 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (reportResult)
                 {
                     string logMessage = $"[{DateTime.Now:HH:mm:ss}] SN:{DataModel.Processmodel.CurrentProductSN} 报工成功";
-                    DataModel.Processmodel.ReportWorkSuccessLog.Insert(0, logMessage);
 
-                    // 保持最多50条记录
-                    while (DataModel.Processmodel.ReportWorkSuccessLog.Count > 50)
+                    // 在UI线程更新界面
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        DataModel.Processmodel.ReportWorkSuccessLog.RemoveAt(DataModel.Processmodel.ReportWorkSuccessLog.Count - 1);
-                    }
+                        DataModel.Processmodel.ReportWorkSuccessLog.Insert(0, logMessage);
+                        DataModel.Processmodel.ReportWorkStatus = "✅ 报工成功";
 
-                    writeLog($"报工成功: SN={DataModel.Processmodel.CurrentProductSN}", false);
+                        // 保持最多50条记录
+                        while (DataModel.Processmodel.ReportWorkSuccessLog.Count > 50)
+                        {
+                            DataModel.Processmodel.ReportWorkSuccessLog.RemoveAt(DataModel.Processmodel.ReportWorkSuccessLog.Count - 1);
+                        }
+
+                        // 3秒后清除状态提示
+                        Task.Delay(3000).ContinueWith(_ =>
+                        {
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                DataModel.Processmodel.ReportWorkStatus = "";
+                            }));
+                        });
+                    }));
+
+                    writeLog($"✅ 报工成功: SN={DataModel.Processmodel.CurrentProductSN}", false);
 
                     // 清空当前SN和阶段状态，准备下一个产品
-                    DataModel.Processmodel.CurrentProductSN = string.Empty;
-                    DataModel.Processmodel.A1StageCompleted = false;
-                    DataModel.Processmodel.A2StageCompleted = false;
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        DataModel.Processmodel.CurrentProductSN = string.Empty;
+                        DataModel.Processmodel.A1StageCompleted = false;
+                        DataModel.Processmodel.A2StageCompleted = false;
+                        DataModel.Processmodel.ScanCodeStatus = "等待扫码";
+                    }));
 
                     return true;
                 }
                 else
                 {
-                    writeError($"报工失败: SN={DataModel.Processmodel.CurrentProductSN}");
+                    // 在UI线程更新界面
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        DataModel.Processmodel.ReportWorkStatus = "❌ 报工失败";
+
+                        // 5秒后清除状态提示
+                        Task.Delay(5000).ContinueWith(_ =>
+                        {
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                DataModel.Processmodel.ReportWorkStatus = "";
+                            }));
+                        });
+                    }));
+
+                    writeError($"❌ 报工失败: SN={DataModel.Processmodel.CurrentProductSN}");
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                writeError($"报工异常: {ex.Message}");
+                // 在UI线程更新界面
+                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    DataModel.Processmodel.ReportWorkStatus = $"❌ 报工异常: {ex.Message}";
+
+                    // 5秒后清除状态提示
+                    Task.Delay(5000).ContinueWith(_ =>
+                    {
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            DataModel.Processmodel.ReportWorkStatus = "";
+                        }));
+                    });
+                }));
+
+                writeError($"❌ 报工异常: {ex.Message}");
                 return false;
             }
             finally

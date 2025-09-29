@@ -352,19 +352,33 @@
                 </Grid>
             </GroupBox>
 
-            <!-- 报工成功记录 - 减小字体突出主次 -->
-            <GroupBox Grid.Row="4" Header="报工记录" Margin="0,5" FontSize="13" FontWeight="Normal">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <ListBox ItemsSource="{Binding DataModel.Processmodel.ReportWorkSuccessLog}"
-                             Background="Transparent" BorderThickness="0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" FontSize="11" Margin="2"
-                                           Foreground="Green" TextWrapping="Wrap"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ScrollViewer>
+            <!-- 报工状态显示 -->
+            <GroupBox Grid.Row="4" Header="报工状态" Margin="0,5" FontSize="13" FontWeight="Normal">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 当前报工状态 -->
+                    <TextBlock Grid.Row="0" Text="{Binding DataModel.Processmodel.ReportWorkStatus}"
+                               Foreground="{Binding DataModel.Processmodel.ReportWorkStatusColor}"
+                               FontSize="14" FontWeight="Bold" Margin="5"
+                               HorizontalAlignment="Center" TextWrapping="Wrap"/>
+
+                    <!-- 报工成功记录 -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,5,0,0">
+                        <ListBox ItemsSource="{Binding DataModel.Processmodel.ReportWorkSuccessLog}"
+                                 Background="Transparent" BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="11" Margin="2"
+                                               Foreground="Green" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+                </Grid>
             </GroupBox>
         </Grid>
         <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" >

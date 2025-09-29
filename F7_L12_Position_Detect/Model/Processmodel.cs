@@ -286,5 +286,37 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        // 报工状态显示
+        private string _reportWorkStatus = "";
+        [XmlIgnore]
+        public string ReportWorkStatus
+        {
+            get { return _reportWorkStatus; }
+            set
+            {
+                _reportWorkStatus = value;
+                RaisePropertyChanged(() => ReportWorkStatus);
+                RaisePropertyChanged(() => ReportWorkStatusColor);
+            }
+        }
+
+        [XmlIgnore]
+        public SolidColorBrush ReportWorkStatusColor
+        {
+            get
+            {
+                if (_reportWorkStatus.Contains("✅") || _reportWorkStatus.Contains("成功"))
+                    return Brushes.Green;
+                else if (_reportWorkStatus.Contains("❌") || _reportWorkStatus.Contains("失败"))
+                    return Brushes.Red;
+                else if (_reportWorkStatus.Contains("🔄") || _reportWorkStatus.Contains("正在"))
+                    return Brushes.Orange;
+                else if (_reportWorkStatus.Contains("⚠️") || _reportWorkStatus.Contains("未报工"))
+                    return Brushes.DarkOrange;
+                else
+                    return Brushes.Transparent;
+            }
+        }
+
     }
 }
