@@ -162,6 +162,7 @@ namespace F7_L12_Position_Detect
                 return;
             }
             vml.Main.DataModel.Settingmodel.camedata.closing($"{Environment.CurrentDirectory}\\配置\\相机配置.xml");
+            vml.Main.ClosePLCConnection(); // 关闭PLC长连接
             vml.Main.SaveProcessmodel();
             vml.Main.SaveRecordModel();
             vml.Main.SaveSettingModel();

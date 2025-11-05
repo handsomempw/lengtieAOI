@@ -74,6 +74,20 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("信号交互地址")]
         public int AddressStart { set; get; } = 7080;
 
+        /// <summary>
+        /// PLC连接状态（用于界面显示）
+        /// </summary>
+        private bool _plcIsConnected = false;
+        [XmlIgnore]
+        public bool PLCIsConnected
+        {
+            get { return _plcIsConnected; }
+            set
+            {
+                _plcIsConnected = value;
+                RaisePropertyChanged(() => PLCIsConnected);
+            }
+        }
 
         #endregion
 

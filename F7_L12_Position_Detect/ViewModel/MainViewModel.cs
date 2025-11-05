@@ -467,9 +467,152 @@ namespace F7_L12_Position_Detect.ViewModel
         private volatile bool _isExecuting = false;
         private readonly object _executionLock = new object();
 
+        // PLC连接复用：维护一个长连接，避免频繁创建/销毁连接
+        private ModbusTcpNet _plcConnection = null;
+        private readonly object _plcConnectionLock = new object();
+        private DateTime _lastConnectionAttempt = DateTime.MinValue;
+        private const int CONNECTION_RETRY_INTERVAL_MS = 5000; // 连接失败后重试间隔5秒
+        private const int CONNECTION_TIMEOUT_MS = 3000; // 连接超时3秒（从1ms改为3秒）
+        private const int RECEIVE_TIMEOUT_MS = 2000; // 接收超时2秒（从1ms改为2秒）
+
+        /// <summary>
+        /// 获取或创建PLC连接（连接复用）
+        /// </summary>
+        /// <returns>ModbusTcpNet连接对象，如果连接失败返回null</returns>
+        private ModbusTcpNet GetOrCreatePLCConnection()
+        {
+            lock (_plcConnectionLock)
+            {
+                try
+                {
+                    // 如果连接已存在且可用，直接返回
+                    if (_plcConnection != null)
+                    {
+                        // 尝试进行一次简单操作来检测连接是否有效
+                        try
+                        {
+                            var testResult = _plcConnection.ReadUInt16("0", 1);
+                            if (testResult.IsSuccess)
+                            {
+                                // 连接有效，更新连接状态
+                                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                {
+                                    DataModel.Settingmodel.PLCIsConnected = true;
+                                }));
+                                return _plcConnection;
+                            }
+                        }
+                        catch
+                        {
+                            // 连接可能已断开，需要重新连接
+                            WriteDetailLog("[PLC连接] 检测到连接已断开，准备重新连接");
+                        }
+
+                        // 连接无效，关闭并释放
+                        try
+                        {
+                            _plcConnection.ConnectClose();
+                        }
+                        catch { }
+                        _plcConnection = null;
+                    }
+
+                    // 检查是否需要重试连接（避免频繁重试）
+                    if (_lastConnectionAttempt != DateTime.MinValue)
+                    {
+                        var elapsed = (DateTime.Now - _lastConnectionAttempt).TotalMilliseconds;
+                        if (elapsed < CONNECTION_RETRY_INTERVAL_MS)
+                        {
+                            // 距离上次尝试时间太短，跳过本次连接尝试
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                DataModel.Settingmodel.PLCIsConnected = false;
+                            }));
+                            return null;
+                        }
+                    }
+
+                    // 创建新连接
+                    _lastConnectionAttempt = DateTime.Now;
+                    WriteDetailLog($"[PLC连接] 尝试连接PLC {DataModel.Settingmodel.PLC_IP}:{DataModel.Settingmodel.PLC_Port}");
+
+                    ModbusTcpNet modbusTcp = new ModbusTcpNet();
+                    modbusTcp.ConnectTimeOut = CONNECTION_TIMEOUT_MS;
+                    modbusTcp.ReceiveTimeOut = RECEIVE_TIMEOUT_MS;
+                    modbusTcp.IpAddress = DataModel.Settingmodel.PLC_IP;
+                    modbusTcp.Port = DataModel.Settingmodel.PLC_Port;
+                    modbusTcp.DataFormat = HslCommunication.Core.DataFormat.CDAB;
+
+                    var connectResult = modbusTcp.ConnectServer();
+                    if (connectResult.IsSuccess)
+                    {
+                        _plcConnection = modbusTcp;
+                        WriteDetailLog("[PLC连接] 连接成功，已建立长连接");
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            DataModel.Settingmodel.PLCIsConnected = true;
+                        }));
+                        return _plcConnection;
+                    }
+                    else
+                    {
+                        WriteDetailLog($"[PLC连接] 连接失败: {connectResult.Message}");
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            DataModel.Settingmodel.PLCIsConnected = false;
+                            // 通讯失败数据置为-1
+                            DataModel.Processmodel.Trig_IO.IOstatus = -1;
+                        }));
+                        return null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteDetailLog($"[PLC连接] 连接异常: {ex.Message}");
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        DataModel.Settingmodel.PLCIsConnected = false;
+                        DataModel.Processmodel.Trig_IO.IOstatus = -1;
+                    }));
+                    return null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 关闭PLC连接（在程序退出或需要重新连接时调用）
+        /// </summary>
+        public void ClosePLCConnection()
+        {
+            lock (_plcConnectionLock)
+            {
+                if (_plcConnection != null)
+                {
+                    try
+                    {
+                        _plcConnection.ConnectClose();
+                        WriteDetailLog("[PLC连接] 已关闭长连接");
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteDetailLog($"[PLC连接] 关闭连接异常: {ex.Message}");
+                    }
+                    finally
+                    {
+                        _plcConnection = null;
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            DataModel.Settingmodel.PLCIsConnected = false;
+                        }));
+                    }
+                }
+            }
+        }
+
         public void PLC_Start()
         {
             Thread t = new Thread(PLC_Process);
+            t.IsBackground = true; // 设置为后台线程
             t.Start();
 
             //Thread t2 = new Thread(shakehand2);
@@ -490,8 +633,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     statusLogCounter = 0;
                     bool hasValidSN = HasValidSNAndValidation();
-                    writeLog($"PLC状态: 报工={hasValidSN}, SN={DataModel.Processmodel.CurrentProductSN}, 执行={_isExecuting}");
-                    WriteDetailLog($"[PLC状态] 报工状态={hasValidSN}, 当前SN={DataModel.Processmodel.CurrentProductSN}, 执行状态={_isExecuting}, 界面触发标志={DataModel.Processmodel.Trig_IO.IOstatus}");
+                                         writeLog($"PLC状态: 报工={hasValidSN}, SN={DataModel.Processmodel.CurrentProductSN}, 执行={_isExecuting}, 连接={DataModel.Settingmodel.PLCIsConnected}");
+                     WriteDetailLog($"[PLC状态] 报工状态={hasValidSN}, 当前SN={DataModel.Processmodel.CurrentProductSN}, 执行状态={_isExecuting}, 连接状态={DataModel.Settingmodel.PLCIsConnected}, 界面触发标志={DataModel.Processmodel.Trig_IO.IOstatus}");
                 }
 
                 // 检查报工模块状态：只有有SN且工序校验成功才进行PLC轮询
@@ -501,21 +644,19 @@ namespace F7_L12_Position_Detect.ViewModel
                     continue;
                 }
 
-                ModbusTcpNet modbusTcp = new ModbusTcpNet();
+                // 使用连接复用：获取或创建PLC连接
+                var modbusTcp = GetOrCreatePLCConnection();
+                if (modbusTcp == null)
+                {
+                    // 连接失败，等待后继续
+                    Thread.Sleep(100);
+                    continue;
+                }
+
+                // 连接成功，开始轮询三个地址
                 try
                 {
-                    modbusTcp.ConnectTimeOut = 1;
-                    modbusTcp.ReceiveTimeOut = 1;
-                    modbusTcp.IpAddress = DataModel.Settingmodel.PLC_IP;
-                    modbusTcp.Port = DataModel.Settingmodel.PLC_Port;
-
-                    modbusTcp.DataFormat = HslCommunication.Core.DataFormat.CDAB;
-                    WriteDetailLog($"[PLC连接] 尝试连接PLC {DataModel.Settingmodel.PLC_IP}:{DataModel.Settingmodel.PLC_Port}");
-                    var connectresult = modbusTcp.ConnectServer();
-
-                    if (connectresult.IsSuccess)
-                    {
-                        WriteDetailLog($"[PLC连接] 连接成功，开始轮询三个地址");
+                    WriteDetailLog($"[PLC轮询] 开始轮询三个地址");
 
                         #region 读取数据 - 多地址轮询模式
                         // 检查基础地址 - 全部检测触发
@@ -532,6 +673,23 @@ namespace F7_L12_Position_Detect.ViewModel
                                 ProcessPLCTrigger("ALL", DataModel.Settingmodel.AddressStart, currentValue, modbusTcp);
                             }
                             lastTriggerValue_Base = currentValue;
+                        }
+                        else
+                        {
+                            // 读取失败，可能连接已断开，标记连接无效以便下次重新连接
+                            WriteDetailLog($"[PLC轮询] 基础地址读取失败: {resultBase.Message}");
+                            lock (_plcConnectionLock)
+                            {
+                                if (_plcConnection != null)
+                                {
+                                    try { _plcConnection.ConnectClose(); } catch { }
+                                    _plcConnection = null;
+                                }
+                            }
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                DataModel.Settingmodel.PLCIsConnected = false;
+                            }));
                         }
 
                         // 检查基础地址+1 - A1一阶段检测触发
@@ -565,29 +723,31 @@ namespace F7_L12_Position_Detect.ViewModel
                             }
                             lastTriggerValue_A2 = currentValue;
                         }
-                        #endregion
+                    #endregion
 
-                        WriteDetailLog($"[PLC连接] 关闭连接");
-                        modbusTcp.ConnectClose();
-                        //#region 握手
-                        //modbusTcp.Write((DATA.PLC.AddressStart + 18).ToString(), (UInt16)0);
-                        //#endregion
-                    }
-                    else
-                    {
-                        WriteDetailLog($"[PLC连接] 连接失败: {connectresult.Message}");
-
-                        #region 通讯失败数据置为-1
-                        DataModel.Processmodel.Trig_IO.IOstatus = -1;
-                        #endregion
-                    }
-                    //modbusTcp?.ConnectClose();
-
+                    // 不再关闭连接，保持长连接复用
+                    // WriteDetailLog($"[PLC连接] 关闭连接"); // 已移除
+                    // modbusTcp.ConnectClose(); // 已移除
                 }
                 catch (Exception ex)
                 {
                     writeError($"PLC通讯异常: {ex.Message}");
                     WriteDetailLog($"[PLC异常] {ex.Message}\n{ex.StackTrace}");
+                    
+                    // 异常情况下关闭连接，下次重新建立
+                    lock (_plcConnectionLock)
+                    {
+                        if (_plcConnection != null)
+                        {
+                            try { _plcConnection.ConnectClose(); } catch { }
+                            _plcConnection = null;
+                        }
+                    }
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        DataModel.Settingmodel.PLCIsConnected = false;
+                    }));
+                    
                     // 确保在通讯异常情况下也释放执行锁
                     lock (_executionLock)
                     {
@@ -699,12 +859,12 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <param name="command">指令名称，如"A1"、"A2"或"ALL"</param>
         /// <param name="address">触发地址</param>
         /// <param name="triggerValue">触发值</param>
-        /// <param name="modbusTcp">ModbusTcp连接对象</param>
+        /// <param name="modbusTcp">ModbusTcp连接对象（连接复用）</param>
         private void ProcessPLCTrigger(string command, int address, int triggerValue, ModbusTcpNet modbusTcp)
         {
             try
             {
-                // 立即复位触发信号
+                // 立即复位触发信号（使用传入的连接对象，连接复用）
                 WriteDetailLog($"[PLC触发] 准备复位地址{address}为0");
                 var resetResult = modbusTcp.Write(address.ToString(), (UInt16)0);
                 WriteDetailLog($"[PLC触发] 地址{address}复位结果={resetResult.IsSuccess}");
@@ -733,6 +893,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"报工状态不满足: 跳过{command}指令 (SN={DataModel.Processmodel.CurrentProductSN})");
                     WriteDetailLog($"[业务逻辑] 报工模块状态不满足，跳过{command}指令执行 (SN={DataModel.Processmodel.CurrentProductSN})");
+                    // 注意：这里需要在finally中释放_isExecuting锁
                     return;
                 }
 
@@ -780,7 +941,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"检测被阻止: 报工正在进行中");
                     WriteDetailLog($"[工具执行] 检测被阻止，原因：报工正在进行中");
-                    // 注释掉PLC返回，根据用户要求不向PLC返回OK/NG标志
+                    // 注释掉PLC返回，不向PLC返回OK/NG标志
                     // PLC_write((UInt16)2); // 返回NG状态
                     return;
                 }
@@ -901,34 +1062,67 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             writeLog($"视觉->PLC:{result}、{(result == 1 ? "OK" : "NG")}", false);
 
-            int i = 0;
-            while (i++ < 4)
+            // 使用连接复用机制，最多重试4次
+            int retryCount = 0;
+            while (retryCount < 4)
             {
-                ModbusTcpNet modbusTcp = new ModbusTcpNet();
                 try
                 {
-                    modbusTcp.ConnectTimeOut = 1;
-                    modbusTcp.ReceiveTimeOut = 1;
-                    modbusTcp.IpAddress = DataModel.Settingmodel.PLC_IP;
-                    modbusTcp.Port = DataModel.Settingmodel.PLC_Port;
-                    modbusTcp.DataFormat = HslCommunication.Core.DataFormat.CDAB;
-                    var connectresult = modbusTcp.ConnectServer();
-
-                    if (connectresult.IsSuccess)
+                    // 获取或创建PLC连接（连接复用）
+                    var modbusTcp = GetOrCreatePLCConnection();
+                    if (modbusTcp != null)
                     {
-                        var r = modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)result);
-                        modbusTcp.ConnectClose();
-                        if (r.IsSuccess)
-                        { return true; }
+                        var writeResult = modbusTcp.Write((DataModel.Settingmodel.AddressStart + 1).ToString(), (UInt16)result);
+                        if (writeResult.IsSuccess)
+                        {
+                            WriteDetailLog($"[PLC写入] 写入结果成功: {result} ({(result == 1 ? "OK" : "NG")})");
+                            return true;
+                        }
+                        else
+                        {
+                            WriteDetailLog($"[PLC写入] 写入失败: {writeResult.Message}，重试 {retryCount + 1}/4");
+                            // 写入失败，可能连接已断开，标记连接无效
+                            lock (_plcConnectionLock)
+                            {
+                                if (_plcConnection != null)
+                                {
+                                    try { _plcConnection.ConnectClose(); } catch { }
+                                    _plcConnection = null;
+                                }
+                            }
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                DataModel.Settingmodel.PLCIsConnected = false;
+                            }));
+                        }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    ;
+                    WriteDetailLog($"[PLC写入] 写入异常: {ex.Message}，重试 {retryCount + 1}/4");
+                    // 异常情况下关闭连接
+                    lock (_plcConnectionLock)
+                    {
+                        if (_plcConnection != null)
+                        {
+                            try { _plcConnection.ConnectClose(); } catch { }
+                            _plcConnection = null;
+                        }
+                    }
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        DataModel.Settingmodel.PLCIsConnected = false;
+                    }));
                 }
-                Thread.Sleep(100);
+
+                retryCount++;
+                if (retryCount < 4)
+                {
+                    Thread.Sleep(100); // 重试前等待100ms
+                }
             }
 
+            WriteDetailLog("[PLC写入] 写入失败，已达到最大重试次数");
             return false;
         }
 

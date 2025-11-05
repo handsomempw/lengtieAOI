@@ -549,7 +549,7 @@
         <WrapPanel Grid.Row="4" HorizontalAlignment="Center" Grid.ColumnSpan="4" >
 
             <!--<TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ImageNum,StringFormat=照片数:{0}}"  />-->
-            <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.RobotConnect.IsConnected,StringFormat=机器人连接:{0}}"  />
+            <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.PLCIsConnected,StringFormat=PLC连接:{0}}"  />
             <!--<TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.SoftConnect.IsConnected,StringFormat=PC连接:{0}}" />-->
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ToolIndex,StringFormat=工具编号:{0}}"/>
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.RCMD,StringFormat=接收:{0}}"/>
