@@ -37,6 +37,21 @@ namespace F7_L12_Position_Detect.Model
 
         public string ScannerMode { set; get; } = "HF800";
 
+        /// <summary>
+        /// 扫码枪连接状态（用于界面显示）
+        /// </summary>
+        private bool _scannerIsConnected = false;
+        [XmlIgnore]
+        public bool ScannerIsConnected
+        {
+            get { return _scannerIsConnected; }
+            set
+            {
+                _scannerIsConnected = value;
+                RaisePropertyChanged(() => ScannerIsConnected);
+            }
+        }
+
         #region 工程配置
         [XmlElement("工程路径")]
         public string Prjdir { set; get; } = $"{Environment.CurrentDirectory}\\工程文件";

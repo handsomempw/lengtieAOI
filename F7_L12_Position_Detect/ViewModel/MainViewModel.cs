@@ -888,6 +888,44 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 设置当前执行指令（复用现有RCMD机制）
                 DataModel.Processmodel.RCMD = command;
 
+                // 先触发扫码（按配置使用HF800或通用ScannerModel），并复用现有MES转换与校验逻辑
+                try
+                {
+                    string scanCode = string.Empty;
+                    bool scanSuccess = false;
+
+                    if (DataModel.Settingmodel.ScannerMode == "HF800")
+                    {
+                        var r = DataModel.Settingmodel.HF800.Scanner();
+                        scanCode = (r?.value ?? string.Empty).Replace("\r", "").Replace("\n", "");
+                        DataModel.Processmodel.Scannerstr = scanCode;
+                        DataModel.Processmodel.SNList.Clear();
+                        DataModel.Processmodel.Barcodes = string.Empty;
+                        scanSuccess = (r != null && r.Status == Status.OK);
+                    }
+                    else
+                    {
+                        var r = DataModel.Settingmodel.ScannerModel.Scanner();
+                        scanCode = (r?.receivestring ?? string.Empty).Replace("\r", "").Replace("\n", "");
+                        DataModel.Processmodel.Scannerstr = scanCode;
+                        scanSuccess = (r != null && r.IsSuccess);
+                    }
+
+                    if (scanSuccess && !string.IsNullOrEmpty(scanCode))
+                    {
+                        // 调用现有异步流程（编码转换为SN并工序校验）
+                        ProcessScanCodeWithMESAsync(scanCode).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        writeLog($"PLC触发扫码失败或空码，跳过SN更新");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    writeLog($"PLC触发扫码异常: {ex.Message}");
+                }
+
                 // 检查报工模块状态，确保有SN且工序校验通过
                 if (!HasValidSNAndValidation())
                 {
@@ -2157,6 +2195,44 @@ namespace F7_L12_Position_Detect.ViewModel
         public void start()
         {
             DataModel.Settingmodel.camedata.CameraModel.camera.ImageReceived += OnReceive;
+        }
+
+        /// <summary>
+        /// 启动扫码枪连接状态监测（当前针对HF800网口，其他型号可后续扩展）
+        /// </summary>
+        public void StartScannerMonitor()
+        {
+            Thread t = new Thread(() =>
+            {
+                while (true)
+                {
+                    try
+                    {
+                        bool connected = false;
+                        if (DataModel != null && DataModel.Settingmodel != null)
+                        {
+                            if (DataModel.Settingmodel.ScannerMode == "HF800" && DataModel.Settingmodel.HF800 != null)
+                            {
+                                // 轻量连通性检查：快速连接并立刻断开
+                                connected = DataModel.Settingmodel.HF800.connect(DataModel.Settingmodel.HF800.IP_address, DataModel.Settingmodel.HF800.port, 1000);
+                                try { DataModel.Settingmodel.HF800.disconnect(); } catch {; }
+                            }
+                        }
+
+                        if (App.Current != null)
+                        {
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                DataModel.Settingmodel.ScannerIsConnected = connected;
+                            }));
+                        }
+                    }
+                    catch {; }
+                    Thread.Sleep(2000);
+                }
+            });
+            t.IsBackground = true;
+            t.Start();
         }
         private void OnReceive(object sender, EventArgs e)
         {

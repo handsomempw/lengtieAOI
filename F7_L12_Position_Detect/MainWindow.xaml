@@ -36,7 +36,7 @@
                     <ColumnDefinition Width="auto"/>
                 </Grid.ColumnDefinitions>
                 <Menu p:WindowX.IsDragMoveArea="False" FontSize="20"   VerticalAlignment="Center" Margin="20,0,0,0" Background="Transparent" BorderThickness="0">
-                    <MenuItem Header="法拉电子-视觉检测报工" p:MenuItemHelper.HoverBackground="Transparent" Background="Transparent" Foreground="WhiteSmoke" BorderThickness="0">
+                    <MenuItem Header="法拉电子-母排冷贴AOI报工" p:MenuItemHelper.HoverBackground="Transparent" Background="Transparent" Foreground="WhiteSmoke" BorderThickness="0">
                         <MenuItem Header="新建工程" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"  Visibility="{Binding  Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.permission,Converter={StaticResource Bool2Visible_Converter}}" Command="{Binding Source={StaticResource Locator},Path=Main.NEW_PRJCMD}"/>
                         <MenuItem Header="保存工程" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"                                                                                           Command="{Binding Source={StaticResource Locator},Path=Main.SAVE_PRJCMD}"/>
                         <!--<MenuItem Header="注册主控" FontSize="12" Padding="20,0" Background="WhiteSmoke" Foreground="#010101" p:MenuItemHelper.HoverForeground="WhiteSmoke" p:MenuItemHelper.HoverBackground="Orange"  Visibility="{Binding DATA.permission,Converter={StaticResource Bool2Visible_Converter}}" Command="{Binding Source={StaticResource Locator},Path=Main.REGISTER_MAIN_CMD}" />
@@ -550,6 +550,7 @@
 
             <!--<TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ImageNum,StringFormat=照片数:{0}}"  />-->
             <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.PLCIsConnected,StringFormat=PLC连接:{0}}"  />
+            <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.ScannerIsConnected,StringFormat=扫码连接:{0}}"  />
             <!--<TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.SoftConnect.IsConnected,StringFormat=PC连接:{0}}" />-->
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ToolIndex,StringFormat=工具编号:{0}}"/>
             <TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.RCMD,StringFormat=接收:{0}}"/>

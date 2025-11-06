@@ -84,6 +84,9 @@ namespace F7_L12_Position_Detect
 
             vml.Main.PLC_Start();
 
+            // 启动扫码枪连接状态监测
+            vml.Main.StartScannerMonitor();
+
             // 启动时自动刷新上岗人员信息
             _ = Task.Run(async () => await vml.Main.RefreshWorkerInfoAsync());
 
