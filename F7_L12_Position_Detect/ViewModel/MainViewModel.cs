@@ -3154,7 +3154,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     // 在UI线程更新界面
                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        DataModel.Processmodel.ReportWorkStatus = "❌ 报工失败";
+                        DataModel.Processmodel.ReportWorkStatus = "❌ 报工失败，失败原因已记录日志";
 
                         // 5秒后清除状态提示
                         Task.Delay(5000).ContinueWith(_ =>
@@ -3166,7 +3166,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         });
                     }));
 
-                    writeError($"❌ 报工失败: SN={DataModel.Processmodel.CurrentProductSN}");
+                    writeError($"❌ 报工失败: SN={DataModel.Processmodel.CurrentProductSN}，详细错误信息已记录到报工错误日志");
                     return false;
                 }
             }
