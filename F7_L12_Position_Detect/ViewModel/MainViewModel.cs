@@ -2826,6 +2826,17 @@ namespace F7_L12_Position_Detect.ViewModel
                                 UpdateStageStatus(DataModel.Processmodel.RCMD, false);
                                 // PLC_write((UInt16)2);
                                 writeLog("检测结果：NG，结果已显示在界面上", false);
+                                
+                                // NG状态下也执行报工，但status改为NG，错误类型和描述改为"绝缘纸漏贴移位"
+                                if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
+                                    !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
+                                    DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
+                                    DataModel.Processmodel.CanExecuteReportWork &&
+                                    !DataModel.Processmodel.IsReportingWork)
+                                {
+                                    writeLog("⚠️ 检测到NG，开始报工（状态：NG，错误：绝缘纸漏贴移位）...", false);
+                                    _ = Task.Run(async () => await ExecuteReportWorkAsync("不合格", "NG", "绝缘纸漏贴移位", "绝缘纸漏贴移位"));
+                                }
                             }
 
                         }
@@ -3216,7 +3227,11 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <summary>
         /// 执行报工操作
         /// </summary>
-        private async Task<bool> ExecuteReportWorkAsync(string qualityResult = "合格")
+        /// <param name="qualityResult">检测结果（合格/不合格）</param>
+        /// <param name="status">产品状态（OK/NG），默认为OK</param>
+        /// <param name="errorType">错误类型，默认为空</param>
+        /// <param name="errorDesc">错误描述，默认为空</param>
+        private async Task<bool> ExecuteReportWorkAsync(string qualityResult = "合格", string status = "OK", string errorType = "", string errorDesc = "")
         {
             if (DataModel.Processmodel.IsReportingWork)
             {
@@ -3234,7 +3249,8 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Processmodel.ReportWorkStatus = "正在报工...";
                 }));
 
-                writeLog($"🔄 开始报工: SN={DataModel.Processmodel.CurrentProductSN}, 结果={qualityResult}", false);
+                writeLog($"🔄 开始报工: SN={DataModel.Processmodel.CurrentProductSN}, 结果={qualityResult}, 状态={status}" + 
+                    (string.IsNullOrEmpty(errorType) ? "" : $", 错误类型={errorType}"), false);
 
                 var reportResult = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.Save_EquipmentRecord_mes(
                     DataModel.Settingmodel.ReportWorkConfig.StationCode,     // 工位码
@@ -3243,18 +3259,26 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Settingmodel.ReportWorkConfig.ProcedureName,   // 工序名称
                     DataModel.Settingmodel.ReportWorkConfig.EquipmentNumber, // 设备编号
                     qualityResult,                                           // 检测结果
-                    DataModel.Settingmodel.ReportWorkConfig.StationCode      // 工序编号
+                    DataModel.Settingmodel.ReportWorkConfig.StationCode,     // 工序编号
+                    status,                                                  // 产品状态（OK/NG）
+                    errorType,                                               // 错误类型
+                    errorDesc                                                 // 错误描述
                 );
 
                 if (reportResult)
                 {
                     string logMessage = $"[{DateTime.Now:HH:mm:ss}] SN:{DataModel.Processmodel.CurrentProductSN} 报工成功";
+                    if (!string.IsNullOrEmpty(errorType))
+                    {
+                        logMessage += $" (状态:{status}, 错误:{errorType})";
+                    }
 
                     // 在UI线程更新界面
                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         DataModel.Processmodel.ReportWorkSuccessLog.Insert(0, logMessage);
-                        DataModel.Processmodel.ReportWorkStatus = "✅ 报工成功";
+                        string statusText = status == "NG" ? "⚠️ 报工成功（NG状态）" : "✅ 报工成功";
+                        DataModel.Processmodel.ReportWorkStatus = statusText;
 
                         // 保持最多50条记录
                         while (DataModel.Processmodel.ReportWorkSuccessLog.Count > 50)
@@ -3272,7 +3296,9 @@ namespace F7_L12_Position_Detect.ViewModel
                         });
                     }));
 
-                    writeLog($"✅ 报工成功: SN={DataModel.Processmodel.CurrentProductSN}", false);
+                    string logPrefix = status == "NG" ? "⚠️" : "✅";
+                    writeLog($"{logPrefix} 报工成功: SN={DataModel.Processmodel.CurrentProductSN}, 状态={status}" + 
+                        (string.IsNullOrEmpty(errorType) ? "" : $", 错误类型={errorType}"), false);
 
                     // 清空当前SN和阶段状态，准备下一个产品
                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
