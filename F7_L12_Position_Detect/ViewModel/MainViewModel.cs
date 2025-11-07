@@ -620,23 +620,12 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         private void PLC_Process()
         {
-            int statusLogCounter = 0; // 用于控制状态日志频率
             int lastTriggerValue_Base = 0;
             int lastTriggerValue_A1 = 0;
             int lastTriggerValue_A2 = 0;
 
             while (true)
             {
-                // ========== 周期性状态日志 ==========
-                statusLogCounter++;
-                if (statusLogCounter >= 300) // 每30秒记录一次状态 (300 * 100ms = 30s)
-                {
-                    statusLogCounter = 0;
-                    bool hasValidSN = HasValidSNAndValidation();
-                                         writeLog($"PLC状态: 报工={hasValidSN}, SN={DataModel.Processmodel.CurrentProductSN}, 执行={_isExecuting}, 连接={DataModel.Settingmodel.PLCIsConnected}");
-                     WriteDetailLog($"[PLC状态] 报工状态={hasValidSN}, 当前SN={DataModel.Processmodel.CurrentProductSN}, 执行状态={_isExecuting}, 连接状态={DataModel.Settingmodel.PLCIsConnected}, 界面触发标志={DataModel.Processmodel.Trig_IO.IOstatus}");
-                }
-
                 // 逻辑：启动时立即连接PLC，PLC触发后再进行扫码、转换、校验等流
                 // 使用连接复用：获取或创建PLC连接
                 var modbusTcp = GetOrCreatePLCConnection();
@@ -801,47 +790,57 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 处理扫码结果
                 if (scanResult.Success)
                 {
-                    // SN获取成功，更新到界面
+                    // SN获取成功，直接更新状态（不通过Dispatcher，确保同步）
+                    DataModel.Processmodel.CurrentProductSN = scanResult.SN;
+                    DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                    // 日志输出使用BeginInvoke避免阻塞
                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        DataModel.Processmodel.CurrentProductSN = scanResult.SN;
-                        DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
                         writeLog($"扫码处理成功: SN={scanResult.SN}");
                     }));
 
                     // 处理工序校验结果
                     if (validationResult != null)
                     {
-                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        // 直接更新状态（不通过Dispatcher，确保同步）
+                        if (validationResult.Success)
                         {
-                            if (validationResult.Success)
+                            DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
+                            // 日志输出使用BeginInvoke避免阻塞
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
                             {
-                                DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
                                 writeLog($"工序校验通过: SN={scanResult.SN}, 工序={procedureName}");
-                            }
-                            else
+                            }));
+                        }
+                        else
+                        {
+                            DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
+                            // 日志输出使用BeginInvoke避免阻塞
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
                             {
-                                DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
                                 writeLog($"工序校验失败: {validationResult.ErrorMessage}");
-                            }
-                        }));
+                            }));
+                        }
                     }
                 }
                 else
                 {
-                    // SN获取失败
+                    // SN获取失败，直接更新状态
+                    DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                    // 日志输出使用BeginInvoke避免阻塞
                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
                         writeLog($"扫码处理失败: {scanResult.ErrorMessage}");
                     }));
                 }
             }
             catch (Exception ex)
             {
+                // 直接更新状态
+                DataModel.Processmodel.ScanCodeStatus = "处理异常";
+                // 日志输出使用BeginInvoke避免阻塞
                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    DataModel.Processmodel.ScanCodeStatus = "处理异常";
                     writeLog($"扫码处理异常: {ex.Message}");
                 }));
             }
@@ -927,26 +926,21 @@ namespace F7_L12_Position_Detect.ViewModel
                             // 等待转换完成，最多等待10秒
                             if (conversionTask.Wait(TimeSpan.FromSeconds(10)))
                             {
-                                // 转换完成
-                                WriteDetailLog($"[PLC触发] 编码转换和校验完成，当前SN: {DataModel.Processmodel.CurrentProductSN}");
+                                // 转换完成，等待一小段时间确保状态已完全同步（PropertyChanged事件已触发）
+                                Thread.Sleep(50);
+                                WriteDetailLog($"[PLC触发] 编码转换和校验完成，当前SN: {DataModel.Processmodel.CurrentProductSN}, 校验状态: {DataModel.Processmodel.ScanCodeStatus}");
                             }
                             else
                             {
                                 // 超时处理
                                 writeLog($"编码转换超时（10秒），原始编码: {scanCode}，继续检查后续流程");
-                                App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                {
-                                    DataModel.Processmodel.ScanCodeStatus = "转换超时";
-                                }));
+                                DataModel.Processmodel.ScanCodeStatus = "转换超时";
                             }
                         }
                         catch (Exception ex)
                         {
                             writeLog($"编码转换异常: {ex.Message}，继续执行后续流程");
-                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                            {
-                                DataModel.Processmodel.ScanCodeStatus = "转换异常";
-                            }));
+                            DataModel.Processmodel.ScanCodeStatus = "转换异常";
                         }
                     }
                     else
@@ -962,8 +956,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 检查报工模块状态，确保有SN且工序校验通过
                 if (!HasValidSNAndValidation())
                 {
-                    writeLog($"报工状态不满足: 跳过{command}指令 (SN={DataModel.Processmodel.CurrentProductSN})");
-                    WriteDetailLog($"[业务逻辑] 报工模块状态不满足，跳过{command}指令执行 (SN={DataModel.Processmodel.CurrentProductSN})");
+                    writeLog($"报工状态不满足: 跳过{command}指令 (SN={DataModel.Processmodel.CurrentProductSN ?? "空"}, 状态={DataModel.Processmodel.ScanCodeStatus})");
+                    WriteDetailLog($"[业务逻辑] 报工模块状态不满足，跳过{command}指令执行 (SN={DataModel.Processmodel.CurrentProductSN ?? "空"}, 状态={DataModel.Processmodel.ScanCodeStatus})");
                     // 注意：这里需要在finally中释放_isExecuting锁
                     return;
                 }
