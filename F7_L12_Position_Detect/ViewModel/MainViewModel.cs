@@ -637,13 +637,7 @@ namespace F7_L12_Position_Detect.ViewModel
                      WriteDetailLog($"[PLC状态] 报工状态={hasValidSN}, 当前SN={DataModel.Processmodel.CurrentProductSN}, 执行状态={_isExecuting}, 连接状态={DataModel.Settingmodel.PLCIsConnected}, 界面触发标志={DataModel.Processmodel.Trig_IO.IOstatus}");
                 }
 
-                // 检查报工模块状态：只有有SN且工序校验成功才进行PLC轮询
-                if (!HasValidSNAndValidation())
-                {
-                    Thread.Sleep(1000); // 等待状态满足，减少CPU占用
-                    continue;
-                }
-
+                // 逻辑：启动时立即连接PLC，PLC触发后再进行扫码、转换、校验等流
                 // 使用连接复用：获取或创建PLC连接
                 var modbusTcp = GetOrCreatePLCConnection();
                 if (modbusTcp == null)
@@ -913,8 +907,47 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (scanSuccess && !string.IsNullOrEmpty(scanCode))
                     {
+                        // 立即更新产品SN输入框显示原始编码
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            DataModel.Processmodel.CurrentProductSN = scanCode;
+                        }));
+
                         // 调用现有异步流程（编码转换为SN并工序校验）
-                        ProcessScanCodeWithMESAsync(scanCode).GetAwaiter().GetResult();
+                        // 使用超时机制避免死锁，在后台线程执行异步操作
+                        WriteDetailLog($"[PLC触发] 开始转换编码为SN: {scanCode}");
+                        try
+                        {
+                            // 在后台线程执行，使用超时机制（10秒）
+                            var conversionTask = Task.Run(async () =>
+                            {
+                                await ProcessScanCodeWithMESAsync(scanCode).ConfigureAwait(false);
+                            });
+                            
+                            // 等待转换完成，最多等待10秒
+                            if (conversionTask.Wait(TimeSpan.FromSeconds(10)))
+                            {
+                                // 转换完成
+                                WriteDetailLog($"[PLC触发] 编码转换和校验完成，当前SN: {DataModel.Processmodel.CurrentProductSN}");
+                            }
+                            else
+                            {
+                                // 超时处理
+                                writeLog($"编码转换超时（10秒），原始编码: {scanCode}，继续检查后续流程");
+                                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                {
+                                    DataModel.Processmodel.ScanCodeStatus = "转换超时";
+                                }));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            writeLog($"编码转换异常: {ex.Message}，继续执行后续流程");
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                DataModel.Processmodel.ScanCodeStatus = "转换异常";
+                            }));
+                        }
                     }
                     else
                     {
@@ -1229,8 +1262,11 @@ namespace F7_L12_Position_Detect.ViewModel
                     string logstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{LogContent}";
                     if (showdatarecord)
                     {
-                        App.Current.Dispatcher.Invoke(() =>
+                        // 检测是否在UI线程，避免死锁
+                        // 如果在UI线程，使用Invoke；如果在后台线程，使用BeginInvoke
+                        if (App.Current.Dispatcher.CheckAccess())
                         {
+                            // 当前在UI线程，直接执行
                             int num = 200;
                             if (DataModel.Recordmodel.workLog.Count > num)
                             {
@@ -1238,7 +1274,21 @@ namespace F7_L12_Position_Detect.ViewModel
                                 DataModel.Recordmodel.workLog.Clear();
                             }
                             DataModel.Recordmodel.workLog.Insert(0, logstr);
-                        });
+                        }
+                        else
+                        {
+                            // 当前在后台线程，使用BeginInvoke避免死锁
+                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                int num = 200;
+                                if (DataModel.Recordmodel.workLog.Count > num)
+                                {
+                                    //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
+                                    DataModel.Recordmodel.workLog.Clear();
+                                }
+                                DataModel.Recordmodel.workLog.Insert(0, logstr);
+                            }));
+                        }
                     }
 
                     string filename = $"{Environment.CurrentDirectory}\\日志\\日志\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
@@ -1268,15 +1318,31 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     int num = 200;
                     string bugstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{Content}";
-                    App.Current.Dispatcher.Invoke(() =>
+                    // 检测是否在UI线程，避免死锁
+                    // 如果在UI线程，使用Invoke；如果在后台线程，使用BeginInvoke
+                    if (App.Current.Dispatcher.CheckAccess())
                     {
+                        // 当前在UI线程，直接执行
                         if (DataModel.Recordmodel.ErrorLog.Count > num)
                         {
                             //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
                             DataModel.Recordmodel.ErrorLog.Clear();
                         }
                         DataModel.Recordmodel.ErrorLog.Insert(0, bugstr);
-                    });
+                    }
+                    else
+                    {
+                        // 当前在后台线程，使用BeginInvoke避免死锁
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            if (DataModel.Recordmodel.ErrorLog.Count > num)
+                            {
+                                //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
+                                DataModel.Recordmodel.ErrorLog.Clear();
+                            }
+                            DataModel.Recordmodel.ErrorLog.Insert(0, bugstr);
+                        }));
+                    }
                     string filename = $"{Environment.CurrentDirectory}\\日志\\错误\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
                     string dir = Path.GetDirectoryName(filename);
                     if (!Directory.Exists(dir))
