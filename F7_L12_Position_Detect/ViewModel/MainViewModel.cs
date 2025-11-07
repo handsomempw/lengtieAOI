@@ -2851,75 +2851,21 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG;
                                 
-                                // NG状态下，在更新阶段状态前先判断是否可以报工
-                                // 因为UpdateStageStatus会将阶段标记为未完成，但实际阶段已执行过
-                                string currentCommand = DataModel.Processmodel.RCMD;
-                                
-                                // 统计工程中配置了哪些阶段
-                                bool hasA1 = DataModel.Processmodel.Tools.Any(t => t.Command == "A1" || t.Command == "ALL");
-                                bool hasA2 = DataModel.Processmodel.Tools.Any(t => t.Command == "A2" || t.Command == "ALL");
-                                
-                                // 在UpdateStageStatus之前保存当前阶段完成状态
-                                bool a1CompletedBefore = DataModel.Processmodel.A1StageCompleted;
-                                bool a2CompletedBefore = DataModel.Processmodel.A2StageCompleted;
-                                
-                                // 根据工程配置和当前指令判断是否可以报工
-                                bool canReportWork = false;
-                                if (currentCommand == "ALL")
-                                {
-                                    // ALL指令：需要所有配置的阶段都执行过
-                                    canReportWork = (hasA1 ? a1CompletedBefore : true) && (hasA2 ? a2CompletedBefore : true);
-                                }
-                                else if (currentCommand == "A1")
-                                {
-                                    // A1指令执行后，判断是否可以报工
-                                    if (hasA1 && !hasA2)
-                                    {
-                                        // 只配置了A1，只要A1执行过就可以报工
-                                        canReportWork = a1CompletedBefore;
-                                    }
-                                    else if (hasA1 && hasA2)
-                                    {
-                                        // 配置了A1和A2，需要都执行过才能报工
-                                        canReportWork = a1CompletedBefore && a2CompletedBefore;
-                                    }
-                                }
-                                else if (currentCommand == "A2")
-                                {
-                                    // A2指令执行后，判断是否可以报工
-                                    if (!hasA1 && hasA2)
-                                    {
-                                        // 只配置了A2，只要A2执行过就可以报工
-                                        canReportWork = a2CompletedBefore;
-                                    }
-                                    else if (hasA1 && hasA2)
-                                    {
-                                        // 配置了A1和A2，需要都执行过才能报工
-                                        canReportWork = a1CompletedBefore && a2CompletedBefore;
-                                    }
-                                }
-                                else
-                                {
-                                    // 其他指令：只要指令执行过就允许报工
-                                    canReportWork = !string.IsNullOrEmpty(currentCommand);
-                                }
-                                
                                 // 更新阶段检测状态（会将阶段标记为未完成）
                                 UpdateStageStatus(DataModel.Processmodel.RCMD, false);
                                 // PLC_write((UInt16)2);
-                                
-                                // 记录检测结果日志
-                                if (currentCommand == "ALL" && canReportWork)
-                                {
-                                    // ALL指令且之前阶段都已完成：虽然本次检测NG，但允许报工
-                                    writeLog($"检测结果：NG（{currentCommand}指令），但之前阶段已完成，允许报工", false);
-                                }
-                                else
-                                {
-                                    writeLog("检测结果：NG，结果已显示在界面上", false);
-                                }
+                                writeLog("检测结果：NG，结果已显示在界面上", false);
                                 
                                 // NG状态下也执行报工，但status改为NG，错误类型和描述改为"绝缘纸漏贴移位"
+                                // 报工判断条件独立，不依赖阶段完成状态，避免多次NG后无法报工
+                                // 判断条件：
+                                // 1. 当前指令已执行（RCMD不为空）
+                                // 2. 有SN且工序校验通过
+                                // 3. 自动报工启用
+                                // 4. 不在报工中
+                                string currentCommand = DataModel.Processmodel.RCMD;
+                                bool canReportWork = !string.IsNullOrEmpty(currentCommand);
+                                
                                 if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
                                     !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
                                     DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
