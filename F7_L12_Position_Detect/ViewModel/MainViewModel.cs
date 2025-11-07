@@ -2772,7 +2772,24 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 DataModel.Processmodel.Status = ToolStatus.OK;
 
-                                // 更新阶段检测状态
+                                // 先同步更新阶段检测状态（避免异步更新导致的时序问题）
+                                // 这样在检查CanExecuteReportWork时，阶段状态已经是最新的
+                                string currentCommand = DataModel.Processmodel.RCMD;
+                                switch (currentCommand)
+                                {
+                                    case "A1":
+                                        DataModel.Processmodel.A1StageCompleted = true;
+                                        break;
+                                    case "A2":
+                                        DataModel.Processmodel.A2StageCompleted = true;
+                                        break;
+                                    case "ALL":
+                                        DataModel.Processmodel.A1StageCompleted = true;
+                                        DataModel.Processmodel.A2StageCompleted = true;
+                                        break;
+                                }
+
+                                // 异步更新UI和日志（不影响报工判断）
                                 UpdateStageStatus(DataModel.Processmodel.RCMD, true);
 
                                 // 检测成功后执行报工逻辑（需要SN转换成功且工序校验通过且所有阶段完成）
@@ -2796,7 +2813,18 @@ namespace F7_L12_Position_Detect.ViewModel
                                     if (DataModel.Processmodel.ScanCodeStatus != "工序校验通过")
                                         reasons.Add($"工序校验状态: {DataModel.Processmodel.ScanCodeStatus}");
                                     if (!DataModel.Processmodel.CanExecuteReportWork)
-                                        reasons.Add($"阶段未完成(A1:{DataModel.Processmodel.A1StageCompleted}, A2:{DataModel.Processmodel.A2StageCompleted})");
+                                    {
+                                        // 根据实际配置显示未完成的阶段
+                                        List<string> incompleteStages = new List<string>();
+                                        bool hasA1 = DataModel.Processmodel.Tools.Any(t => t.Command == "A1" || t.Command == "ALL");
+                                        bool hasA2 = DataModel.Processmodel.Tools.Any(t => t.Command == "A2" || t.Command == "ALL");
+                                        if (hasA1 && !DataModel.Processmodel.A1StageCompleted)
+                                            incompleteStages.Add($"A1:{DataModel.Processmodel.A1StageCompleted}");
+                                        if (hasA2 && !DataModel.Processmodel.A2StageCompleted)
+                                            incompleteStages.Add($"A2:{DataModel.Processmodel.A2StageCompleted}");
+                                        if (incompleteStages.Count > 0)
+                                            reasons.Add($"阶段未完成({string.Join(", ", incompleteStages)})");
+                                    }
                                     if (DataModel.Processmodel.IsReportingWork)
                                         reasons.Add("报工正在进行中");
 
@@ -2822,16 +2850,80 @@ namespace F7_L12_Position_Detect.ViewModel
                             else
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG;
-                                // 更新阶段检测状态
+                                
+                                // NG状态下，在更新阶段状态前先判断是否可以报工
+                                // 因为UpdateStageStatus会将阶段标记为未完成，但实际阶段已执行过
+                                string currentCommand = DataModel.Processmodel.RCMD;
+                                
+                                // 统计工程中配置了哪些阶段
+                                bool hasA1 = DataModel.Processmodel.Tools.Any(t => t.Command == "A1" || t.Command == "ALL");
+                                bool hasA2 = DataModel.Processmodel.Tools.Any(t => t.Command == "A2" || t.Command == "ALL");
+                                
+                                // 在UpdateStageStatus之前保存当前阶段完成状态
+                                bool a1CompletedBefore = DataModel.Processmodel.A1StageCompleted;
+                                bool a2CompletedBefore = DataModel.Processmodel.A2StageCompleted;
+                                
+                                // 根据工程配置和当前指令判断是否可以报工
+                                bool canReportWork = false;
+                                if (currentCommand == "ALL")
+                                {
+                                    // ALL指令：需要所有配置的阶段都执行过
+                                    canReportWork = (hasA1 ? a1CompletedBefore : true) && (hasA2 ? a2CompletedBefore : true);
+                                }
+                                else if (currentCommand == "A1")
+                                {
+                                    // A1指令执行后，判断是否可以报工
+                                    if (hasA1 && !hasA2)
+                                    {
+                                        // 只配置了A1，只要A1执行过就可以报工
+                                        canReportWork = a1CompletedBefore;
+                                    }
+                                    else if (hasA1 && hasA2)
+                                    {
+                                        // 配置了A1和A2，需要都执行过才能报工
+                                        canReportWork = a1CompletedBefore && a2CompletedBefore;
+                                    }
+                                }
+                                else if (currentCommand == "A2")
+                                {
+                                    // A2指令执行后，判断是否可以报工
+                                    if (!hasA1 && hasA2)
+                                    {
+                                        // 只配置了A2，只要A2执行过就可以报工
+                                        canReportWork = a2CompletedBefore;
+                                    }
+                                    else if (hasA1 && hasA2)
+                                    {
+                                        // 配置了A1和A2，需要都执行过才能报工
+                                        canReportWork = a1CompletedBefore && a2CompletedBefore;
+                                    }
+                                }
+                                else
+                                {
+                                    // 其他指令：只要指令执行过就允许报工
+                                    canReportWork = !string.IsNullOrEmpty(currentCommand);
+                                }
+                                
+                                // 更新阶段检测状态（会将阶段标记为未完成）
                                 UpdateStageStatus(DataModel.Processmodel.RCMD, false);
                                 // PLC_write((UInt16)2);
-                                writeLog("检测结果：NG，结果已显示在界面上", false);
+                                
+                                // 记录检测结果日志
+                                if (currentCommand == "ALL" && canReportWork)
+                                {
+                                    // ALL指令且之前阶段都已完成：虽然本次检测NG，但允许报工
+                                    writeLog($"检测结果：NG（{currentCommand}指令），但之前阶段已完成，允许报工", false);
+                                }
+                                else
+                                {
+                                    writeLog("检测结果：NG，结果已显示在界面上", false);
+                                }
                                 
                                 // NG状态下也执行报工，但status改为NG，错误类型和描述改为"绝缘纸漏贴移位"
                                 if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
                                     !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
                                     DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
-                                    DataModel.Processmodel.CanExecuteReportWork &&
+                                    canReportWork &&
                                     !DataModel.Processmodel.IsReportingWork)
                                 {
                                     writeLog("⚠️ 检测到NG，开始报工（状态：NG，错误：绝缘纸漏贴移位）...", false);
@@ -3177,7 +3269,8 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 更新阶段检测状态
+        /// 更新阶段检测状态（用于UI更新和日志输出）
+        /// 注意：在OK状态下，阶段状态已在调用此方法前同步更新，这里主要用于日志和UI刷新
         /// </summary>
         /// <param name="command">检测指令</param>
         /// <param name="isSuccess">检测是否成功</param>
@@ -3185,6 +3278,7 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             App.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
+                // 更新阶段状态（如果之前没有更新过，这里会更新；如果已更新，这里会设置相同的值，是安全的）
                 switch (command)
                 {
                     case "A1":

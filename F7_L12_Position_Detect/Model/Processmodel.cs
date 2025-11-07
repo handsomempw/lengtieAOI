@@ -249,7 +249,25 @@ namespace F7_L12_Position_Detect.Model
         [XmlIgnore]
         public bool CanExecuteReportWork
         {
-            get { return A1StageCompleted && A2StageCompleted; }
+            get 
+            { 
+                // 根据工程配置动态判断：统计工程中配置了哪些阶段
+                bool hasA1 = Tools.Any(t => t.Command == "A1" || t.Command == "ALL");
+                bool hasA2 = Tools.Any(t => t.Command == "A2" || t.Command == "ALL");
+                
+                // 根据配置的阶段判断是否都已完成
+                bool allCompleted = true;
+                if (hasA1 && !A1StageCompleted)
+                {
+                    allCompleted = false;
+                }
+                if (hasA2 && !A2StageCompleted)
+                {
+                    allCompleted = false;
+                }
+                
+                return allCompleted;
+            }
         }
 
         // 刷新上岗人员状态
