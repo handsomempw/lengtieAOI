@@ -90,6 +90,9 @@ namespace F7_L12_Position_Detect
             // 启动时自动刷新上岗人员信息
             _ = Task.Run(async () => await vml.Main.RefreshWorkerInfoAsync());
 
+            // 初始化点检功能
+            vml.Main.InitializeInspection();
+
         }
 
 

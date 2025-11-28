@@ -336,5 +336,119 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        // 点检相关状态
+        private bool _isInspectionMode = false;
+        [XmlIgnore]
+        public bool IsInspectionMode
+        {
+            get { return _isInspectionMode; }
+            set
+            {
+                _isInspectionMode = value;
+                RaisePropertyChanged(() => IsInspectionMode);
+                RaisePropertyChanged(() => InspectionStatusText);
+            }
+        }
+
+        private string _inspectionType = null; // "OK" 或 "NG" 或 null
+        [XmlIgnore]
+        public string InspectionType
+        {
+            get { return _inspectionType; }
+            set
+            {
+                _inspectionType = value;
+                RaisePropertyChanged(() => InspectionType);
+                RaisePropertyChanged(() => InspectionStatusText);
+            }
+        }
+
+        private bool _okInspectionCompleted = false;
+        [XmlIgnore]
+        public bool OKInspectionCompleted
+        {
+            get { return _okInspectionCompleted; }
+            set
+            {
+                _okInspectionCompleted = value;
+                RaisePropertyChanged(() => OKInspectionCompleted);
+                RaisePropertyChanged(() => InspectionStatusText);
+            }
+        }
+
+        private bool _ngInspectionCompleted = false;
+        [XmlIgnore]
+        public bool NGInspectionCompleted
+        {
+            get { return _ngInspectionCompleted; }
+            set
+            {
+                _ngInspectionCompleted = value;
+                RaisePropertyChanged(() => NGInspectionCompleted);
+                RaisePropertyChanged(() => InspectionStatusText);
+            }
+        }
+
+        [XmlIgnore]
+        public string InspectionStatusText
+        {
+            get
+            {
+                if (IsInspectionMode)
+                {
+                    return $"点检模式: {InspectionType}点检";
+                }
+                return string.Empty;
+            }
+        }
+
+        private TimeSpan _timeToNextInspection = TimeSpan.Zero;
+        [XmlIgnore]
+        public TimeSpan TimeToNextInspection
+        {
+            get { return _timeToNextInspection; }
+            set
+            {
+                _timeToNextInspection = value;
+                RaisePropertyChanged(() => TimeToNextInspection);
+                RaisePropertyChanged(() => TimeToNextInspectionText);
+                RaisePropertyChanged(() => InspectionCountdownColor);
+                RaisePropertyChanged(() => IsInspectionOverdue);
+            }
+        }
+
+        [XmlIgnore]
+        public string TimeToNextInspectionText
+        {
+            get
+            {
+                if (_timeToNextInspection.TotalHours < 0)
+                    return "已到期";
+                int hours = (int)_timeToNextInspection.TotalHours;
+                int minutes = _timeToNextInspection.Minutes;
+                return $"{hours:00}:{minutes:00}";
+            }
+        }
+
+        [XmlIgnore]
+        public SolidColorBrush InspectionCountdownColor
+        {
+            get
+            {
+                if (IsInspectionOverdue)
+                    return Brushes.Red;
+                else if (_timeToNextInspection.TotalHours < 1)
+                    return Brushes.Orange;
+                else
+                    return Brushes.Gray;
+            }
+        }
+
+        [XmlIgnore]
+        public bool IsInspectionOverdue
+        {
+            get { return _timeToNextInspection.TotalHours < 0; }
+        }
+
     }
 }

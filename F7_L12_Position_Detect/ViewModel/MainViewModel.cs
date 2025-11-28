@@ -79,6 +79,12 @@ namespace F7_L12_Position_Detect.ViewModel
         // MES服务实例
         private readonly MESService _mesService = new MESService();
 
+        // 点检定时器
+        private System.Windows.Threading.DispatcherTimer _inspectionTimer;
+        
+        // 点检弹窗引用
+        private Window _inspectionWindow = null;
+
 
         public void InitHwindow(HWindow _HWindow)
         {
@@ -799,7 +805,30 @@ namespace F7_L12_Position_Detect.ViewModel
                         writeLog($"扫码处理成功: SN={scanResult.SN}");
                     }));
 
-                    // 处理工序校验结果
+                    // 检查是否是点检SN码（转换后的SN码）
+                    string sn = scanResult.SN;
+                    string okSN = DataModel.Settingmodel.ReportWorkConfig.OKInspectionSN;
+                    string ngSN = DataModel.Settingmodel.ReportWorkConfig.NGInspectionSN;
+
+                    if (sn == okSN || sn == ngSN)
+                    {
+                        // 进入点检模式
+                        string type = sn == okSN ? "OK" : "NG";
+                        DataModel.Processmodel.IsInspectionMode = true;
+                        DataModel.Processmodel.InspectionType = type;
+                        
+                        // 跳过工序校验（设置为点检模式状态）
+                        DataModel.Processmodel.ScanCodeStatus = $"点检模式-{type}点检";
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            writeLog($"⚠️ 检测到点检SN码，进入{type}点检模式", false);
+                        }));
+                        
+                        // 点检模式下不需要进行工序校验，直接返回
+                        return;
+                    }
+
+                    // 处理工序校验结果（正常流程）
                     if (validationResult != null)
                     {
                         // 直接更新状态（不通过Dispatcher，确保同步）
@@ -2772,6 +2801,30 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 DataModel.Processmodel.Status = ToolStatus.OK;
 
+                                // 检查是否在点检模式
+                                if (DataModel.Processmodel.IsInspectionMode)
+                                {
+                                    string type = DataModel.Processmodel.InspectionType;
+                                    
+                                    if (type == "OK")
+                                    {
+                                        // OK点检：所有工具必须为OK
+                                        var allOK = DataModel.Processmodel.Tools.All(t => t.ToolStatus == ToolStatus.OK);
+                                        if (allOK)
+                                        {
+                                            CompleteInspection("OK");
+                                            writeLog("✅ OK点检通过：所有工具检测OK", false);
+                                        }
+                                        else
+                                        {
+                                            writeLog("❌ OK点检失败：存在NG结果", false);
+                                        }
+                                    }
+                                    
+                                    // 点检模式下不执行报工，不更新阶段状态，直接返回
+                                    return;
+                                }
+
                                 // 先同步更新阶段检测状态（避免异步更新导致的时序问题）
                                 // 这样在检查CanExecuteReportWork时，阶段状态已经是最新的
                                 string currentCommand = DataModel.Processmodel.RCMD;
@@ -2842,6 +2895,27 @@ namespace F7_L12_Position_Detect.ViewModel
                             else if (status == 2)
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG2;
+                                
+                                // 检查是否在点检模式
+                                if (DataModel.Processmodel.IsInspectionMode)
+                                {
+                                    string type = DataModel.Processmodel.InspectionType;
+                                    
+                                    if (type == "NG")
+                                    {
+                                        // NG点检：至少一个NG即可
+                                        CompleteInspection("NG");
+                                        writeLog("✅ NG点检通过：检测到NG2结果", false);
+                                    }
+                                    else if (type == "OK")
+                                    {
+                                        writeLog("❌ OK点检失败：检测到NG2结果", false);
+                                    }
+                                    
+                                    // 点检模式下不执行报工
+                                    return;
+                                }
+                                
                                 // 更新阶段检测状态
                                 UpdateStageStatus(DataModel.Processmodel.RCMD, false);
                                 // PLC_write((UInt16)3);
@@ -2850,6 +2924,26 @@ namespace F7_L12_Position_Detect.ViewModel
                             else
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG;
+                                
+                                // 检查是否在点检模式
+                                if (DataModel.Processmodel.IsInspectionMode)
+                                {
+                                    string type = DataModel.Processmodel.InspectionType;
+                                    
+                                    if (type == "NG")
+                                    {
+                                        // NG点检：至少一个NG即可
+                                        CompleteInspection("NG");
+                                        writeLog("✅ NG点检通过：检测到NG结果", false);
+                                    }
+                                    else if (type == "OK")
+                                    {
+                                        writeLog("❌ OK点检失败：检测到NG结果", false);
+                                    }
+                                    
+                                    // 点检模式下不执行报工
+                                    return;
+                                }
                                 
                                 // 更新阶段检测状态（会将阶段标记为未完成）
                                 UpdateStageStatus(DataModel.Processmodel.RCMD, false);
@@ -3203,12 +3297,17 @@ namespace F7_L12_Position_Detect.ViewModel
         private bool HasValidSNAndValidation()
         {
             bool hasSN = !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN);
-            bool isValidated = DataModel.Processmodel.ScanCodeStatus == "工序校验通过";
+            
+            // 点检模式下，允许通过（点检模式会跳过工序校验）
+            bool isInspectionMode = DataModel.Processmodel.IsInspectionMode;
+            bool isValidated = DataModel.Processmodel.ScanCodeStatus == "工序校验通过" || 
+                              (isInspectionMode && DataModel.Processmodel.ScanCodeStatus.Contains("点检模式"));
             bool result = hasSN && isValidated;
 
             // 详细调试日志：记录状态检查结果
             WriteDetailLog($"[报工状态] SN={DataModel.Processmodel.CurrentProductSN ?? "空"}, " +
                           $"校验状态={DataModel.Processmodel.ScanCodeStatus}, " +
+                          $"点检模式={isInspectionMode}, " +
                           $"有SN={hasSN}, 校验通过={isValidated}, 最终结果={result}");
 
             return result;
@@ -3399,6 +3498,172 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
 
+
+        #endregion
+
+        #region 点检功能
+
+        /// <summary>
+        /// 初始化点检功能
+        /// </summary>
+        public void InitializeInspection()
+        {
+            // 启动时检查点检状态
+            CheckInspectionStatus();
+            
+            // 启动定时器，每分钟更新一次倒计时
+            _inspectionTimer = new System.Windows.Threading.DispatcherTimer();
+            _inspectionTimer.Interval = TimeSpan.FromMinutes(1);
+            _inspectionTimer.Tick += (s, e) =>
+            {
+                UpdateInspectionCountdown();
+                CheckInspectionStatus();
+            };
+            _inspectionTimer.Start();
+            
+            // 立即更新一次
+            UpdateInspectionCountdown();
+        }
+
+        /// <summary>
+        /// 检查点检状态，决定是否显示强制点检弹窗
+        /// </summary>
+        private void CheckInspectionStatus()
+        {
+            var lastTime = DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime;
+            if (lastTime == DateTime.MinValue)
+            {
+                // 首次运行，设置为当前时间
+                lastTime = DateTime.Now;
+                DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime = lastTime;
+                SaveSettingModel();
+            }
+            
+            var timeElapsed = DateTime.Now - lastTime;
+            bool isOverdue = timeElapsed.TotalHours >= 24;
+            bool needInspection = isOverdue && 
+                                 (!DataModel.Processmodel.OKInspectionCompleted || 
+                                  !DataModel.Processmodel.NGInspectionCompleted);
+            
+            if (needInspection && _inspectionWindow == null)
+            {
+                // 显示强制点检弹窗
+                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    ShowInspectionWindow();
+                }));
+            }
+            else if (!needInspection && _inspectionWindow != null)
+            {
+                // 点检已完成，关闭弹窗
+                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    CloseInspectionWindow();
+                }));
+            }
+        }
+
+        /// <summary>
+        /// 更新点检倒计时
+        /// </summary>
+        private void UpdateInspectionCountdown()
+        {
+            var lastTime = DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime;
+            if (lastTime == DateTime.MinValue)
+            {
+                DataModel.Processmodel.TimeToNextInspection = TimeSpan.FromHours(24);
+                return;
+            }
+            
+            var elapsed = DateTime.Now - lastTime;
+            var remaining = TimeSpan.FromHours(24) - elapsed;
+            DataModel.Processmodel.TimeToNextInspection = remaining;
+        }
+
+        /// <summary>
+        /// 显示点检弹窗
+        /// </summary>
+        private void ShowInspectionWindow()
+        {
+            if (_inspectionWindow != null && _inspectionWindow.IsLoaded)
+                return;
+            
+            try
+            {
+                _inspectionWindow = new F7_L12_Position_Detect.View.InspectionWindow();
+                _inspectionWindow.DataContext = this;
+                _inspectionWindow.Show();
+                writeLog("⚠️ 点检已到期，请完成OK点检和NG点检", false);
+            }
+            catch (Exception ex)
+            {
+                writeError($"显示点检弹窗失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 关闭点检弹窗
+        /// </summary>
+        public void CloseInspectionWindow()
+        {
+            if (_inspectionWindow != null)
+            {
+                _inspectionWindow.Close();
+                _inspectionWindow = null;
+            }
+        }
+
+        /// <summary>
+        /// 开始OK点检
+        /// </summary>
+        public void StartOKInspection()
+        {
+            DataModel.Processmodel.IsInspectionMode = true;
+            DataModel.Processmodel.InspectionType = "OK";
+            DataModel.Processmodel.OKInspectionCompleted = false;
+            writeLog("开始OK点检，请使用PLC触发扫码和检测", false);
+        }
+
+        /// <summary>
+        /// 开始NG点检
+        /// </summary>
+        public void StartNGInspection()
+        {
+            DataModel.Processmodel.IsInspectionMode = true;
+            DataModel.Processmodel.InspectionType = "NG";
+            DataModel.Processmodel.NGInspectionCompleted = false;
+            writeLog("开始NG点检，请使用PLC触发扫码和检测", false);
+        }
+
+        /// <summary>
+        /// 完成点检后调用
+        /// </summary>
+        private void CompleteInspection(string type)
+        {
+            if (type == "OK")
+            {
+                DataModel.Processmodel.OKInspectionCompleted = true;
+                writeLog("✅ OK点检完成", false);
+            }
+            else if (type == "NG")
+            {
+                DataModel.Processmodel.NGInspectionCompleted = true;
+                writeLog("✅ NG点检完成", false);
+            }
+            
+            // 如果两个都完成了，重置状态并更新计时
+            if (DataModel.Processmodel.OKInspectionCompleted && 
+                DataModel.Processmodel.NGInspectionCompleted)
+            {
+                DataModel.Processmodel.IsInspectionMode = false;
+                DataModel.Processmodel.InspectionType = null;
+                DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime = DateTime.Now;
+                SaveSettingModel();
+                UpdateInspectionCountdown();
+                CloseInspectionWindow();
+                writeLog("✅ 点检全部完成，计时已重置", false);
+            }
+        }
 
         #endregion
     }
