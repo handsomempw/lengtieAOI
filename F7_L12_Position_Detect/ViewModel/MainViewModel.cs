@@ -266,6 +266,43 @@ namespace F7_L12_Position_Detect.ViewModel
             }
         }
 
+        /// <summary>
+        /// 根据指令清除对应工具的状态（用于A1/A2多阶段检测，避免相互影响）
+        /// </summary>
+        /// <param name="command">指令名称，如"A1"、"A2"或"ALL"</param>
+        public void ClearToolsByCommand(string command)
+        {
+            WriteDetailLog($"[工具清理] 开始清理指令{command}对应的工具状态");
+            
+            for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+            {
+                var tool = DataModel.Processmodel.Tools[i];
+                
+                // 判断工具是否属于当前指令
+                bool shouldClear = false;
+                if (command == "ALL")
+                {
+                    // ALL指令清除所有工具
+                    shouldClear = true;
+                }
+                else
+                {
+                    // 只清除匹配当前指令的工具
+                    shouldClear = (tool.Command == command || tool.Command == "ALL");
+                }
+                
+                if (shouldClear)
+                {
+                    WriteDetailLog($"[工具清理] 清理工具{i}({tool.Name}), Command={tool.Command}");
+                    ClearTool(tool);
+                }
+                else
+                {
+                    WriteDetailLog($"[工具清理] 保留工具{i}({tool.Name}), Command={tool.Command}, Status={tool.ToolStatus}");
+                }
+            }
+        }
+
         public void ClearTool(ToolModel tool)
         {
             tool.BarcodeStr = string.Empty;
@@ -659,9 +696,14 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 writeLog($"PLC触发: ALL指令 (地址{DataModel.Settingmodel.AddressStart}={currentValue})");
                                 WriteDetailLog($"[PLC触发] 基础地址触发值变化: {lastTriggerValue_Base} -> {currentValue}");
+                                // 先更新触发值，防止重复触发
+                                lastTriggerValue_Base = currentValue;
                                 ProcessPLCTrigger("ALL", DataModel.Settingmodel.AddressStart, currentValue, modbusTcp);
                             }
-                            lastTriggerValue_Base = currentValue;
+                            else
+                            {
+                                lastTriggerValue_Base = currentValue;
+                            }
                         }
                         else
                         {
@@ -692,9 +734,14 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 writeLog($"PLC触发: A1指令 (地址{DataModel.Settingmodel.AddressStart + 1}={currentValue})");
                                 WriteDetailLog($"[PLC触发] A1地址触发值变化: {lastTriggerValue_A1} -> {currentValue}");
+                                // 先更新触发值，防止重复触发
+                                lastTriggerValue_A1 = currentValue;
                                 ProcessPLCTrigger("A1", DataModel.Settingmodel.AddressStart + 1, currentValue, modbusTcp);
                             }
-                            lastTriggerValue_A1 = currentValue;
+                            else
+                            {
+                                lastTriggerValue_A1 = currentValue;
+                            }
                         }
 
                         // 检查基础地址+2 - A2二阶段检测触发
@@ -708,9 +755,14 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 writeLog($"PLC触发: A2指令 (地址{DataModel.Settingmodel.AddressStart + 2}={currentValue})");
                                 WriteDetailLog($"[PLC触发] A2地址触发值变化: {lastTriggerValue_A2} -> {currentValue}");
+                                // 先更新触发值，防止重复触发
+                                lastTriggerValue_A2 = currentValue;
                                 ProcessPLCTrigger("A2", DataModel.Settingmodel.AddressStart + 2, currentValue, modbusTcp);
                             }
-                            lastTriggerValue_A2 = currentValue;
+                            else
+                            {
+                                lastTriggerValue_A2 = currentValue;
+                            }
                         }
                     #endregion
 
@@ -910,6 +962,9 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 设置当前执行指令（复用现有RCMD机制）
                 DataModel.Processmodel.RCMD = command;
 
+                // 记录扫码前的SN，用于判断是否是新产品
+                string previousSN = DataModel.Processmodel.CurrentProductSN;
+
                 // 先触发扫码（按配置使用HF800或通用ScannerModel），并复用现有MES转换与校验逻辑
                 try
                 {
@@ -958,6 +1013,26 @@ namespace F7_L12_Position_Detect.ViewModel
                                 // 转换完成，等待一小段时间确保状态已完全同步（PropertyChanged事件已触发）
                                 Thread.Sleep(50);
                                 WriteDetailLog($"[PLC触发] 编码转换和校验完成，当前SN: {DataModel.Processmodel.CurrentProductSN}, 校验状态: {DataModel.Processmodel.ScanCodeStatus}");
+                                
+                                // 判断SN是否变化，如果是新产品，清除所有工具状态和阶段状态
+                                string currentSN = DataModel.Processmodel.CurrentProductSN;
+                                if (currentSN != previousSN)
+                                {
+                                    WriteDetailLog($"[PLC触发] 检测到新产品SN变化: {previousSN} -> {currentSN}，清除所有状态");
+                                    writeLog($"新产品SN: {currentSN}，重置检测状态");
+                                    
+                                    // 在UI线程清除所有工具状态和阶段状态
+                                    App.Current.Dispatcher.Invoke(new Action(() =>
+                                    {
+                                        ClearTools();
+                                        DataModel.Processmodel.A1StageCompleted = false;
+                                        DataModel.Processmodel.A2StageCompleted = false;
+                                    }));
+                                }
+                                else
+                                {
+                                    WriteDetailLog($"[PLC触发] SN未变化({currentSN})，保持现有检测状态");
+                                }
                             }
                             else
                             {
@@ -996,7 +1071,8 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 // 直接执行视觉检测，不进行扫码（机器人通信已禁用）
                 SendMsgRobot("DOK");
-                ClearTools();
+                // 只清除当前指令对应的工具，避免清除其他指令（如A1/A2）的检测结果
+                ClearToolsByCommand(command);
                 WriteDetailLog($"[视觉检测] 开始执行{command}指令的视觉检测");
                 ExecuteToolsByCommand(command);
 
@@ -1082,53 +1158,45 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 如果找到匹配的工具，执行它们
                 if (matchedToolIndices.Count > 0)
                 {
-                    WriteDetailLog($"[工具执行] 共找到{matchedToolIndices.Count}个匹配工具，开始逐个执行");
+                    WriteDetailLog($"[工具执行] 共找到{matchedToolIndices.Count}个匹配工具");
 
-                    // 清理状态（只在开始时清理一次）
-                    WriteDetailLog($"[工具执行] 清理工具状态");
-                    ClearTools();
+                    // 清理状态（只清理当前指令对应的工具，避免清除其他指令的结果）
+                    WriteDetailLog($"[工具执行] 清理指令{command}对应的工具状态");
+                    ClearToolsByCommand(command);
 
-                    // 逐个执行匹配的工具
-                    for (int idx = 0; idx < matchedToolIndices.Count; idx++)
-                    {
-                        int toolIndex = matchedToolIndices[idx];
-                        var tool = DataModel.Processmodel.Tools[toolIndex];
+                    // 使用第一个工具的相机和曝光设置（同一指令的所有工具共用）
+                    int firstToolIndex = matchedToolIndices[0];
+                    var firstTool = DataModel.Processmodel.Tools[firstToolIndex];
 
-                        WriteDetailLog($"[工具执行] 执行工具{toolIndex}({tool.Name}) - 第{idx + 1}/{matchedToolIndices.Count}个");
+                    WriteDetailLog($"[工具执行] 使用工具{firstToolIndex}({firstTool.Name})的相机设置");
 
-                        // 设置工具索引
-                        DataModel.Processmodel.ToolIndex = toolIndex + 1;
+                    // 设置工具索引为第一个工具（相机回调会处理所有匹配的工具）
+                    DataModel.Processmodel.ToolIndex = firstToolIndex + 1;
 
-                        // 检查工具是否指定了特定相机，如果是则切换相机
-                        WriteDetailLog($"[相机切换] 检查工具{toolIndex}相机设置: {tool.CameraSerialNumber}");
-                        SwitchCameraForTool(tool);
+                    // 检查是否需要切换相机
+                    WriteDetailLog($"[相机切换] 检查相机设置: {firstTool.CameraSerialNumber}");
+                    SwitchCameraForTool(firstTool);
 
-                        // 等待相机切换完成，防止时序问题
-                        Thread.Sleep(100);
+                    // 等待相机切换完成
+                    Thread.Sleep(100);
 
-                        // 设置曝光参数
-                        WriteDetailLog($"[相机设置] 工具{toolIndex}设置参数，曝光时间={tool.ExposureTime}");
-                        DataModel.Settingmodel.camedata.CameraModel.exposuretime = tool.ExposureTime;
-                        DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = tool.ExposureTime;
-                        DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
+                    // 设置曝光参数
+                    //WriteDetailLog($"[相机设置] 设置曝光时间={firstTool.ExposureTime}");
+                    DataModel.Settingmodel.camedata.CameraModel.exposuretime = firstTool.ExposureTime;
+                    DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = firstTool.ExposureTime;
+                    DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
 
-                        WriteDetailLog($"[相机设置] 工具{toolIndex}曝光参数设置完成，等待{DataModel.Settingmodel.delaytime}ms");
-                        Thread.Sleep(DataModel.Settingmodel.delaytime);
+                    //WriteDetailLog($"[相机设置] 曝光参数设置完成，等待{DataModel.Settingmodel.delaytime}ms");
+                    Thread.Sleep(DataModel.Settingmodel.delaytime);
 
-                        writeLog($"开始拍照: {command}指令 - 工具{toolIndex + 1}");
-                        WriteDetailLog($"[相机触发] 工具{toolIndex}开始触发拍照");
+                    // 只触发一次拍照，相机回调会处理所有匹配的工具
+                    string toolNames = string.Join(", ", matchedToolIndices.Select(idx => DataModel.Processmodel.Tools[idx].Name));
+                    writeLog($"开始拍照: {command}指令 - 共{matchedToolIndices.Count}个工具({toolNames})");
+                    //WriteDetailLog($"[相机触发] {command}指令触发拍照一次，{matchedToolIndices.Count}个工具将使用同一张图片");
 
-                        // 触发拍照
-                        DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
-                        WriteDetailLog($"[相机触发] 工具{toolIndex}触发完成");
-
-                        // 如果不是最后一个工具，等待一段时间再执行下一个
-                        if (idx < matchedToolIndices.Count - 1)
-                        {
-                            WriteDetailLog($"[工具执行] 等待500ms后执行下一个工具");
-                            Thread.Sleep(500); // 工具间间隔
-                        }
-                    }
+                    // 触发拍照（只触发一次）
+                    DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
+                    WriteDetailLog($"[相机触发] 拍照触发完成，等待相机回调处理");
                 }
 
                 if (matchedToolIndices.Count == 0)
@@ -2768,42 +2836,51 @@ namespace F7_L12_Position_Detect.ViewModel
                         if (i == DataModel.Processmodel.Tools.Count - 1)
                         {
                             int status = -1;
-                            int c = DataModel.Processmodel.Tools.Count();
+                            
+                            // 修复：只判断当前指令对应的工具，避免阶段状态判断错误
+                            // 使用与 ExecuteToolsByCommand 一致的匹配逻辑
+                            string currentCommand = DataModel.Processmodel.RCMD;
+                            var currentCommandTools = (from ToolModel in DataModel.Processmodel.Tools
+                                                       where (currentCommand == "ALL" || ToolModel.Command == currentCommand)
+                                                       select ToolModel).ToList();
+                            
+                            int c = currentCommandTools.Count();
+                            WriteDetailLog($"[阶段判断] 当前指令{currentCommand}，匹配工具数量={c}");
 
+                            var ok = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.OK);
+                            var NG1 = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.NG);
+                            var NG2 = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.NG2);
+                            var wait = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.等待中 || t.ToolStatus == ToolStatus.识别中);
 
-                            var ok = (from ToolModel in DataModel.Processmodel.Tools
-                                      where (ToolModel.ToolStatus == ToolStatus.OK)
-                                      select ToolModel);
-                            var NG1 = (from ToolModel in DataModel.Processmodel.Tools
-                                       where (ToolModel.ToolStatus == ToolStatus.NG)
-                                       select ToolModel);
-                            var NG2 = (from ToolModel in DataModel.Processmodel.Tools
-                                       where (ToolModel.ToolStatus == ToolStatus.NG2)
-                                       select ToolModel);
-                            var wait = (from ToolModel in DataModel.Processmodel.Tools
-                                        where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
-                                        select ToolModel);
+                            WriteDetailLog($"[阶段判断] OK={ok.Count()}, NG1={NG1.Count()}, NG2={NG2.Count()}, 等待={wait.Count()}");
 
-                            if (ok.Count() == c)
+                            if (ok.Count() == c && c > 0)
                             {
                                 status = 0;
+                                //WriteDetailLog($"[阶段判断] 当前指令{currentCommand}所有工具OK，status=0");
                             }
                             else if (NG2.Count() > 0)
                             {
                                 status = 2;
+                                //WriteDetailLog($"[阶段判断] 当前指令{currentCommand}有严重NG，status=2");
+                            }
+                            else if (wait.Count() == 0 && c > 0)
+                            {
+                                // 所有工具都已完成但不是全OK
+                                status = 1;
+                                //WriteDetailLog($"[阶段判断] 当前指令{currentCommand}有NG，status=1");
                             }
                             else
                             {
-                                status = 1;
+                                //WriteDetailLog($"[阶段判断] 当前指令{currentCommand}还有工具等待中，不更新阶段状态");
                             }
 
-                            if (status == 0)
+                            // 检查是否在点检模式
+                            if (DataModel.Processmodel.IsInspectionMode)
                             {
-                                DataModel.Processmodel.Status = ToolStatus.OK;
-
-                                // 检查是否在点检模式
-                                if (DataModel.Processmodel.IsInspectionMode)
+                                if (status == 0)
                                 {
+                                    DataModel.Processmodel.Status = ToolStatus.OK;
                                     string type = DataModel.Processmodel.InspectionType;
                                     
                                     if (type == "OK")
@@ -2820,30 +2897,62 @@ namespace F7_L12_Position_Detect.ViewModel
                                             writeLog("❌ OK点检失败：存在NG结果", false);
                                         }
                                     }
-                                    
-                                    // 点检模式下不执行报工，不更新阶段状态，直接返回
-                                    return;
                                 }
+                                
+                                // 点检模式下不执行报工，不更新阶段状态，直接返回
+                                return;
+                            }
 
+                            // 正常流程：根据status更新阶段状态（成功或失败都要更新）
+                            if (status >= 0)  // status=-1表示还在等待中，不更新；status=0/1/2表示已完成
+                            {
+                                // 使用前面已经声明的 currentCommand 变量
+                                bool isSuccess = (status == 0);
+                                
                                 // 先同步更新阶段检测状态（避免异步更新导致的时序问题）
-                                // 这样在检查CanExecuteReportWork时，阶段状态已经是最新的
-                                string currentCommand = DataModel.Processmodel.RCMD;
                                 switch (currentCommand)
                                 {
                                     case "A1":
-                                        DataModel.Processmodel.A1StageCompleted = true;
+                                        DataModel.Processmodel.A1StageCompleted = isSuccess;
                                         break;
                                     case "A2":
-                                        DataModel.Processmodel.A2StageCompleted = true;
+                                        DataModel.Processmodel.A2StageCompleted = isSuccess;
                                         break;
                                     case "ALL":
-                                        DataModel.Processmodel.A1StageCompleted = true;
-                                        DataModel.Processmodel.A2StageCompleted = true;
+                                        DataModel.Processmodel.A1StageCompleted = isSuccess;
+                                        DataModel.Processmodel.A2StageCompleted = isSuccess;
                                         break;
                                 }
 
                                 // 异步更新UI和日志（不影响报工判断）
-                                UpdateStageStatus(DataModel.Processmodel.RCMD, true);
+                                UpdateStageStatus(currentCommand, isSuccess);
+
+                                // 防御性校正：根据实际工具结果重新计算阶段完成标志，避免偶发未更新
+                                try
+                                {
+                                    var a1Tools = DataModel.Processmodel.Tools.Where(t => t.Command == "A1" || t.Command == "ALL").ToList();
+                                    if (a1Tools.Any())
+                                    {
+                                        var allA1Ok = a1Tools.All(t => t.ToolStatus == ToolStatus.OK);
+                                        DataModel.Processmodel.A1StageCompleted = allA1Ok;
+                                        WriteDetailLog($"A1StageCompleted={allA1Ok} (工具数:{a1Tools.Count})");
+                                    }
+
+                                    var a2Tools = DataModel.Processmodel.Tools.Where(t => t.Command == "A2" || t.Command == "ALL").ToList();
+                                    if (a2Tools.Any())
+                                    {
+                                        var allA2Ok = a2Tools.All(t => t.ToolStatus == ToolStatus.OK);
+                                        DataModel.Processmodel.A2StageCompleted = allA2Ok;
+                                        WriteDetailLog($"A2StageCompleted={allA2Ok} (工具数:{a2Tools.Count})");
+                                    }
+                                }
+                                catch { }
+                            }
+
+                            // 只有检测成功时才执行报工
+                            if (status == 0)
+                            {
+                                DataModel.Processmodel.Status = ToolStatus.OK;
 
                                 // 检测成功后执行报工逻辑（需要SN转换成功且工序校验通过且所有阶段完成）
                                 if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
@@ -2957,7 +3066,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                 // 2. 有SN且工序校验通过
                                 // 3. 自动报工启用
                                 // 4. 不在报工中
-                                string currentCommand = DataModel.Processmodel.RCMD;
+                                // 使用前面已经声明的 currentCommand 变量
                                 bool canReportWork = !string.IsNullOrEmpty(currentCommand);
                                 
                                 if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
@@ -3446,6 +3555,9 @@ namespace F7_L12_Position_Detect.ViewModel
                         DataModel.Processmodel.A1StageCompleted = false;
                         DataModel.Processmodel.A2StageCompleted = false;
                         DataModel.Processmodel.ScanCodeStatus = "等待扫码";
+                        // 清除所有工具状态，为下一个产品做准备
+                        ClearTools();
+                        WriteDetailLog($"[报工完成] 已清除所有工具状态，准备下一个产品");
                     }));
 
                     return true;
