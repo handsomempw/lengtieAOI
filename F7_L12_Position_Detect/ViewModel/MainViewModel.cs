@@ -1054,7 +1054,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
                 catch (Exception ex)
                 {
-                    writeLog($"PLC触发扫码异常: {ex.Message}");
+                    writeLog($"PLC触发扫码异常,请检查配置数据.xml或设备连接，具体错误: {ex.Message}");
                 }
 
                 // 检查报工模块状态，确保有SN且工序校验通过
@@ -3196,6 +3196,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 HOperatorSet.GenEmptyObj(out RegionIntersection);
 
+                bool areaCalculated = false;
                 try
                 {
 
@@ -3211,7 +3212,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         HOperatorSet.Decompose3(ReduceImage, out ImageR, out ImageG, out ImageB);
 
                         HOperatorSet.Threshold(ImageR, out RegionR, tool.MinRed, tool.MaxRed);
-                        HOperatorSet.Threshold(ImageG, out RegionG, tool.MinGreen, tool.MaxBlue);
+                        HOperatorSet.Threshold(ImageG, out RegionG, tool.MinGreen, tool.MaxGreen);
                         HOperatorSet.Threshold(ImageB, out RegionB, tool.MinBlue, tool.MaxBlue);
 
                         HOperatorSet.Intersection(RegionR, RegionG, out RegionIntersection);
@@ -3223,6 +3224,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     HOperatorSet.SelectShape(ConnectedRegions, out SelectedRegions, "area", "and", tool.MinAreaFilter, tool.MaxAreaFilter);
                     HOperatorSet.Union1(SelectedRegions, out RegionUnion);
                     HOperatorSet.AreaCenter(RegionUnion, out Area, out Row, out Column);
+                    areaCalculated = true;
 
                     HTuple width, height;
                     HOperatorSet.GetImageSize(image, out width, out height);
@@ -3244,7 +3246,24 @@ namespace F7_L12_Position_Detect.ViewModel
                     hwindow.DispObj(SelectedRegions);
 
                 }
-                catch (Exception ex) { }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        WriteDetailLog(
+                            $"[面积计算] 计算失败: " +
+                            $"ToolIndex={tool?.Index}, ToolName='{tool?.Name}', GrayMode={tool?.GrayMode}, " +
+                            $"ROI=({tool?.DimensionROI?.Row1},{tool?.DimensionROI?.Col1})-({tool?.DimensionROI?.Row2},{tool?.DimensionROI?.Col2}), " +
+                            $"GrayRange=[{tool?.MinGray},{tool?.MaxGray}], " +
+                            $"RRange=[{tool?.MinRed},{tool?.MaxRed}], GRange=[{tool?.MinGreen},{tool?.MaxGreen}], BRange=[{tool?.MinBlue},{tool?.MaxBlue}], " +
+                            $"AreaFilter=[{tool?.MinAreaFilter},{tool?.MaxAreaFilter}], " +
+                            $"Exception={ex.Message}");
+                    }
+                    catch
+                    {
+                        // ignore logging failures
+                    }
+                }
 
                 ROI?.Dispose();
                 ReduceImage?.Dispose();
@@ -3260,11 +3279,16 @@ namespace F7_L12_Position_Detect.ViewModel
                 RegionB?.Dispose();
                 RegionIntersection?.Dispose();
 
+                if (!areaCalculated)
+                {
+                    return -1;
+                }
                 //tool.ActualDimension = (int)Area.L;
                 return (int)Area.L;
             }
             catch (Exception e)
             {
+                try { WriteDetailLog($"[面积计算] 外层异常: {e.Message}"); } catch { }
                 //tool.ActualDimension = -1;
                 return -1;
             }
