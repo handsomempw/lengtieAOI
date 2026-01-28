@@ -3579,9 +3579,8 @@ namespace F7_L12_Position_Detect.ViewModel
                         DataModel.Processmodel.A1StageCompleted = false;
                         DataModel.Processmodel.A2StageCompleted = false;
                         DataModel.Processmodel.ScanCodeStatus = "等待扫码";
-                        // 清除所有工具状态，为下一个产品做准备
-                        ClearTools();
-                        WriteDetailLog($"[报工完成] 已清除所有工具状态，准备下一个产品");
+                        // 保留工具状态，便于扫码/拍照结束后即时查看检测结果；新产品SN变化时会统一清除
+                        WriteDetailLog($"[报工完成] ");
                     }));
 
                     return true;
