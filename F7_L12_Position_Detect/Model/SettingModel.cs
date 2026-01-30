@@ -158,6 +158,18 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        private string _procedureCode = "";
+        [XmlElement("工序码")]
+        public string ProcedureCode
+        {
+            get { return _procedureCode; }
+            set
+            {
+                _procedureCode = value;
+                RaisePropertyChanged(() => ProcedureCode);
+            }
+        }
+
         private string _procedureName = "视觉检测";
         [XmlElement("工序名称")]
         public string ProcedureName

@@ -3524,6 +3524,9 @@ namespace F7_L12_Position_Detect.ViewModel
                 writeLog($"🔄 开始报工: SN={DataModel.Processmodel.CurrentProductSN}, 结果={qualityResult}, 状态={status}" + 
                     (string.IsNullOrEmpty(errorType) ? "" : $", 错误类型={errorType}"), false);
 
+                var procedureCode = DataModel.Settingmodel.ReportWorkConfig.ProcedureCode;
+                procedureCode = string.IsNullOrWhiteSpace(procedureCode) ? "" : procedureCode.Trim();
+
                 var reportResult = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.Save_EquipmentRecord_mes(
                     DataModel.Settingmodel.ReportWorkConfig.StationCode,     // 工位码
                     "", // 工单号 - 由MES系统内部获取
@@ -3531,7 +3534,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Settingmodel.ReportWorkConfig.ProcedureName,   // 工序名称
                     DataModel.Settingmodel.ReportWorkConfig.EquipmentNumber, // 设备编号
                     qualityResult,                                           // 检测结果
-                    DataModel.Settingmodel.ReportWorkConfig.StationCode,     // 工序编号
+                    procedureCode,                                           // 工序码（为空则传空）
                     status,                                                  // 产品状态（OK/NG）
                     errorType,                                               // 错误类型
                     errorDesc                                                 // 错误描述

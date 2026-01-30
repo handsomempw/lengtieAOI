@@ -244,18 +244,18 @@
                        Effect="{DynamicResource DropShadowEffect}"/>
 
             <!-- SN输入区域 - 减小字体突出主次 -->
-            <GroupBox Grid.Row="1" Header="产品信息" Margin="0,5" FontSize="13" FontWeight="Normal">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="auto"/>
-                        <RowDefinition Height="auto"/>
-                        <RowDefinition Height="auto"/>
-                        <RowDefinition Height="auto"/>
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+             <GroupBox Grid.Row="1" Header="产品信息" Margin="0,5" FontSize="13" FontWeight="Normal">
+                 <Grid>
+                     <Grid.RowDefinitions>
+                         <RowDefinition Height="auto"/>
+                         <RowDefinition Height="auto"/>
+                         <RowDefinition Height="auto"/>
+                         <RowDefinition Height="auto"/>
+                     </Grid.RowDefinitions>
+                     <Grid.ColumnDefinitions>
+                         <ColumnDefinition Width="auto"/>
+                         <ColumnDefinition Width="*"/>
+                     </Grid.ColumnDefinitions>
 
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="产品SN:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
@@ -291,9 +291,10 @@
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
-                        <RowDefinition Height="auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="auto"/>
+                        <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
@@ -308,6 +309,16 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="工序码:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
+                    <TextBox Grid.Row="0" Grid.Column="3" Name="txtProcedureCode"
+                             Text="{Binding DataModel.Settingmodel.ReportWorkConfig.ProcedureCode, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding DataModel.Settingmodel.permission}"
+                             TextChanged="txtProcedureCode_TextChanged"
+                             Margin="5" Padding="5" FontSize="12"
+                             Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
+                             BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
+
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="工序名称:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="1" Grid.Column="1" Name="txtProcedureName"
@@ -318,9 +329,9 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="设备编号:" VerticalAlignment="Center"
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="设备编号:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
-                    <TextBox Grid.Row="2" Grid.Column="1" Name="txtEquipmentNumber"
+                    <TextBox Grid.Row="1" Grid.Column="3" Name="txtEquipmentNumber"
                              Text="{Binding DataModel.Settingmodel.ReportWorkConfig.EquipmentNumber, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{Binding DataModel.Settingmodel.permission}"
                              TextChanged="txtEquipmentNumber_TextChanged"
@@ -328,9 +339,9 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="自动报工:" VerticalAlignment="Center"
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="自动报工:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
-                    <CheckBox Grid.Row="3" Grid.Column="1" Name="chkEnableAutoReportWork"
+                    <CheckBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Name="chkEnableAutoReportWork"
                               IsChecked="{Binding DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork}"
                               IsEnabled="{Binding DataModel.Settingmodel.permission}"
                               Checked="chkEnableAutoReportWork_Checked"
