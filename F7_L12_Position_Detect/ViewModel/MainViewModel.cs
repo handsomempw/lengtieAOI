@@ -85,6 +85,30 @@ namespace F7_L12_Position_Detect.ViewModel
         // 点检弹窗引用
         private Window _inspectionWindow = null;
 
+        private void UIInvoke(Action action)
+        {
+            var dispatcher = App.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+
+            dispatcher.Invoke(action);
+        }
+
+        private void UIBeginInvoke(Action action)
+        {
+            var dispatcher = App.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+
+            dispatcher.BeginInvoke(action);
+        }
+
 
         public void InitHwindow(HWindow _HWindow)
         {
@@ -807,10 +831,19 @@ namespace F7_L12_Position_Detect.ViewModel
                 string sql = $"SELECT [成品码] FROM [绑定完表格] WHERE  [物料名称]='容器码' and [条形码]= '{barcode}' ORDER BY [编号]";
                 DataTable dt = Sqlserver.MicrosoftSql_DATABASE.Read(sql);
                 //DataModel.Processmodel.SNList.Clear();
+                var snList = new List<string>(dt.Rows.Count);
                 for (int i = 0; i < dt.Rows.Count; i++)
                 {
-                    DataModel.Processmodel.SNList.Add(dt.Rows[i][0].ToString());
+                    snList.Add(dt.Rows[i][0].ToString());
                 }
+
+                UIInvoke(() =>
+                {
+                    foreach (var sn in snList)
+                    {
+                        DataModel.Processmodel.SNList.Add(sn);
+                    }
+                });
                 return true;
 
             }
@@ -837,7 +870,7 @@ namespace F7_L12_Position_Detect.ViewModel
             try
             {
                 // 更新扫码状态为处理中
-                DataModel.Processmodel.ScanCodeStatus = "正在处理...";
+                UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "正在处理...");
 
                 // 获取工序名称
                 string procedureName = DataModel.Settingmodel.ReportWorkConfig.ProcedureName;
@@ -849,10 +882,13 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (scanResult.Success)
                 {
                     // SN获取成功，直接更新状态（不通过Dispatcher，确保同步）
-                    DataModel.Processmodel.CurrentProductSN = scanResult.SN;
-                    DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                    UIInvoke(() =>
+                    {
+                        DataModel.Processmodel.CurrentProductSN = scanResult.SN;
+                        DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                    });
                     // 日志输出使用BeginInvoke避免阻塞
-                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    UIBeginInvoke(new Action(() =>
                     {
                         writeLog($"扫码处理成功: SN={scanResult.SN}");
                     }));
@@ -866,12 +902,15 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         // 进入点检模式
                         string type = sn == okSN ? "OK" : "NG";
-                        DataModel.Processmodel.IsInspectionMode = true;
-                        DataModel.Processmodel.InspectionType = type;
+                        UIInvoke(() =>
+                        {
+                            DataModel.Processmodel.IsInspectionMode = true;
+                            DataModel.Processmodel.InspectionType = type;
+                        });
                         
                         // 跳过工序校验（设置为点检模式状态）
-                        DataModel.Processmodel.ScanCodeStatus = $"点检模式-{type}点检";
-                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = $"点检模式-{type}点检");
+                        UIBeginInvoke(new Action(() =>
                         {
                             writeLog($"⚠️ 检测到点检SN码，进入{type}点检模式", false);
                         }));
@@ -886,18 +925,18 @@ namespace F7_L12_Position_Detect.ViewModel
                         // 直接更新状态（不通过Dispatcher，确保同步）
                         if (validationResult.Success)
                         {
-                            DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
+                            UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage);
                             // 日志输出使用BeginInvoke避免阻塞
-                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            UIBeginInvoke(new Action(() =>
                             {
                                 writeLog($"工序校验通过: SN={scanResult.SN}, 工序={procedureName}");
                             }));
                         }
                         else
                         {
-                            DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
+                            UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage);
                             // 日志输出使用BeginInvoke避免阻塞
-                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            UIBeginInvoke(new Action(() =>
                             {
                                 writeLog($"工序校验失败: {validationResult.ErrorMessage}");
                             }));
@@ -907,9 +946,9 @@ namespace F7_L12_Position_Detect.ViewModel
                 else
                 {
                     // SN获取失败，直接更新状态
-                    DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                    UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage);
                     // 日志输出使用BeginInvoke避免阻塞
-                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    UIBeginInvoke(new Action(() =>
                     {
                         writeLog($"扫码处理失败: {scanResult.ErrorMessage}");
                     }));
@@ -918,9 +957,9 @@ namespace F7_L12_Position_Detect.ViewModel
             catch (Exception ex)
             {
                 // 直接更新状态
-                DataModel.Processmodel.ScanCodeStatus = "处理异常";
+                UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "处理异常");
                 // 日志输出使用BeginInvoke避免阻塞
-                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                UIBeginInvoke(new Action(() =>
                 {
                     writeLog($"扫码处理异常: {ex.Message}");
                 }));
@@ -970,31 +1009,31 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     string scanCode = string.Empty;
                     bool scanSuccess = false;
-
+                    
                     if (DataModel.Settingmodel.ScannerMode == "HF800")
                     {
                         var r = DataModel.Settingmodel.HF800.Scanner();
                         scanCode = (r?.value ?? string.Empty).Replace("\r", "").Replace("\n", "");
-                        DataModel.Processmodel.Scannerstr = scanCode;
-                        DataModel.Processmodel.SNList.Clear();
-                        DataModel.Processmodel.Barcodes = string.Empty;
+                        UIInvoke(() =>
+                        {
+                            DataModel.Processmodel.Scannerstr = scanCode;
+                            DataModel.Processmodel.SNList.Clear();
+                            DataModel.Processmodel.Barcodes = string.Empty;
+                        });
                         scanSuccess = (r != null && r.Status == Status.OK);
                     }
                     else
                     {
                         var r = DataModel.Settingmodel.ScannerModel.Scanner();
                         scanCode = (r?.receivestring ?? string.Empty).Replace("\r", "").Replace("\n", "");
-                        DataModel.Processmodel.Scannerstr = scanCode;
+                        UIInvoke(() => DataModel.Processmodel.Scannerstr = scanCode);
                         scanSuccess = (r != null && r.IsSuccess);
                     }
 
                     if (scanSuccess && !string.IsNullOrEmpty(scanCode))
                     {
                         // 立即更新产品SN输入框显示原始编码
-                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            DataModel.Processmodel.CurrentProductSN = scanCode;
-                        }));
+                        UIInvoke(() => DataModel.Processmodel.CurrentProductSN = scanCode);
 
                         // 调用现有异步流程（编码转换为SN并工序校验）
                         // 使用超时机制避免死锁，在后台线程执行异步操作
@@ -1038,13 +1077,13 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 // 超时处理
                                 writeLog($"编码转换超时（10秒），原始编码: {scanCode}，继续检查后续流程");
-                                DataModel.Processmodel.ScanCodeStatus = "转换超时";
+                                UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "转换超时");
                             }
                         }
                         catch (Exception ex)
                         {
                             writeLog($"编码转换异常: {ex.Message}，继续执行后续流程");
-                            DataModel.Processmodel.ScanCodeStatus = "转换异常";
+                            UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "转换异常");
                         }
                     }
                     else
@@ -2532,7 +2571,10 @@ namespace F7_L12_Position_Detect.ViewModel
 
                                         if (tool.MPMode)
                                         {
-                                            DataModel.Processmodel.Barcodes += barcodelist[0].codestr + ";";
+                                            UIInvoke(() =>
+                                            {
+                                                DataModel.Processmodel.Barcodes += barcodelist[0].codestr + ";";
+                                            });
                                         }
                                         if (tool.SendBarcode)
                                         {
@@ -2552,7 +2594,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                                     }));
                                                     tool.ToolStatus = ToolStatus.OK;
                                                     writeLog($"扫码汇报软件返回成品编号:{s}");
-                                                    DataModel.Processmodel.Barcodes = string.Empty;
+                                                    UIInvoke(() => DataModel.Processmodel.Barcodes = string.Empty);
 
 
                                                 }
