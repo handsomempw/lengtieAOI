@@ -79,6 +79,44 @@ namespace F7_L12_Position_Detect.ViewModel
         // MES服务实例
         private readonly MESService _mesService = new MESService();
 
+        // 最近一次确认的产品SN：用于识别新产品切换，避免出现“A1清了但A2还在”的残留。
+        private string _lastProductSN = string.Empty;
+
+        /// <summary>
+        /// 新产品切换时统一复位检测相关状态：
+        /// 1) 清空工具结果（A1/A2/ALL）
+        /// 2) 重置阶段完成标志
+        /// 3) 清空报工状态提示
+        /// </summary>
+        private void ResetForNewProduct(string newProductSN)
+        {
+            if (string.IsNullOrEmpty(newProductSN))
+            {
+                return;
+            }
+
+            if (string.Equals(_lastProductSN, newProductSN, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastProductSN = newProductSN;
+
+            try
+            {
+                App.Current.Dispatcher.Invoke(new Action(() =>
+                {
+                    ClearTools();
+                    DataModel.Processmodel.A1StageCompleted = false;
+                    DataModel.Processmodel.A2StageCompleted = false;
+                    DataModel.Processmodel.ReportWorkStatus = string.Empty;
+                }));
+            }
+            catch
+            {
+            }
+        }
+
         // 点检定时器
         private System.Windows.Threading.DispatcherTimer _inspectionTimer;
         
@@ -849,6 +887,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (scanResult.Success)
                 {
                     // SN获取成功，直接更新状态（不通过Dispatcher，确保同步）
+                    // 若切换到新产品SN，则统一清理上一只产品的检测状态（根治A1清了但A2残留）
+                    ResetForNewProduct(scanResult.SN);
                     DataModel.Processmodel.CurrentProductSN = scanResult.SN;
                     DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
                     // 日志输出使用BeginInvoke避免阻塞
@@ -963,7 +1003,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 DataModel.Processmodel.RCMD = command;
 
                 // 记录扫码前的SN，用于判断是否是新产品
-                string previousSN = DataModel.Processmodel.CurrentProductSN;
+                // 注意：这里使用_lastProductSN而不是CurrentProductSN（输入框绑定会提前改值，避免误判“SN未变化”）
+                string previousSN = _lastProductSN;
 
                 // 先触发扫码（按配置使用HF800或通用ScannerModel），并复用现有MES转换与校验逻辑
                 try
@@ -1022,12 +1063,8 @@ namespace F7_L12_Position_Detect.ViewModel
                                     writeLog($"新产品SN: {currentSN}，重置检测状态");
                                     
                                     // 在UI线程清除所有工具状态和阶段状态
-                                    App.Current.Dispatcher.Invoke(new Action(() =>
-                                    {
-                                        ClearTools();
-                                        DataModel.Processmodel.A1StageCompleted = false;
-                                        DataModel.Processmodel.A2StageCompleted = false;
-                                    }));
+                                    // 新产品：统一复位工具/阶段/报工提示等状态
+                                    ResetForNewProduct(currentSN);
                                 }
                                 else
                                 {
@@ -2994,11 +3031,44 @@ namespace F7_L12_Position_Detect.ViewModel
                                     writeLog($"⚠️ 检测完成，但未执行报工{reasonText}", false);
 
                                     // 更新界面状态显示
-                                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                     {
+                                         DataModel.Processmodel.ReportWorkStatus = reasons.Count > 0 ?
+                                             $"未报工: {string.Join(", ", reasons)}" : "检测完成";
+                                     }));
+                                 }
+
+                                // 两阶段(A1/A2)场景：可能出现“当前阶段OK，但另一阶段为NG”的情况
+                                // 例如：A1 NG、A2 OK。此时若A1/A2都已完成，应按整体结果报工NG（而不是一直停留在未报工状态）
+                                if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
+                                    !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
+                                    DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
+                                    !DataModel.Processmodel.IsReportingWork)
+                                {
+                                    var a1StageTools = DataModel.Processmodel.Tools.Where(t => t.Command == "A1").ToList();
+                                    var a2StageTools = DataModel.Processmodel.Tools.Where(t => t.Command == "A2").ToList();
+                                    bool isTwoStage = a1StageTools.Any() && a2StageTools.Any();
+                                    if (isTwoStage)
                                     {
-                                        DataModel.Processmodel.ReportWorkStatus = reasons.Count > 0 ?
-                                            $"未报工: {string.Join(", ", reasons)}" : "检测完成";
-                                    }));
+                                        bool a1Done = a1StageTools.All(t => t.ToolStatus != ToolStatus.等待中 && t.ToolStatus != ToolStatus.识别中);
+                                        bool a2Done = a2StageTools.All(t => t.ToolStatus != ToolStatus.等待中 && t.ToolStatus != ToolStatus.识别中);
+                                        bool anyNG2 = a1StageTools.Any(t => t.ToolStatus == ToolStatus.NG2) ||
+                                                      a2StageTools.Any(t => t.ToolStatus == ToolStatus.NG2);
+
+                                        if (a1Done && a2Done && !anyNG2)
+                                        {
+                                            bool allA1Ok = a1StageTools.All(t => t.ToolStatus == ToolStatus.OK);
+                                            bool allA2Ok = a2StageTools.All(t => t.ToolStatus == ToolStatus.OK);
+                                            bool overallOk = allA1Ok && allA2Ok;
+
+                                            if (!overallOk)
+                                            {
+                                                DataModel.Processmodel.Status = ToolStatus.NG;
+                                                writeLog("⚠️ 两阶段检测完成，存在NG，开始报工（状态：NG）...", false);
+                                                _ = Task.Run(async () => await ExecuteReportWorkAsync("不合格", "NG", "绝缘纸漏贴移位", "绝缘纸漏贴移位"));
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             else if (status == 2)
@@ -3059,24 +3129,37 @@ namespace F7_L12_Position_Detect.ViewModel
                                 // PLC_write((UInt16)2);
                                 writeLog("检测结果：NG，结果已显示在界面上", false);
                                 
-                                // NG状态下也执行报工，但status改为NG，错误类型和描述改为"绝缘纸漏贴移位"
-                                // 报工判断条件独立，不依赖阶段完成状态，避免多次NG后无法报工
-                                // 判断条件：
-                                // 1. 当前指令已执行（RCMD不为空）
-                                // 2. 有SN且工序校验通过
-                                // 3. 自动报工启用
-                                // 4. 不在报工中
-                                // 使用前面已经声明的 currentCommand 变量
-                                bool canReportWork = !string.IsNullOrEmpty(currentCommand);
-                                
+                                // NG状态下也执行报工，但两阶段(A1/A2)场景需要等两阶段都完成后再报工
+                                // NG2(工具执行失败)不报工（由上面的status==2分支处理）
                                 if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
                                     !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
                                     DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
-                                    canReportWork &&
                                     !DataModel.Processmodel.IsReportingWork)
                                 {
-                                    writeLog("⚠️ 检测到NG，开始报工（状态：NG，错误：绝缘纸漏贴移位）...", false);
-                                    _ = Task.Run(async () => await ExecuteReportWorkAsync("不合格", "NG", "绝缘纸漏贴移位", "绝缘纸漏贴移位"));
+                                    var a1StageTools = DataModel.Processmodel.Tools.Where(t => t.Command == "A1").ToList();
+                                    var a2StageTools = DataModel.Processmodel.Tools.Where(t => t.Command == "A2").ToList();
+                                    bool hasA1 = a1StageTools.Any();
+                                    bool hasA2 = a2StageTools.Any();
+                                    bool isTwoStage = hasA1 && hasA2;
+
+                                    // 两阶段：必须等A1/A2都结束（不再有等待/识别中）后再报工，避免A1阶段先NG就报工
+                                    bool a1Done = !hasA1 || a1StageTools.All(t => t.ToolStatus != ToolStatus.等待中 && t.ToolStatus != ToolStatus.识别中);
+                                    bool a2Done = !hasA2 || a2StageTools.All(t => t.ToolStatus != ToolStatus.等待中 && t.ToolStatus != ToolStatus.识别中);
+                                    bool canFinalize = !isTwoStage || (a1Done && a2Done);
+
+                                    // 任一阶段存在NG2则不报工（执行失败）
+                                    bool anyNG2 = (hasA1 && a1StageTools.Any(t => t.ToolStatus == ToolStatus.NG2)) ||
+                                                  (hasA2 && a2StageTools.Any(t => t.ToolStatus == ToolStatus.NG2));
+
+                                    if (canFinalize && !anyNG2)
+                                    {
+                                        writeLog("⚠️ 检测到NG，开始报工（状态：NG）...", false);
+                                        _ = Task.Run(async () => await ExecuteReportWorkAsync("不合格", "NG", "绝缘纸漏贴移位", "绝缘纸漏贴移位"));
+                                    }
+                                    else if (isTwoStage && !canFinalize)
+                                    {
+                                        writeLog("⚠️ 当前阶段NG，等待另一阶段完成后再报工", false);
+                                    }
                                 }
                             }
 
@@ -3391,7 +3474,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             writeLog("未查询到上岗人员信息", false);
                         }
 
-                        // 3秒后清除状态提示
+                        // 状态提示保留显示（不再定时清空）
                         Task.Delay(3000).ContinueWith(_ =>
                         {
                             App.Current.Dispatcher.BeginInvoke(new Action(() =>
@@ -3518,6 +3601,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 更新界面状态
                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
+                    // 报工开始：覆盖当前提示
                     DataModel.Processmodel.ReportWorkStatus = "正在报工...";
                 }));
 
@@ -3550,6 +3634,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         DataModel.Processmodel.ReportWorkSuccessLog.Insert(0, logMessage);
                         string statusText = status == "NG" ? "⚠️ 报工成功（NG状态）" : "✅ 报工成功";
+                        // 报工状态不再定时清空：保留到下一次报工覆盖，或新SN触发ResetForNewProduct()清空
                         DataModel.Processmodel.ReportWorkStatus = statusText;
 
                         // 保持最多50条记录
@@ -3558,14 +3643,8 @@ namespace F7_L12_Position_Detect.ViewModel
                             DataModel.Processmodel.ReportWorkSuccessLog.RemoveAt(DataModel.Processmodel.ReportWorkSuccessLog.Count - 1);
                         }
 
-                        // 3秒后清除状态提示
-                        Task.Delay(3000).ContinueWith(_ =>
-                        {
-                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                            {
-                                DataModel.Processmodel.ReportWorkStatus = "";
-                            }));
-                        });
+                        // 状态提示保留显示（不再定时清空）
+                        
                     }));
 
                     string logPrefix = status == "NG" ? "⚠️" : "✅";
@@ -3590,16 +3669,11 @@ namespace F7_L12_Position_Detect.ViewModel
                     // 在UI线程更新界面
                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
+                        // 报工失败信息保留显示（不再定时清空），便于现场确认
                         DataModel.Processmodel.ReportWorkStatus = "❌ 报工失败，失败原因已记录日志";
 
-                        // 5秒后清除状态提示
-                        Task.Delay(5000).ContinueWith(_ =>
-                        {
-                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                            {
-                                DataModel.Processmodel.ReportWorkStatus = "";
-                            }));
-                        });
+                        // 状态提示保留显示（不再定时清空）
+                        
                     }));
 
                     writeError($"❌ 报工失败: SN={DataModel.Processmodel.CurrentProductSN}，详细错误信息已记录到报工错误日志");
@@ -3611,16 +3685,11 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 在UI线程更新界面
                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
+                    // 报工异常信息保留显示（不再定时清空），便于现场确认
                     DataModel.Processmodel.ReportWorkStatus = $"❌ 报工异常: {ex.Message}";
 
-                    // 5秒后清除状态提示
-                    Task.Delay(5000).ContinueWith(_ =>
-                    {
-                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            DataModel.Processmodel.ReportWorkStatus = "";
-                        }));
-                    });
+                    // 状态提示保留显示（不再定时清空）
+                    
                 }));
 
                 writeError($"❌ 报工异常: {ex.Message}");
