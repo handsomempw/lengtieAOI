@@ -913,7 +913,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 获取工序名称
                 string procedureName = DataModel.Settingmodel.ReportWorkConfig.ProcedureName;
 
-                // 调用MES服务进行完整处理
+                // 关键链路：优先最外层（最终绑定）SN，再执行工序校验。
                 var (scanResult, validationResult) = await _mesService.ProcessScanCodeWithValidationAsync(scanCode, procedureName);
 
                 // 处理扫码结果
