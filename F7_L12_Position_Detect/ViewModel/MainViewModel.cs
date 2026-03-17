@@ -290,6 +290,21 @@ namespace F7_L12_Position_Detect.ViewModel
             }
         }
 
+        /// <summary>
+        /// 按指令范围清理工具的运行态数据（不会改变工具配置）。
+        /// </summary>
+        /// <param name="command">指令名；传入 "ALL" 表示清理全部工具。</param>
+        public void ClearToolsByCommand(string command)
+        {
+            for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+            {
+                if (command == "ALL" || DataModel.Processmodel.Tools[i].Command == command)
+                {
+                    ClearTool(DataModel.Processmodel.Tools[i]);
+                }
+            }
+        }
+
         public void ClearTool(ToolModel tool)
         {
             tool.BarcodeStr = string.Empty;
@@ -496,18 +511,27 @@ namespace F7_L12_Position_Detect.ViewModel
         // 添加执行状态锁，防止竞态条件
         private volatile bool _isExecuting = false;
         private readonly object _executionLock = new object();
-        private int _pendingImagesForRound = 0;
+        private DateTime _executionStartTime = DateTime.MinValue;
+        private const int EXECUTION_TIMEOUT_MS = 10000;
 
+        /// <summary>
+        /// 尝试进入“单次指令执行窗口”，用于防止 PLC 触发重入/并发执行。
+        /// </summary>
+        /// <returns>成功进入执行态返回 true；若已有执行在进行中返回 false。</returns>
         private bool TryBeginExecution()
         {
             lock (_executionLock)
             {
                 if (_isExecuting) return false;
                 _isExecuting = true;
+                _executionStartTime = DateTime.UtcNow;
                 return true;
             }
         }
 
+        /// <summary>
+        /// 结束当前执行窗口，释放 PLC 指令互斥状态。
+        /// </summary>
         private void EndExecution()
         {
             lock (_executionLock)
@@ -524,6 +548,13 @@ namespace F7_L12_Position_Detect.ViewModel
             //Thread t2 = new Thread(shakehand2);
             //t2.Start();
         }
+
+        /// <summary>
+        /// PLC 轮询主循环：在报工条件满足时读取触发地址并驱动视觉执行。
+        /// </summary>
+        /// <remarks>
+        /// 该循环同时承担执行态“超时看门狗”，用于相机无回调时兜底释放互斥并标记阶段 NG。
+        /// </remarks>
         private void PLC_Process()
         {
             int statusLogCounter = 0; // 用于控制状态日志频率
@@ -541,6 +572,17 @@ namespace F7_L12_Position_Detect.ViewModel
                     bool hasValidSN = HasValidSNAndValidation();
                     writeLog($"PLC状态: 报工={hasValidSN}, SN={DataModel.Processmodel.CurrentProductSN}, 执行={_isExecuting}");
                     WriteDetailLog($"[PLC状态] 报工状态={hasValidSN}, 当前SN={DataModel.Processmodel.CurrentProductSN}, 执行状态={_isExecuting}, 界面触发标志={DataModel.Processmodel.Trig_IO.IOstatus}");
+                }
+
+                // 超时看门狗：检测执行态是否超时（相机不回图时兜底释放）
+                if (_isExecuting && (DateTime.UtcNow - _executionStartTime).TotalMilliseconds > EXECUTION_TIMEOUT_MS)
+                {
+                    string timeoutCmd = DataModel.Processmodel.RCMD;
+                    writeError($"执行超时({EXECUTION_TIMEOUT_MS}ms): {timeoutCmd}指令强制释放");
+                    WriteDetailLog($"[超时看门狗] 指令{timeoutCmd}执行超过{EXECUTION_TIMEOUT_MS}ms，强制EndExecution并标记NG");
+                    UpdateStageStatus(timeoutCmd, false);
+                    DataModel.Processmodel.Status = ToolStatus.NG;
+                    EndExecution();
                 }
 
                 // 检查报工模块状态：只有有SN且工序校验成功才进行PLC轮询
@@ -779,7 +821,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 WriteDetailLog($"[业务逻辑] 报工状态验证通过，开始执行{command}指令");
 
                 SendMsgRobot("DOK");
-                ClearTools();
+                ClearToolsByCommand(command);
                 WriteDetailLog($"[视觉检测] 开始执行{command}指令的视觉检测");
                 bool triggered = ExecuteToolsByCommand(command);
                 if (!triggered)
@@ -857,66 +899,39 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                 }
 
-                // 如果找到匹配的工具，执行它们
-                if (matchedToolIndices.Count > 0)
-                {
-                    WriteDetailLog($"[工具执行] 共找到{matchedToolIndices.Count}个匹配工具，开始逐个执行");
-                    _pendingImagesForRound = matchedToolIndices.Count;
-
-                    WriteDetailLog($"[工具执行] 清理工具状态");
-                    ClearTools();
-
-                    // 逐个执行匹配的工具
-                    for (int idx = 0; idx < matchedToolIndices.Count; idx++)
-                    {
-                        int toolIndex = matchedToolIndices[idx];
-                        var tool = DataModel.Processmodel.Tools[toolIndex];
-
-                        WriteDetailLog($"[工具执行] 执行工具{toolIndex}({tool.Name}) - 第{idx + 1}/{matchedToolIndices.Count}个");
-
-                        // 设置工具索引
-                        DataModel.Processmodel.ToolIndex = toolIndex + 1;
-
-                        // 检查工具是否指定了特定相机，如果是则切换相机
-                        WriteDetailLog($"[相机切换] 检查工具{toolIndex}相机设置: {tool.CameraSerialNumber}");
-                        SwitchCameraForTool(tool);
-
-                        // 等待相机切换完成，防止时序问题
-                        Thread.Sleep(100);
-
-                        // 设置曝光参数
-                        WriteDetailLog($"[相机设置] 工具{toolIndex}设置参数，曝光时间={tool.ExposureTime}");
-                        DataModel.Settingmodel.camedata.CameraModel.exposuretime = tool.ExposureTime;
-                        DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = tool.ExposureTime;
-                        DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
-
-                        WriteDetailLog($"[相机设置] 工具{toolIndex}曝光参数设置完成，等待{DataModel.Settingmodel.delaytime}ms");
-                        Thread.Sleep(DataModel.Settingmodel.delaytime);
-
-                        writeLog($"开始拍照: {command}指令 - 工具{toolIndex + 1}");
-                        WriteDetailLog($"[相机触发] 工具{toolIndex}开始触发拍照");
-
-                        // 触发拍照
-                        DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
-                        WriteDetailLog($"[相机触发] 工具{toolIndex}触发完成");
-
-                        // 如果不是最后一个工具，等待一段时间再执行下一个
-                        if (idx < matchedToolIndices.Count - 1)
-                        {
-                            WriteDetailLog($"[工具执行] 等待500ms后执行下一个工具");
-                            Thread.Sleep(500); // 工具间间隔
-                        }
-                    }
-                }
-
                 if (matchedToolIndices.Count == 0)
                 {
                     writeLog($"未找到匹配工具: {command}指令");
                     WriteDetailLog($"[工具执行] 未找到匹配指令{command}的工具");
                     return false;
                 }
+
+                WriteDetailLog($"[工具执行] 共找到{matchedToolIndices.Count}个匹配工具，单次拍照模式");
+
+                ClearToolsByCommand(command);
+
+                int firstToolIndex = matchedToolIndices[0];
+                var firstTool = DataModel.Processmodel.Tools[firstToolIndex];
+
+                DataModel.Processmodel.ToolIndex = firstToolIndex + 1;
+
+                WriteDetailLog($"[相机切换] 使用工具{firstToolIndex}({firstTool.Name})的相机设置: {firstTool.CameraSerialNumber}");
+                SwitchCameraForTool(firstTool);
+                Thread.Sleep(100);
+
+                DataModel.Settingmodel.camedata.CameraModel.exposuretime = firstTool.ExposureTime;
+                DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = firstTool.ExposureTime;
+                DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
+                Thread.Sleep(DataModel.Settingmodel.delaytime);
+
+                string toolNames = string.Join(", ", matchedToolIndices.Select(idx => DataModel.Processmodel.Tools[idx].Name));
+                writeLog($"开始拍照: {command}指令 - 共{matchedToolIndices.Count}个工具({toolNames})");
+                WriteDetailLog($"[相机触发] {command}指令触发拍照一次，{matchedToolIndices.Count}个工具将使用同一张图像");
+
+                DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
+                WriteDetailLog($"[相机触发] 拍照触发完成，等待相机回调处理");
+
                 writeLog($"工具匹配完成: {command}指令 (共{matchedToolIndices.Count}个工具)");
-                WriteDetailLog($"[工具执行] 指令{command}执行完成，共匹配{matchedToolIndices.Count}个工具，图像处理将在相机回调中执行");
                 return true;
             }
             catch (Exception ex)
@@ -2021,8 +2036,6 @@ namespace F7_L12_Position_Detect.ViewModel
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
             HObject processImage = null;
-            bool didProcessMatch = false;
-
             try
             {
 
@@ -2066,7 +2079,6 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (isMatch)
                     {
-                        didProcessMatch = true;
                         Stopwatch stopwatch = new Stopwatch();
                         stopwatch.Start();
 
@@ -2438,100 +2450,6 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
 
 
-                        if (i == DataModel.Processmodel.Tools.Count - 1)
-                        {
-                            int status = -1;
-                            int c = DataModel.Processmodel.Tools.Count();
-
-
-                            var ok = (from ToolModel in DataModel.Processmodel.Tools
-                                      where (ToolModel.ToolStatus == ToolStatus.OK)
-                                      select ToolModel);
-                            var NG1 = (from ToolModel in DataModel.Processmodel.Tools
-                                       where (ToolModel.ToolStatus == ToolStatus.NG)
-                                       select ToolModel);
-                            var NG2 = (from ToolModel in DataModel.Processmodel.Tools
-                                       where (ToolModel.ToolStatus == ToolStatus.NG2)
-                                       select ToolModel);
-                            var wait = (from ToolModel in DataModel.Processmodel.Tools
-                                        where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
-                                        select ToolModel);
-
-                            if (ok.Count() == c)
-                            {
-                                status = 0;
-                            }
-                            else if (NG2.Count() > 0)
-                            {
-                                status = 2;
-                            }
-                            else
-                            {
-                                status = 1;
-                            }
-
-                            if (status == 0)
-                            {
-                                DataModel.Processmodel.Status = ToolStatus.OK;
-
-                                // 更新阶段检测状态
-                                UpdateStageStatus(DataModel.Processmodel.RCMD, true);
-
-                                // 检测成功后执行报工逻辑（需要SN转换成功且工序校验通过且所有阶段完成）
-                                if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
-                                    !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
-                                    DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
-                                    DataModel.Processmodel.CanExecuteReportWork &&
-                                    !DataModel.Processmodel.IsReportingWork)
-                                {
-                                    writeLog("✅ 检测成功，开始自动报工...", false);
-                                    _ = Task.Run(async () => await ExecuteReportWorkAsync("合格"));
-                                }
-                                else
-                                {
-                                    // 详细诊断报工条件不满足的原因
-                                    List<string> reasons = new List<string>();
-                                    if (!DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork)
-                                        reasons.Add("自动报工未启用");
-                                    if (string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN))
-                                        reasons.Add("产品SN为空");
-                                    if (DataModel.Processmodel.ScanCodeStatus != "工序校验通过")
-                                        reasons.Add($"工序校验状态: {DataModel.Processmodel.ScanCodeStatus}");
-                                    if (!DataModel.Processmodel.CanExecuteReportWork)
-                                        reasons.Add($"阶段未完成(A1:{DataModel.Processmodel.A1StageCompleted}, A2:{DataModel.Processmodel.A2StageCompleted})");
-                                    if (DataModel.Processmodel.IsReportingWork)
-                                        reasons.Add("报工正在进行中");
-
-                                    string reasonText = reasons.Count > 0 ? $" - 原因: {string.Join(", ", reasons)}" : "";
-                                    writeLog($"⚠️ 检测完成，但未执行报工{reasonText}", false);
-
-                                    // 更新界面状态显示
-                                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                    {
-                                        DataModel.Processmodel.ReportWorkStatus = reasons.Count > 0 ?
-                                            $"未报工: {string.Join(", ", reasons)}" : "检测完成";
-                                    }));
-                                }
-                            }
-                            else if (status == 2)
-                            {
-                                DataModel.Processmodel.Status = ToolStatus.NG2;
-                                // 更新阶段检测状态
-                                UpdateStageStatus(DataModel.Processmodel.RCMD, false);
-                                // PLC_write((UInt16)3);
-                                writeLog("检测结果：NG2，结果已显示在界面上", false);
-                            }
-                            else
-                            {
-                                DataModel.Processmodel.Status = ToolStatus.NG;
-                                // 更新阶段检测状态
-                                UpdateStageStatus(DataModel.Processmodel.RCMD, false);
-                                // PLC_write((UInt16)2);
-                                writeLog("检测结果：NG，结果已显示在界面上", false);
-                            }
-
-                        }
-
                         writeLog($"视觉->视觉:保存完成", false);
 
                         string s2 = $"{DataModel.Processmodel.Tools[i].Name}:保存图片发送结果耗时:{stopwatch.ElapsedMilliseconds}ms";
@@ -2539,6 +2457,92 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     }
                 }
+
+                #region 阶段结算（按当前指令过滤工具集合）
+                string currentCommand = DataModel.Processmodel.RCMD;
+                var currentCommandTools = (from t in DataModel.Processmodel.Tools
+                                           where (currentCommand == "ALL" || t.Command == currentCommand)
+                                           select t).ToList();
+                int toolCount = currentCommandTools.Count;
+
+                if (toolCount > 0)
+                {
+                    var okTools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.OK);
+                    var ng2Tools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.NG2);
+                    var waitTools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.等待中 || t.ToolStatus == ToolStatus.识别中);
+
+                    WriteDetailLog($"[阶段判断] 指令{currentCommand}，匹配工具数={toolCount}，OK={okTools.Count()}, NG2={ng2Tools.Count()}, 等待={waitTools.Count()}");
+
+                    if (waitTools.Count() == 0)
+                    {
+                        int stageStatus;
+                        if (okTools.Count() == toolCount)
+                        {
+                            stageStatus = 0;
+                        }
+                        else if (ng2Tools.Count() > 0)
+                        {
+                            stageStatus = 2;
+                        }
+                        else
+                        {
+                            stageStatus = 1;
+                        }
+
+                        if (stageStatus == 0)
+                        {
+                            DataModel.Processmodel.Status = ToolStatus.OK;
+                            UpdateStageStatus(currentCommand, true);
+
+                            if (DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork &&
+                                !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN) &&
+                                DataModel.Processmodel.ScanCodeStatus == "工序校验通过" &&
+                                DataModel.Processmodel.CanExecuteReportWork &&
+                                !DataModel.Processmodel.IsReportingWork)
+                            {
+                                writeLog("✅ 检测成功，开始自动报工...", false);
+                                _ = Task.Run(async () => await ExecuteReportWorkAsync("合格"));
+                            }
+                            else
+                            {
+                                List<string> reasons = new List<string>();
+                                if (!DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork)
+                                    reasons.Add("自动报工未启用");
+                                if (string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN))
+                                    reasons.Add("产品SN为空");
+                                if (DataModel.Processmodel.ScanCodeStatus != "工序校验通过")
+                                    reasons.Add($"工序校验状态: {DataModel.Processmodel.ScanCodeStatus}");
+                                if (!DataModel.Processmodel.CanExecuteReportWork)
+                                    reasons.Add($"阶段未完成(A1:{DataModel.Processmodel.A1StageCompleted}, A2:{DataModel.Processmodel.A2StageCompleted})");
+                                if (DataModel.Processmodel.IsReportingWork)
+                                    reasons.Add("报工正在进行中");
+
+                                string reasonText = reasons.Count > 0 ? $" - 原因: {string.Join(", ", reasons)}" : "";
+                                writeLog($"⚠️ 检测完成，但未执行报工{reasonText}", false);
+
+                                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                {
+                                    DataModel.Processmodel.ReportWorkStatus = reasons.Count > 0 ?
+                                        $"未报工: {string.Join(", ", reasons)}" : "检测完成";
+                                }));
+                            }
+                        }
+                        else if (stageStatus == 2)
+                        {
+                            DataModel.Processmodel.Status = ToolStatus.NG2;
+                            UpdateStageStatus(currentCommand, false);
+                            writeLog("检测结果：NG2，结果已显示在界面上", false);
+                        }
+                        else
+                        {
+                            DataModel.Processmodel.Status = ToolStatus.NG;
+                            UpdateStageStatus(currentCommand, false);
+                            writeLog("检测结果：NG，结果已显示在界面上", false);
+                        }
+                    }
+                }
+                #endregion
+
                 #endregion
 
             }
@@ -2552,7 +2556,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     processImage.Dispose();
                 }
-                if (didProcessMatch && _isExecuting && System.Threading.Interlocked.Decrement(ref _pendingImagesForRound) == 0)
+                if (_isExecuting)
                     EndExecution();
             }
 

@@ -1,4 +1,4 @@
-﻿using Panuon.WPF.UI;
+using Panuon.WPF.UI;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
@@ -15,6 +15,11 @@ namespace F7_L12_Position_Detect
     public partial class App : Application
     {
         System.Threading.Mutex mutex;
+
+        /// <summary>
+        /// 应用启动入口：通过命名互斥量限制程序单实例运行。
+        /// </summary>
+        /// <param name="e">启动参数。</param>
         protected override void OnStartup(StartupEventArgs e)
         {
             string name = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name.ToString();

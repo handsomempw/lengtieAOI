@@ -1,4 +1,4 @@
-﻿using F7_L12_Position_Detect.View;
+using F7_L12_Position_Detect.View;
 using F7_L12_Position_Detect.ViewModel;
 using HalconDotNet;
 using Microsoft.Win32;
@@ -33,6 +33,10 @@ namespace F7_L12_Position_Detect
     public partial class MainWindow : WindowX
     {
         ViewModelLocator vml = null;
+
+        /// <summary>
+        /// 主窗口构造：初始化界面并获取全局 ViewModel 定位器。
+        /// </summary>
         public MainWindow()
         {
             InitializeComponent();
@@ -41,6 +45,11 @@ namespace F7_L12_Position_Detect
 
         }
 
+        /// <summary>
+        /// 主窗口加载完成后的启动流程：加载配置/工程、初始化相机与通讯、启动 PLC 轮询等后台逻辑。
+        /// </summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void WindowX_Loaded(object sender, RoutedEventArgs e)
         {
             vml.Main.DataModel.Processmodel.Tools.Add(new Model.Tool.ToolModel());
@@ -93,12 +102,22 @@ namespace F7_L12_Position_Detect
 
 
 
+        /// <summary>
+        /// 打开系统设置窗口（需要在设置窗内进行权限控制）。
+        /// </summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void Button_Click(object sender, RoutedEventArgs e)
         {
             SettingForm SF = new SettingForm();
             SF.ShowDialog();
         }
 
+        /// <summary>
+        /// 双击工具列表进入编辑：需要权限开启并确认后才允许修改工具参数。
+        /// </summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">鼠标事件参数。</param>
         private void ListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (!vml.Main.DataModel.Settingmodel.permission)

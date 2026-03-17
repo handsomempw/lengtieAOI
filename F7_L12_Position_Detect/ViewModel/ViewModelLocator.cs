@@ -19,13 +19,12 @@ using GalaSoft.MvvmLight.Ioc;
 namespace F7_L12_Position_Detect.ViewModel
 {
     /// <summary>
-    /// This class contains static references to all the view models in the
-    /// application and provides an entry point for the bindings.
+    /// ViewModel 定位器：提供 XAML 绑定入口，并集中注册/获取各个 ViewModel 实例。
     /// </summary>
     public class ViewModelLocator
     {
         /// <summary>
-        /// Initializes a new instance of the ViewModelLocator class.
+        /// 初始化定位器并注册需要被容器管理的 ViewModel。
         /// </summary>
         public ViewModelLocator()
         {
@@ -47,6 +46,9 @@ namespace F7_L12_Position_Detect.ViewModel
 
         }
 
+        /// <summary>
+        /// 主窗口 ViewModel（供 XAML 绑定使用）。
+        /// </summary>
         public MainViewModel Main
         {
             get
@@ -54,6 +56,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 return ServiceLocator.Current.GetInstance<MainViewModel>();
             }
         }
+
+        /// <summary>
+        /// 位置检测模块 ViewModel（供 XAML 绑定使用）。
+        /// </summary>
         public PositionDetect.ViewModel.PositionDetectViewModel PositionDetectViewModel
         {
             get
@@ -61,6 +67,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 return ServiceLocator.Current.GetInstance<PositionDetect.ViewModel.PositionDetectViewModel>();
             }
         }
+
+        /// <summary>
+        /// 释放/清理 ViewModel（通常用于应用退出或需要重建容器的场景）。
+        /// </summary>
         public static void Cleanup()
         {
             // TODO Clear the ViewModels
