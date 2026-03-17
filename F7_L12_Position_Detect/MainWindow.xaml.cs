@@ -280,7 +280,7 @@ namespace F7_L12_Position_Detect
         {
             if (MessageBoxX.Show("是否确定清空产品SN？", "提示", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
             {
-                vml.Main.DataModel.Processmodel.CurrentProductSN = string.Empty;
+                vml.Main.ClearCurrentProductContext();
             }
         }
 

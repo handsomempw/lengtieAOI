@@ -80,6 +80,36 @@ namespace F7_L12_Position_Detect.ViewModel
         private readonly MESService _mesService = new MESService();
 
 
+        private string _lastProductSN = string.Empty;
+
+        private void ResetForNewProduct(string newProductSN)
+        {
+            if (string.IsNullOrEmpty(newProductSN) || string.Equals(_lastProductSN, newProductSN, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastProductSN = newProductSN;
+
+            App.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+            {
+                ClearTools();
+                DataModel.Processmodel.A1StageCompleted = false;
+                DataModel.Processmodel.A2StageCompleted = false;
+                DataModel.Processmodel.ReportWorkStatus = string.Empty;
+            }));
+        }
+
+        public void ClearCurrentProductContext()
+        {
+            _lastProductSN = string.Empty;
+            ClearTools();
+            DataModel.Processmodel.CurrentProductSN = string.Empty;
+            DataModel.Processmodel.A1StageCompleted = false;
+            DataModel.Processmodel.A2StageCompleted = false;
+            DataModel.Processmodel.ReportWorkStatus = string.Empty;
+        }
+
         public void InitHwindow(HWindow _HWindow)
         {
             DataModel.Settingmodel.HWindow = _HWindow;
@@ -648,6 +678,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (scanResult.Success)
                 {
                     // SN获取成功，更新到界面
+                    ResetForNewProduct(scanResult.SN);
                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         DataModel.Processmodel.CurrentProductSN = scanResult.SN;

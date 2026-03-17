@@ -363,3 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 /.cunzhi-memory
 /F7_L12_Position_Detect/dll
+/.sanshu-memory
+/docs
+/AGENTS.md
