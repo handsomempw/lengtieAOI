@@ -496,6 +496,25 @@ namespace F7_L12_Position_Detect.ViewModel
         // 添加执行状态锁，防止竞态条件
         private volatile bool _isExecuting = false;
         private readonly object _executionLock = new object();
+        private int _pendingImagesForRound = 0;
+
+        private bool TryBeginExecution()
+        {
+            lock (_executionLock)
+            {
+                if (_isExecuting) return false;
+                _isExecuting = true;
+                return true;
+            }
+        }
+
+        private void EndExecution()
+        {
+            lock (_executionLock)
+            {
+                _isExecuting = false;
+            }
+        }
 
         public void PLC_Start()
         {
@@ -618,11 +637,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeError($"PLC通讯异常: {ex.Message}");
                     WriteDetailLog($"[PLC异常] {ex.Message}\n{ex.StackTrace}");
-                    // 确保在通讯异常情况下也释放执行锁
-                    lock (_executionLock)
-                    {
-                        _isExecuting = false;
-                    }
+                    EndExecution();
                 }
                 Thread.Sleep(100);
             }
@@ -735,48 +750,44 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
-                // 立即复位触发信号
                 WriteDetailLog($"[PLC触发] 准备复位地址{address}为0");
                 var resetResult = modbusTcp.Write(address.ToString(), (UInt16)0);
                 WriteDetailLog($"[PLC触发] 地址{address}复位结果={resetResult.IsSuccess}");
 
-                // 检查是否正在执行，防止竞态条件
-                lock (_executionLock)
+                if (!TryBeginExecution())
                 {
-                    if (_isExecuting)
-                    {
-                        writeLog($"系统忙碌: 忽略{command}指令 (地址{address}={triggerValue})");
-                        WriteDetailLog($"[业务逻辑] 系统正在执行中，忽略地址{address}触发值{triggerValue}");
-                        return;
-                    }
-                    _isExecuting = true; // 设置执行状态
-                    WriteDetailLog($"[业务逻辑] 设置执行状态为true，开始处理{command}指令");
+                    writeLog($"系统忙碌: 忽略{command}指令 (地址{address}={triggerValue})");
+                    WriteDetailLog($"[业务逻辑] 系统正在执行中，忽略地址{address}触发值{triggerValue}");
+                    return;
                 }
+                WriteDetailLog($"[业务逻辑] 设置执行状态为true，开始处理{command}指令");
 
                 writeLog($"开始执行: {command}指令 (地址{address}={triggerValue})");
                 WriteDetailLog($"[PLC->视觉] 接收指令{command}(地址:{address}, 触发值:{triggerValue})");
 
-                // 设置当前执行指令（复用现有RCMD机制）
                 DataModel.Processmodel.RCMD = command;
 
-                // 检查报工模块状态，确保有SN且工序校验通过
                 if (!HasValidSNAndValidation())
                 {
                     writeLog($"报工状态不满足: 跳过{command}指令 (SN={DataModel.Processmodel.CurrentProductSN})");
                     WriteDetailLog($"[业务逻辑] 报工模块状态不满足，跳过{command}指令执行 (SN={DataModel.Processmodel.CurrentProductSN})");
+                    EndExecution();
                     return;
                 }
 
                 writeLog($"报工验证通过: 开始{command}视觉检测");
                 WriteDetailLog($"[业务逻辑] 报工状态验证通过，开始执行{command}指令");
 
-                // 直接执行视觉检测，不进行扫码（机器人通信已禁用）
                 SendMsgRobot("DOK");
                 ClearTools();
                 WriteDetailLog($"[视觉检测] 开始执行{command}指令的视觉检测");
-                ExecuteToolsByCommand(command);
+                bool triggered = ExecuteToolsByCommand(command);
+                if (!triggered)
+                {
+                    EndExecution();
+                    return;
+                }
 
-                // 更新触发状态显示
                 WriteDetailLog($"[界面更新] 更新界面触发标志从{DataModel.Processmodel.Trig_IO.IOstatus}到{triggerValue}");
                 DataModel.Processmodel.Trig_IO.IOstatus = triggerValue;
             }
@@ -784,15 +795,7 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 writeError($"PLC触发处理异常: {ex.Message}");
                 WriteDetailLog($"[PLC触发] 处理异常: {ex.Message}");
-            }
-            finally
-            {
-                // 确保释放执行锁
-                lock (_executionLock)
-                {
-                    _isExecuting = false;
-                    WriteDetailLog($"[业务逻辑] 释放执行锁，{command}指令处理完成");
-                }
+                EndExecution();
             }
         }
 
@@ -800,7 +803,8 @@ namespace F7_L12_Position_Detect.ViewModel
         /// 按指令执行匹配的工具（PLC指令匹配模式）
         /// </summary>
         /// <param name="command">指令名称，如"A1"、"A2"或"ALL"</param>
-        private void ExecuteToolsByCommand(string command)
+        /// <returns>是否实际触发了相机（用于判断执行状态收口点）</returns>
+        private bool ExecuteToolsByCommand(string command)
         {
             try
             {
@@ -811,9 +815,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"检测被阻止: 报工正在进行中");
                     WriteDetailLog($"[工具执行] 检测被阻止，原因：报工正在进行中");
-                    // 注释掉PLC返回，根据用户要求不向PLC返回OK/NG标志
-                    // PLC_write((UInt16)2); // 返回NG状态
-                    return;
+                    return false;
                 }
 
                 // 收集所有匹配的工具
@@ -859,8 +861,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (matchedToolIndices.Count > 0)
                 {
                     WriteDetailLog($"[工具执行] 共找到{matchedToolIndices.Count}个匹配工具，开始逐个执行");
+                    _pendingImagesForRound = matchedToolIndices.Count;
 
-                    // 清理状态（只在开始时清理一次）
                     WriteDetailLog($"[工具执行] 清理工具状态");
                     ClearTools();
 
@@ -911,20 +913,17 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"未找到匹配工具: {command}指令");
                     WriteDetailLog($"[工具执行] 未找到匹配指令{command}的工具");
+                    return false;
                 }
-                else
-                {
-                    writeLog($"工具匹配完成: {command}指令 (共{matchedToolIndices.Count}个工具)");
-                    WriteDetailLog($"[工具执行] 指令{command}执行完成，共匹配{matchedToolIndices.Count}个工具，图像处理将在相机回调中执行");
-                }
-
-                // 注释掉PLC返回逻辑，不向PLC返回OK/NG标志
-                // 检测结果将通过软件界面显示，而不是返回给PLC
+                writeLog($"工具匹配完成: {command}指令 (共{matchedToolIndices.Count}个工具)");
+                WriteDetailLog($"[工具执行] 指令{command}执行完成，共匹配{matchedToolIndices.Count}个工具，图像处理将在相机回调中执行");
+                return true;
             }
             catch (Exception ex)
             {
                 writeError($"工具执行异常: {command}指令 - {ex.Message}");
                 WriteDetailLog($"[工具执行] 执行指令{command}时发生错误:{ex.Message}");
+                return false;
             }
         }
 
@@ -2022,6 +2021,7 @@ namespace F7_L12_Position_Detect.ViewModel
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
             HObject processImage = null;
+            bool didProcessMatch = false;
 
             try
             {
@@ -2066,6 +2066,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (isMatch)
                     {
+                        didProcessMatch = true;
                         Stopwatch stopwatch = new Stopwatch();
                         stopwatch.Start();
 
@@ -2547,11 +2548,12 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             finally
             {
-                // 确保资源释放
                 if (processImage != null && processImage != Image)
                 {
                     processImage.Dispose();
                 }
+                if (didProcessMatch && _isExecuting && System.Threading.Interlocked.Decrement(ref _pendingImagesForRound) == 0)
+                    EndExecution();
             }
 
         }
