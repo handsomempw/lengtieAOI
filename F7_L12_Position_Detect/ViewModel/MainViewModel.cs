@@ -117,6 +117,80 @@ namespace F7_L12_Position_Detect.ViewModel
             }
         }
 
+        /*
+         * 图片命名策略（业务口径）：
+         * - 目标：文件名前缀优先使用 MES 解析后的“最外层SN”（CurrentProductSN），避免出现空前缀导致 `-01-A1-1-OK-....jpg`。
+         * - 回退：当 PLC触发抓拍/保存发生在SN链路尚未更新、或点检/异常流程导致SN为空时，按优先级回退到 SNList[工位] / Scannerstr / BarcodeStr。
+         * - 兜底：仍取不到任何可用标识时使用 "NOSN"（避免空文件名片段与排查困难）。
+         * - 约束：前缀会做文件名非法字符清理，避免因为SN含特殊字符导致保存失败。
+         */
+
+        private static string SanitizeFileNamePart(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            var invalid = Path.GetInvalidFileNameChars();
+            var sb = new StringBuilder(value.Length);
+            foreach (var ch in value.Trim())
+            {
+                sb.Append(invalid.Contains(ch) ? '_' : ch);
+            }
+            return sb.ToString();
+        }
+
+        private string GetImageFilePrefix(int toolIndex)
+        {
+            string rawCurrentSn = DataModel?.Processmodel?.CurrentProductSN;
+            string prefix = SanitizeFileNamePart(rawCurrentSn);
+
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                return prefix;
+            }
+
+            try
+            {
+                var snList = DataModel?.Processmodel?.SNList;
+                var tools = DataModel?.Processmodel?.Tools;
+                if (snList != null && tools != null && toolIndex >= 0 && toolIndex < tools.Count)
+                {
+                    int pos = tools[toolIndex].ProductPositionNO;
+                    if (pos >= 0 && pos < snList.Count)
+                    {
+                        var sn = SanitizeFileNamePart(snList[pos]);
+                        if (!string.IsNullOrEmpty(sn))
+                        {
+                            WriteDetailLog($"[图片命名] 回退前缀来源=SNList[{pos}]（CurrentProductSN为空）");
+                            return sn;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            prefix = SanitizeFileNamePart(DataModel?.Processmodel?.Scannerstr);
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                WriteDetailLog($"[图片命名] 回退前缀来源=Scannerstr（CurrentProductSN为空）");
+                return prefix;
+            }
+
+            prefix = SanitizeFileNamePart(DataModel?.Processmodel?.BarcodeStr);
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                WriteDetailLog($"[图片命名] 回退前缀来源=BarcodeStr（CurrentProductSN为空）");
+                return prefix;
+            }
+
+            WriteDetailLog($"[图片命名] 使用NOSN兜底（CurrentProductSN/SNList/Scannerstr/BarcodeStr均为空）；toolIndex={toolIndex}, RCMD={DataModel?.Processmodel?.RCMD ?? "空"}");
+            return "NOSN";
+        }
+
         // 点检定时器
         private System.Windows.Threading.DispatcherTimer _inspectionTimer;
         
@@ -2808,12 +2882,8 @@ namespace F7_L12_Position_Detect.ViewModel
                                 if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
                                 {
 
-                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    try
-                                    {
-                                        savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    }
-                                    catch {; }
+                                    string prefix = GetImageFilePrefix(i);
+                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{prefix}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
 
                                     string dir = Path.GetDirectoryName(savefilename);
                                     if (!Directory.Exists(dir))
@@ -2825,12 +2895,8 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
                                 {
-                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    try
-                                    {
-                                        savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    }
-                                    catch {; }
+                                    string prefix = GetImageFilePrefix(i);
+                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{prefix}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
                                     string dir = Path.GetDirectoryName(savefilename);
                                     if (!Directory.Exists(dir))
                                     { Directory.CreateDirectory(dir); }
