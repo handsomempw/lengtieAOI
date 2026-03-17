@@ -2932,6 +2932,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             var wait = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.等待中 || t.ToolStatus == ToolStatus.识别中);
 
                             WriteDetailLog($"[阶段判断] OK={ok.Count()}, NG1={NG1.Count()}, NG2={NG2.Count()}, 等待={wait.Count()}");
+                            WriteDetailLog($"[阶段判断] 工具明细={GetToolStatusSummary(currentCommandTools)}");
 
                             if (ok.Count() == c && c > 0)
                             {
@@ -2957,10 +2958,69 @@ namespace F7_L12_Position_Detect.ViewModel
                             // 检查是否在点检模式
                             if (DataModel.Processmodel.IsInspectionMode)
                             {
+                                string type = DataModel.Processmodel.InspectionType;
+                                string toolSummary = GetToolStatusSummary(currentCommandTools);
+                                WriteDetailLog($"[点检汇总] 类型={type}, 指令={currentCommand}, status={status}, OK={ok.Count()}, NG={NG1.Count()}, NG2={NG2.Count()}, 等待={wait.Count()}, 工具明细={toolSummary}");
+                                writeLog($"点检结果汇总: 类型={type}, 指令={currentCommand}, status={status}, OK={ok.Count()}, NG={NG1.Count()}, NG2={NG2.Count()}, 等待={wait.Count()}");
+
+                                if (status == -1)
+                                {
+                                    UpdateInspectionStatusMessage($"点检未结算：仍有工具处于等待/识别中。工具明细：{toolSummary}");
+                                    writeLog("ℹ️ 点检未结算：仍有工具处于等待/识别中", false);
+                                    return;
+                                }
+
+                                if (status == 2)
+                                {
+                                    DataModel.Processmodel.Status = ToolStatus.NG2;
+                                    if (type == "NG")
+                                    {
+                                        UpdateInspectionStatusMessage($"NG点检失败：存在NG2结果，要求当前参与工具全部为NG。工具明细：{toolSummary}");
+                                        writeLog("❌ NG点检失败：存在NG2结果，未满足“所有工具都为NG”", false);
+                                    }
+                                    else if (type == "OK")
+                                    {
+                                        UpdateInspectionStatusMessage($"OK点检失败：检测到NG2结果。工具明细：{toolSummary}");
+                                        writeLog("❌ OK点检失败：检测到NG2结果", false);
+                                    }
+                                    return;
+                                }
+
+                                if (status == 1)
+                                {
+                                    DataModel.Processmodel.Status = ToolStatus.NG;
+                                    if (type == "NG")
+                                    {
+                                        bool allNG = currentCommandTools.All(t => t.ToolStatus == ToolStatus.NG);
+                                        if (allNG)
+                                        {
+                                            CompleteInspection("NG");
+                                            UpdateInspectionStatusMessage($"NG点检通过：当前参与工具全部为NG。工具明细：{toolSummary}");
+                                            writeLog("✅ NG点检通过：当前参与工具全部为NG", false);
+                                        }
+                                        else
+                                        {
+                                            UpdateInspectionStatusMessage($"NG点检失败：存在非NG结果，要求当前参与工具全部为NG。工具明细：{toolSummary}");
+                                            writeLog("❌ NG点检失败：存在非NG结果，未满足“所有工具都为NG”", false);
+                                        }
+                                    }
+                                    else if (type == "OK")
+                                    {
+                                        UpdateInspectionStatusMessage($"OK点检失败：检测到NG结果。工具明细：{toolSummary}");
+                                        writeLog("❌ OK点检失败：检测到NG结果", false);
+                                    }
+                                    return;
+                                }
+
                                 if (status == 0)
                                 {
                                     DataModel.Processmodel.Status = ToolStatus.OK;
-                                    string type = DataModel.Processmodel.InspectionType;
+                                    if (type == "NG")
+                                    {
+                                        UpdateInspectionStatusMessage($"NG点检失败：当前参与工具结果全为OK。工具明细：{toolSummary}");
+                                        writeLog("❌ NG点检失败：当前参与工具结果全为OK", false);
+                                        return;
+                                    }
                                     
                                     if (type == "OK")
                                     {
@@ -2973,6 +3033,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                         }
                                         else
                                         {
+                                            UpdateInspectionStatusMessage($"OK点检失败：仍存在非OK工具。工具明细：{toolSummary}");
                                             writeLog("❌ OK点检失败：存在NG结果", false);
                                         }
                                     }
@@ -3752,6 +3813,27 @@ namespace F7_L12_Position_Detect.ViewModel
 
         #region 点检功能
 
+        private void UpdateInspectionStatusMessage(string message)
+        {
+            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                DataModel.Processmodel.ReportWorkStatus = message;
+            }));
+        }
+
+        private string GetInspectionProgressSummary()
+        {
+            List<string> summary = new List<string>();
+            summary.Add($"OK点检={(DataModel.Processmodel.OKInspectionCompleted ? "已完成" : "未完成")}");
+            summary.Add($"NG点检={(DataModel.Processmodel.NGInspectionCompleted ? "已完成" : "未完成")}");
+            return string.Join("，", summary);
+        }
+
+        private string GetToolStatusSummary(IEnumerable<ToolModel> tools)
+        {
+            return string.Join(", ", tools.Select(t => $"{t.Name}:{t.ToolStatus}"));
+        }
+
         /// <summary>
         /// 初始化点检功能
         /// </summary>
@@ -3793,6 +3875,7 @@ namespace F7_L12_Position_Detect.ViewModel
             bool needInspection = isOverdue && 
                                  (!DataModel.Processmodel.OKInspectionCompleted || 
                                   !DataModel.Processmodel.NGInspectionCompleted);
+            WriteDetailLog($"[点检检查] overdue={isOverdue}, needInspection={needInspection}, {GetInspectionProgressSummary()}");
             
             if (needInspection && _inspectionWindow == null)
             {
@@ -3842,6 +3925,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 _inspectionWindow = new F7_L12_Position_Detect.View.InspectionWindow();
                 _inspectionWindow.DataContext = this;
                 _inspectionWindow.Show();
+                UpdateInspectionStatusMessage($"点检已到期：{GetInspectionProgressSummary()}");
                 writeLog("⚠️ 点检已到期，请完成OK点检和NG点检", false);
             }
             catch (Exception ex)
@@ -3870,6 +3954,7 @@ namespace F7_L12_Position_Detect.ViewModel
             DataModel.Processmodel.IsInspectionMode = true;
             DataModel.Processmodel.InspectionType = "OK";
             DataModel.Processmodel.OKInspectionCompleted = false;
+            UpdateInspectionStatusMessage($"开始OK点检，请触发PLC执行检测。当前进度：{GetInspectionProgressSummary()}");
             writeLog("开始OK点检，请使用PLC触发扫码和检测", false);
         }
 
@@ -3881,6 +3966,7 @@ namespace F7_L12_Position_Detect.ViewModel
             DataModel.Processmodel.IsInspectionMode = true;
             DataModel.Processmodel.InspectionType = "NG";
             DataModel.Processmodel.NGInspectionCompleted = false;
+            UpdateInspectionStatusMessage($"开始NG点检，请触发PLC执行检测。当前进度：{GetInspectionProgressSummary()}");
             writeLog("开始NG点检，请使用PLC触发扫码和检测", false);
         }
 
@@ -3892,11 +3978,13 @@ namespace F7_L12_Position_Detect.ViewModel
             if (type == "OK")
             {
                 DataModel.Processmodel.OKInspectionCompleted = true;
+                UpdateInspectionStatusMessage($"OK点检完成。当前进度：{GetInspectionProgressSummary()}");
                 writeLog("✅ OK点检完成", false);
             }
             else if (type == "NG")
             {
                 DataModel.Processmodel.NGInspectionCompleted = true;
+                UpdateInspectionStatusMessage($"NG点检完成。当前进度：{GetInspectionProgressSummary()}");
                 writeLog("✅ NG点检完成", false);
             }
             
@@ -3910,6 +3998,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 SaveSettingModel();
                 UpdateInspectionCountdown();
                 CloseInspectionWindow();
+                UpdateInspectionStatusMessage("✅ 点检全部完成，计时已重置");
                 writeLog("✅ 点检全部完成，计时已重置", false);
             }
         }
