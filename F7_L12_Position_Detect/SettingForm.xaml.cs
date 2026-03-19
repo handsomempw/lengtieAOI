@@ -1,4 +1,4 @@
-﻿using F7_L12_Position_Detect.Model.Tool;
+using F7_L12_Position_Detect.Model.Tool;
 using F7_L12_Position_Detect.ViewModel;
 using Microsoft.Win32;
 using Panuon.WPF.UI;
@@ -20,6 +20,7 @@ using System.Windows.Interop;
 using System.Diagnostics;
 using System.IO;
 using F7_L12_Position_Detect.Model;
+using F7_L12_Position_Detect.Helper;
 using HalconDotNet;
 using F7_L12_Position_Detect.View;
 using Camera;
@@ -195,10 +196,10 @@ namespace F7_L12_Position_Detect
                         Hobject2Bitmap.HobjectToBitmap24(dst, out bmp);
 
                         vml.Main.DataModel.Processmodel.tool.CurrentBitmapSource = null;
-                        vml.Main.DataModel.Processmodel.tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        vml.Main.DataModel.Processmodel.tool.CurrentBitmapSource = ImageHelper.ToBitmapSource(bmp);
 
                         vml.Main.DataModel.Processmodel.ShowBitmapSource = null;
-                        vml.Main.DataModel.Processmodel.ShowBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(src.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        vml.Main.DataModel.Processmodel.ShowBitmapSource = ImageHelper.ToBitmapSource(src);
 
                         bmp?.Dispose();
                         dst?.Dispose();

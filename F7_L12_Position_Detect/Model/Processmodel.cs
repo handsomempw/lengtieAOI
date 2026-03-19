@@ -123,6 +123,35 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("显示照片")]
         public BitmapSource ShowBitmapSource { set; get; }
 
+        // 相机状态（用于现场快速判断）
+        private string _cameraStatus = "未知";
+        [XmlIgnore]
+        public string CameraStatus
+        {
+            get { return _cameraStatus; }
+            set
+            {
+                _cameraStatus = value;
+                RaisePropertyChanged(() => CameraStatus);
+                RaisePropertyChanged(() => CameraStatusColor);
+            }
+        }
+
+        [XmlIgnore]
+        public SolidColorBrush CameraStatusColor
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_cameraStatus)) return Brushes.Gray;
+                if (_cameraStatus == "正常") return Brushes.Green;
+                if (_cameraStatus.Contains("超时") || _cameraStatus.Contains("异常") || _cameraStatus.Contains("断开"))
+                {
+                    return Brushes.OrangeRed;
+                }
+                return Brushes.Gray;
+            }
+        }
+
         // 报工相关属性
         private string _currentProductSN = string.Empty;
         [XmlElement("当前产品SN")]

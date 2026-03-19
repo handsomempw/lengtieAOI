@@ -126,6 +126,9 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("阶段失败重试策略")]
         public StageFailRetryStrategy StageFailRetryStrategy { get; set; } = StageFailRetryStrategy.从头开始重跑;
 
+        [XmlElement("执行超时ms")]
+        public int ExecutionTimeoutMs { get; set; } = 5000;
+
     }
 
     /// <summary>
@@ -205,8 +208,20 @@ namespace F7_L12_Position_Detect.Model
                 _IOstatus = value;
                 RaisePropertyChanged(() => IOstatusBackGround);
                 RaisePropertyChanged(() => IOStatusForeGround);
+                RaisePropertyChanged(() => IOStatusDisplayText);
             }
         }
+
+        [XmlIgnore]
+        public string IOStatusDisplayText
+        {
+            get
+            {
+                if (_IOstatus == -1) return "PLC断连";
+                return $"触发:{_IOstatus}";
+            }
+        }
+
         [XmlIgnore]
         public SolidColorBrush IOstatusBackGround
         {
@@ -214,7 +229,7 @@ namespace F7_L12_Position_Detect.Model
             {
                 if (_IOstatus == -1)
                 {
-                    return Brushes.WhiteSmoke;
+                    return Brushes.OrangeRed;
                 }
 
                 else if (IOstatus == 1)

@@ -24,6 +24,7 @@ using System.Windows.Shapes;
 using Camera;
 using F7_L12_Position_Detect.Model;
 using Honeywell;
+using System.Windows.Threading;
 
 namespace F7_L12_Position_Detect
 {
@@ -64,37 +65,73 @@ namespace F7_L12_Position_Detect
 
             Sqlserver.MicrosoftSql_DATABASE.connectstr = $"Provider=SQLOLEDB.1;Password=1234;Persist Security Info=True;User ID=sa;Initial Catalog=扫码库;Data Source={vml.Main.DataModel.Settingmodel.SNlistServerIP}";
 
+            // 先启动与相机无关的模块（便于现场查看PLC/日志）
+            vml.Main.InitShm();
+            vml.Main.PLC_Start();
+            _ = Task.Run(async () => await vml.Main.RefreshWorkerInfoAsync());
 
-
-            App.Current.Dispatcher.BeginInvoke((Action)(() =>
+            // 相机初始化与HWindow绑定：必须在UI线程执行，使用定时器避免UI线程死循环，10秒超时
+            try
             {
-                Thread.Sleep(200);
-
-                vml.Main.DataModel.Settingmodel.camedata.init($"{Environment.CurrentDirectory}\\配置\\相机配置.xml");
-                vml.Main.start();
-
-                while (true)
+                // 保持与原逻辑一致：初始化前稍等
+                var initDelay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+                initDelay.Tick += (s, _) =>
                 {
+                    initDelay.Stop();
                     try
                     {
-                        Thread.Sleep(1000);
-                        cameractr.refreshHwindow();
-                        //vml.Main.InitHwindow(Hwindow.HalconWindow);
-                        //vml.Main.InitHwindow(vml.Main.DataModel.Settingmodel.camedata.CameraModel.HWindow.HalconWindow);
-                        vml.Main.InitHwindow(cameractr.GetHwindow().HalconWindow);
-                        break;
+                        // 先绑定相机控件窗口，再初始化相机（避免相机模块内部触发跨线程/窗口未就绪问题）
+                        try { cameractr.refreshHwindow(); } catch { }
 
+                        vml.Main.DataModel.Processmodel.CameraStatus = "初始化中";
+                        vml.Main.DataModel.Settingmodel.camedata.init($"{Environment.CurrentDirectory}\\配置\\相机配置.xml");
+                        vml.Main.start();
+                        vml.Main.DataModel.Processmodel.CameraStatus = "等待回图";
+                        vml.Main.writeLog("[启动] 相机初始化完成，等待回图", false);
                     }
-                    catch (Exception ex) { continue; }
-                }
-            }));
+                    catch (Exception ex)
+                    {
+                        vml.Main.DataModel.Processmodel.CameraStatus = "初始化失败";
+                        vml.Main.writeError($"[启动] 相机初始化失败: {ex.Message}\n{ex.StackTrace}");
+                        NoticeBox.Show($"相机初始化失败: {ex.Message}", "错误", MessageBoxIcon.Error, true, 5000);
+                        return;
+                    }
 
-            vml.Main.InitShm();
+                    int attempts = 0;
+                    var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                    timer.Tick += (s2, __) =>
+                    {
+                        attempts++;
+                        try
+                        {
+                            cameractr.refreshHwindow();
+                            var hw = cameractr.GetHwindow()?.HalconWindow;
+                            if (hw != null)
+                            {
+                                vml.Main.InitHwindow(hw);
+                                timer.Stop();
+                                return;
+                            }
+                        }
+                        catch
+                        {
+                            // ignore and retry
+                        }
 
-            vml.Main.PLC_Start();
-
-            // 启动时自动刷新上岗人员信息
-            _ = Task.Run(async () => await vml.Main.RefreshWorkerInfoAsync());
+                        if (attempts >= 10)
+                        {
+                            timer.Stop();
+                            NoticeBox.Show("相机控件初始化超时/失败，请检查相机连接", "提示", MessageBoxIcon.Warning, true, 5000);
+                        }
+                    };
+                    timer.Start();
+                };
+                initDelay.Start();
+            }
+            catch (Exception ex)
+            {
+                NoticeBox.Show($"相机初始化调度失败: {ex.Message}", "错误", MessageBoxIcon.Error, true, 5000);
+            }
 
         }
 

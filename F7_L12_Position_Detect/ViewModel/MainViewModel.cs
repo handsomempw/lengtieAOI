@@ -37,6 +37,7 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using Honeywell;
 using F7_L12_Position_Detect.Service;
+using F7_L12_Position_Detect.Helper;
 
 namespace F7_L12_Position_Detect.ViewModel
 {
@@ -581,7 +582,47 @@ namespace F7_L12_Position_Detect.ViewModel
         private volatile bool _isExecuting = false;
         private readonly object _executionLock = new object();
         private DateTime _executionStartTime = DateTime.MinValue;
-        private const int EXECUTION_TIMEOUT_MS = 10000;
+        private int ExecutionTimeoutMs => Math.Max(500, DataModel?.Settingmodel?.ExecutionTimeoutMs ?? 5000);
+        private int _plcProbeCounter = 0;
+
+        private bool TryConnectPLCOnce(out string message)
+        {
+            message = string.Empty;
+            try
+            {
+                ModbusTcpNet modbusTcp = new ModbusTcpNet();
+                modbusTcp.ConnectTimeOut = 1000;
+                modbusTcp.ReceiveTimeOut = 1000;
+                modbusTcp.IpAddress = DataModel.Settingmodel.PLC_IP;
+                modbusTcp.Port = DataModel.Settingmodel.PLC_Port;
+                modbusTcp.DataFormat = HslCommunication.Core.DataFormat.CDAB;
+
+                var connect = modbusTcp.ConnectServer();
+                if (!connect.IsSuccess)
+                {
+                    message = connect.Message;
+                    try { modbusTcp.ConnectClose(); } catch { }
+                    return false;
+                }
+
+                var result = modbusTcp.ReadUInt16(DataModel.Settingmodel.AddressStart.ToString(), 1);
+                try { modbusTcp.ConnectClose(); } catch { }
+
+                if (!result.IsSuccess)
+                {
+                    message = result.Message;
+                    return false;
+                }
+
+                message = "OK";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = ex.Message;
+                return false;
+            }
+        }
 
         /*
          * 阶段内多相机取图（同一次 PLC 触发的扩展）
@@ -749,6 +790,26 @@ namespace F7_L12_Position_Detect.ViewModel
             int statusLogCounter = 0; // 用于控制状态日志频率
             int lastTriggerValue = 0;
 
+            // 启动即探测一次PLC连接状态（不依赖SN/工序校验）
+            try
+            {
+                if (TryConnectPLCOnce(out string msg))
+                {
+                    DataModel.Processmodel.Trig_IO.IOstatus = 0;
+                    writeLog($"[启动] PLC连接测试: 成功 ({DataModel.Settingmodel.PLC_IP}:{DataModel.Settingmodel.PLC_Port})", false);
+                }
+                else
+                {
+                    DataModel.Processmodel.Trig_IO.IOstatus = -1;
+                    writeLog($"[启动] PLC连接测试: 失败 ({DataModel.Settingmodel.PLC_IP}:{DataModel.Settingmodel.PLC_Port}) - {msg}", false);
+                }
+            }
+            catch (Exception ex)
+            {
+                DataModel.Processmodel.Trig_IO.IOstatus = -1;
+                writeError($"[启动] PLC连接测试异常: {ex.Message}");
+            }
+
             while (true)
             {
                 // ========== 周期性状态日志 ==========
@@ -762,23 +823,46 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
 
                 // 超时看门狗：检测执行态是否超时（相机不回图时兜底释放）
-                if (_isExecuting && (DateTime.UtcNow - _executionStartTime).TotalMilliseconds > EXECUTION_TIMEOUT_MS)
+                if (_isExecuting && (DateTime.UtcNow - _executionStartTime).TotalMilliseconds > ExecutionTimeoutMs)
                 {
                     string timeoutCmd = DataModel.Processmodel.RCMD;
-                    writeError($"执行超时({EXECUTION_TIMEOUT_MS}ms): {timeoutCmd}指令强制释放");
-                    WriteDetailLog($"[超时看门狗] 指令{timeoutCmd}执行超过{EXECUTION_TIMEOUT_MS}ms，强制EndExecution并标记NG");
+                    writeError($"执行超时({ExecutionTimeoutMs}ms): {timeoutCmd}指令强制释放");
+                    WriteDetailLog($"[超时看门狗] 指令{timeoutCmd}执行超过{ExecutionTimeoutMs}ms，强制EndExecution并标记NG");
                     // 超时视为该阶段失败，下次触发必须从头开始（防止阶段卡死或状态污染）
                     DataModel.Processmodel.NeedRestart = true;
                     DataModel.Processmodel.Status = ToolStatus.NG;
+                    DataModel.Processmodel.CameraStatus = "读图超时";
                     EndExecution();
                 }
 
                 // 检查报工模块状态：只有有SN且工序校验成功才进行PLC轮询
                 if (!HasValidSNAndValidation())
                 {
+                    // 无SN/未校验时也要周期性探测PLC连接状态，方便现场判断
+                    _plcProbeCounter++;
+                    if (_plcProbeCounter >= 2) // 约2秒一次（无SN时每次sleep 1000ms）
+                    {
+                        _plcProbeCounter = 0;
+                        try
+                        {
+                            if (TryConnectPLCOnce(out _))
+                            {
+                                DataModel.Processmodel.Trig_IO.IOstatus = 0;
+                            }
+                            else
+                            {
+                                DataModel.Processmodel.Trig_IO.IOstatus = -1;
+                            }
+                        }
+                        catch
+                        {
+                            DataModel.Processmodel.Trig_IO.IOstatus = -1;
+                        }
+                    }
                     Thread.Sleep(1000); // 等待状态满足，减少CPU占用
                     continue;
                 }
+                _plcProbeCounter = 0;
 
                 ModbusTcpNet modbusTcp = new ModbusTcpNet();
                 try
@@ -2086,10 +2170,10 @@ namespace F7_L12_Position_Detect.ViewModel
                             Hobject2Bitmap.HobjectToBitmap24(dst, out bmp);
 
                             tool.CurrentBitmapSource = null;
-                            tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                            tool.CurrentBitmapSource = ImageHelper.ToBitmapSource(bmp);
 
                             tool.BitmapSource = null;
-                            tool.BitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                            tool.BitmapSource = ImageHelper.ToBitmapSource(bmp);
 
                             bmp?.Dispose();
                             dst?.Dispose();
@@ -2114,7 +2198,6 @@ namespace F7_L12_Position_Detect.ViewModel
                         //    }
                         //}
                     }
-                    GC.Collect();
                 }
                 catch (Exception ex)
                 {
@@ -2137,22 +2220,17 @@ namespace F7_L12_Position_Detect.ViewModel
                 string jpgfilename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{DataModel.Processmodel.selectedindex + 1}.jpg";
                 using (Bitmap bmp = (Bitmap)Bitmap.FromFile(jpgfilename))
                 {
-                    BitmapSource bs = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                    BitmapSource bs = ImageHelper.ToBitmapSource(bmp);
                     DataModel.Processmodel.ShowBitmapSource = null;
                     DataModel.Processmodel.ShowBitmapSource = bs;
 
                 }
-                GC.Collect();
                 return true;
             }
             catch (Exception ex)
             {
                 return false;
             }
-
-            GC.Collect();
-
-
         }
 
         private ToolModel LoadPrjXml(int index)
@@ -2182,6 +2260,8 @@ namespace F7_L12_Position_Detect.ViewModel
         public void start()
         {
             DataModel.Settingmodel.camedata.CameraModel.camera.ImageReceived += OnReceive;
+            DataModel.Processmodel.CameraStatus = "等待回图";
+            writeLog("[相机] 已订阅回调(ImageReceived)，等待回图", false);
         }
         private void OnReceive(object sender, EventArgs e)
         {
@@ -2195,13 +2275,12 @@ namespace F7_L12_Position_Detect.ViewModel
                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     OnReceiveProcess(myEventArgs.Image, myEventArgs.Height, myEventArgs.Width);
-
-                    GC.Collect();
                 }));
 
             }
             catch (Exception ex)
             {
+                DataModel.Processmodel.CameraStatus = "相机异常";
                 writeError($"[{DataModel.Processmodel.RCMD}]识别错误:{ex.ToString()}");
             }
         }
@@ -2212,6 +2291,7 @@ namespace F7_L12_Position_Detect.ViewModel
             HObject processImage = null;
             try
             {
+                DataModel.Processmodel.CameraStatus = "正常";
 
                 #region 图片接收
 
@@ -2265,7 +2345,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             var dst = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, Image);
                             Hobject2Bitmap.HobjectToBitmap24(dst, out bmp);
                             tool.CurrentBitmapSource = null;
-                            tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                            tool.CurrentBitmapSource = ImageHelper.ToBitmapSource(bmp);
                             bmp?.Dispose();
                             dst?.Dispose();
                         }
@@ -2722,6 +2802,7 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex)
             {
+                DataModel.Processmodel.CameraStatus = "相机异常";
                 writeError($"[{DataModel.Processmodel.RCMD}]图像处理异常:{ex.Message}");
             }
             finally
