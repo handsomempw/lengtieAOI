@@ -1,4 +1,4 @@
-﻿using F7_L12_Position_Detect.Model.Tool;
+using F7_L12_Position_Detect.Model.Tool;
 using GalaSoft.MvvmLight;
 using HalconDotNet;
 using System;
@@ -219,37 +219,48 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("报工成功记录")]
         public ObservableCollection<string> ReportWorkSuccessLog { set; get; } = new ObservableCollection<string>();
 
-        // 阶段检测状态管理
-        private bool _a1StageCompleted = false;
+        // 阶段检测状态管理（动态阶段列表）
+        //
+        // 业务背景：
+        // - 工具通过 ToolModel.Command 绑定到某个阶段指令（如 A1/A2/A3...）
+        // - PLC 侧只提供“单地址触发”，视觉端内部按阶段列表串行推进
+        // - 任一阶段出现 NG/NG2，则标记 NeedRestart=true，下一次触发必须从第 0 阶段重跑
+
         [XmlIgnore]
-        public bool A1StageCompleted
+        public List<string> ConfiguredStages { get; set; } = new List<string>();
+
+        [XmlIgnore]
+        public HashSet<string> CompletedStages { get; set; } = new HashSet<string>();
+
+        private int _currentStageIndex = 0;
+        [XmlIgnore]
+        public int CurrentStageIndex
         {
-            get { return _a1StageCompleted; }
+            get { return _currentStageIndex; }
             set
             {
-                _a1StageCompleted = value;
-                RaisePropertyChanged(() => A1StageCompleted);
+                _currentStageIndex = value;
+                RaisePropertyChanged(() => CurrentStageIndex);
                 RaisePropertyChanged(() => CanExecuteReportWork);
             }
         }
 
-        private bool _a2StageCompleted = false;
         [XmlIgnore]
-        public bool A2StageCompleted
-        {
-            get { return _a2StageCompleted; }
-            set
-            {
-                _a2StageCompleted = value;
-                RaisePropertyChanged(() => A2StageCompleted);
-                RaisePropertyChanged(() => CanExecuteReportWork);
-            }
-        }
+        public bool NeedRestart { get; set; } = false;
 
         [XmlIgnore]
         public bool CanExecuteReportWork
         {
-            get { return A1StageCompleted && A2StageCompleted; }
+            get
+            {
+                // 业务意图：报工条件应当随“已配置阶段”变化
+                // - 只配置 A1：A1 完成即可报工
+                // - 配置 A1/A2/A3：必须全部完成才可报工
+                // 该判断不关心每阶段工具数量，工具 OK/NG 的聚合由阶段结算逻辑负责。
+                return ConfiguredStages.Count > 0 &&
+                       CompletedStages.Count >= ConfiguredStages.Count &&
+                       ConfiguredStages.All(s => CompletedStages.Contains(s));
+            }
         }
 
         // 刷新上岗人员状态
