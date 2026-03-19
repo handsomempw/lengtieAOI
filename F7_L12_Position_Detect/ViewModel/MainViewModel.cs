@@ -583,6 +583,124 @@ namespace F7_L12_Position_Detect.ViewModel
         private DateTime _executionStartTime = DateTime.MinValue;
         private const int EXECUTION_TIMEOUT_MS = 10000;
 
+        /*
+         * 阶段内多相机取图（同一次 PLC 触发的扩展）
+         *
+         * 业务规则：
+         * - PLC 只触发一次“下一步”，视觉端在一个阶段内可能需要多次取图：
+         *   - 同一阶段工具若配置了不同相机序列号，则按相机分组，每个相机取图一次；
+         *   - 同一相机分组内的多个工具，共用这一张图做识别（同图多工具）。
+         *
+         * 时序与收口：
+         * - ProcessSerialTrigger() 初始化 _pendingCameraGroups，并触发第一组相机取图；
+         * - OnReceiveProcess() 只处理 RCMD 且匹配当前 _activeCameraSerial 的工具；
+         * - OnReceiveProcess() finally 中：
+         *     - 若还有相机组未处理，则继续触发下一组取图（不 EndExecution）；
+         *     - 若相机组处理完毕，才 EndExecution() 释放 PLC 执行互斥窗口。
+         *
+         * 注意：
+         * - 当前实现为“串行多相机”（依次取图），避免并行回调竞态；
+         * - NormalizeCameraSerial 将 null 视为空串，空串也会作为一个分组存在（用于未配置序列号的工具）。
+         */
+        private sealed class CameraGroup
+        {
+            public string CameraSerial { get; }
+            public List<int> ToolIndices { get; }
+            public CameraGroup(string cameraSerial, List<int> toolIndices)
+            {
+                CameraSerial = cameraSerial ?? string.Empty;
+                ToolIndices = toolIndices ?? new List<int>();
+            }
+        }
+
+        private Queue<CameraGroup> _pendingCameraGroups = null;
+        private string _activeCameraSerial = null; // null 表示不按相机过滤（兼容旧逻辑）
+
+        /// <summary>
+        /// 归一化相机序列号：将 null 统一视为 ""，确保分组键稳定。
+        /// </summary>
+        private static string NormalizeCameraSerial(string cameraSerial)
+        {
+            return cameraSerial ?? string.Empty;
+        }
+
+        /// <summary>
+        /// 构建当前阶段的“相机分组队列”。
+        /// </summary>
+        /// <remarks>
+        /// - 仅收集 <paramref name="command"/> 对应阶段的工具；
+        /// - 按工具列表的首次出现顺序稳定输出分组（避免 Dictionary 枚举导致顺序不稳定）。
+        /// </remarks>
+        private Queue<CameraGroup> BuildCameraGroupsForStageCommand(string command)
+        {
+            // 按工具列表顺序稳定分组：同一阶段内不同相机 -> 多次取图
+            var groups = new Dictionary<string, List<int>>();
+            var groupOrder = new List<string>();
+
+            for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
+            {
+                var tool = DataModel.Processmodel.Tools[i];
+                if (tool.Command != command) continue;
+
+                string cam = NormalizeCameraSerial(tool.CameraSerialNumber);
+                if (!groups.TryGetValue(cam, out var list))
+                {
+                    list = new List<int>();
+                    groups[cam] = list;
+                    groupOrder.Add(cam);
+                }
+                list.Add(i);
+            }
+
+            var q = new Queue<CameraGroup>();
+            foreach (var cam in groupOrder)
+            {
+                q.Enqueue(new CameraGroup(cam, groups[cam]));
+            }
+            return q;
+        }
+
+        /// <summary>
+        /// 触发队列中的下一相机分组取图。
+        /// </summary>
+        /// <remarks>
+        /// 该方法只负责“切相机 + 设置曝光 + 触发一次取图”，
+        /// 工具识别与阶段结算在相机回调 <see cref="OnReceiveProcess"/> 中完成。
+        /// </remarks>
+        private bool TriggerNextCameraGroupCapture(string command)
+        {
+            if (_pendingCameraGroups == null || _pendingCameraGroups.Count == 0)
+            {
+                _activeCameraSerial = null;
+                return false;
+            }
+
+            var group = _pendingCameraGroups.Dequeue();
+            _activeCameraSerial = group.CameraSerial;
+
+            if (group.ToolIndices.Count == 0)
+            {
+                return TriggerNextCameraGroupCapture(command);
+            }
+
+            int firstToolIndex = group.ToolIndices[0];
+            var firstTool = DataModel.Processmodel.Tools[firstToolIndex];
+
+            DataModel.Processmodel.ToolIndex = firstToolIndex + 1;
+
+            // 切换到该相机并按该组第一个工具设置曝光
+            SwitchCameraForTool(firstTool);
+            Thread.Sleep(100);
+            DataModel.Settingmodel.camedata.CameraModel.exposuretime = firstTool.ExposureTime;
+            DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = firstTool.ExposureTime;
+            DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
+            Thread.Sleep(DataModel.Settingmodel.delaytime);
+
+            writeLog($"开始拍照: {command}阶段 - 相机='{_activeCameraSerial}', 工具数={group.ToolIndices.Count}");
+            DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
+            return true;
+        }
+
         /// <summary>
         /// 尝试进入“单次指令执行窗口”，用于防止 PLC 触发重入/并发执行。
         /// </summary>
@@ -607,6 +725,8 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 _isExecuting = false;
             }
+            _pendingCameraGroups = null;
+            _activeCameraSerial = null;
         }
 
         public void PLC_Start()
@@ -866,13 +986,23 @@ namespace F7_L12_Position_Detect.ViewModel
                 string command = stages[idx];
                 DataModel.Processmodel.RCMD = command;
 
-                // 每次 PLC 触发只执行“一个阶段”的全部工具（同图多工具），并等待回调完成结算
+                // 每次 PLC 触发只执行“一个阶段”的全部工具：
+                // - 同一相机下多工具：同图多工具
+                // - 同一阶段多相机：按相机分组，多次取图
                 writeLog($"开始执行: {command}阶段 (地址{address}={triggerValue})");
                 WriteDetailLog($"[PLC->视觉] 串行触发进入阶段{command}(地址:{address}, 触发值:{triggerValue})");
 
                 ClearToolsByCommand(command);
                 WriteDetailLog($"[视觉检测] 开始执行阶段{command}的视觉检测");
-                bool triggered = ExecuteToolsByCommand(command);
+
+                _pendingCameraGroups = BuildCameraGroupsForStageCommand(command);
+                if (_pendingCameraGroups.Count == 0)
+                {
+                    writeLog($"未找到匹配工具: {command}阶段", false);
+                    EndExecution();
+                    return;
+                }
+                bool triggered = TriggerNextCameraGroupCapture(command);
                 if (!triggered)
                 {
                     EndExecution();
@@ -2100,6 +2230,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 {
                     bool isMatch = DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD;
+                    if (isMatch && _activeCameraSerial != null)
+                    {
+                        isMatch = NormalizeCameraSerial(DataModel.Processmodel.Tools[i].CameraSerialNumber) == _activeCameraSerial;
+                    }
 
                     if (isMatch)
                     {
@@ -2588,7 +2722,17 @@ namespace F7_L12_Position_Detect.ViewModel
                     processImage.Dispose();
                 }
                 if (_isExecuting)
-                    EndExecution();
+                {
+                    // 若同一阶段存在多相机分组，则在上一张图处理结束后继续触发下一相机取图
+                    if (_pendingCameraGroups != null && _pendingCameraGroups.Count > 0)
+                    {
+                        TriggerNextCameraGroupCapture(DataModel.Processmodel.RCMD);
+                    }
+                    else
+                    {
+                        EndExecution();
+                    }
+                }
             }
 
         }

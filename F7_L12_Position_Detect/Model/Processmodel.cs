@@ -219,12 +219,15 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("报工成功记录")]
         public ObservableCollection<string> ReportWorkSuccessLog { set; get; } = new ObservableCollection<string>();
 
-        // 阶段检测状态管理（动态阶段列表）
-        //
-        // 业务背景：
-        // - 工具通过 ToolModel.Command 绑定到某个阶段指令（如 A1/A2/A3...）
-        // - PLC 侧只提供“单地址触发”，视觉端内部按阶段列表串行推进
-        // - 任一阶段出现 NG/NG2，则标记 NeedRestart=true，下一次触发必须从第 0 阶段重跑
+        /// <summary>
+        /// 阶段检测状态管理（动态阶段列表）。
+        /// </summary>
+        /// <remarks>
+        /// 业务背景：
+        /// - 工具通过 <see cref="ToolModel.Command"/> 绑定到某个阶段指令（如 A1/A2/A3...）。同一阶段可包含多个工具。
+        /// - PLC 侧只提供“单地址触发”，阶段推进由视觉端内部状态机（CurrentStageIndex/CompletedStages）控制。
+        /// - 任一阶段出现 NG/NG2/超时，将 <see cref="NeedRestart"/> 置为 true；下一次触发必须清空工具运行态并从第 0 阶段重跑。
+        /// </remarks>
 
         [XmlIgnore]
         public List<string> ConfiguredStages { get; set; } = new List<string>();
