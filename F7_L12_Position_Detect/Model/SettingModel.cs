@@ -1,4 +1,4 @@
-﻿using F7_L12_Position_Detect.Model.Setting;
+using F7_L12_Position_Detect.Model.Setting;
 using GalaSoft.MvvmLight;
 using HalconDotNet;
 using System;
@@ -12,6 +12,19 @@ using System.Xml.Serialization;
 
 namespace F7_L12_Position_Detect.Model
 {
+    public enum StageFailRetryStrategy
+    {
+        /// <summary>
+        /// 阶段失败（NG/NG2/超时）后，下次触发从第一个阶段（通常为A1）重跑。
+        /// </summary>
+        从头开始重跑 = 0,
+
+        /// <summary>
+        /// 阶段失败后，不清理已完成阶段与其它阶段工具结果，仅在下一次触发时重试当前失败阶段。
+        /// </summary>
+        仅重试失败阶段_保留已有结果 = 1,
+    }
+
     public class SettingModel : ObservableObject
     {
         [XmlIgnore]
@@ -109,6 +122,9 @@ namespace F7_L12_Position_Detect.Model
 
         [XmlElement("报工配置")]
         public ReportWorkConfig ReportWorkConfig { set; get; } = new ReportWorkConfig();
+
+        [XmlElement("阶段失败重试策略")]
+        public StageFailRetryStrategy StageFailRetryStrategy { get; set; } = StageFailRetryStrategy.从头开始重跑;
 
     }
 

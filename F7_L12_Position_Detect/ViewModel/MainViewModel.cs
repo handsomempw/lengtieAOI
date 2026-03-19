@@ -968,8 +968,17 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 if (DataModel.Processmodel.NeedRestart)
                 {
-                    // 上一轮出现 NG/超时等失败，必须清空所有工具状态并从第 0 阶段重跑
-                    ResetDetectionCycle();
+                    // 上一轮出现 NG/NG2/超时等失败：
+                    // - 默认：清空检测周期并从第 0 阶段重跑（最保守，避免状态污染）
+                    // - 可配置：不清理已有结果，仅重试当前失败阶段（保留CompletedStages与其它阶段工具显示）
+                    if (DataModel.Settingmodel.StageFailRetryStrategy == StageFailRetryStrategy.从头开始重跑)
+                    {
+                        ResetDetectionCycle();
+                    }
+                    else
+                    {
+                        DataModel.Processmodel.NeedRestart = false;
+                    }
                 }
 
                 var stages = DataModel.Processmodel.ConfiguredStages;
