@@ -163,6 +163,19 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        // MES报工接口最后一个入参：工序码/工序编号（PROCEDURE_NUMBER）
+        private string _procedureCode = "";
+        [XmlElement("工序码")]
+        public string ProcedureCode
+        {
+            get { return _procedureCode; }
+            set
+            {
+                _procedureCode = value;
+                RaisePropertyChanged(() => ProcedureCode);
+            }
+        }
+
         private string _equipmentNumber = "VIS001";
         [XmlElement("设备编号")]
         public string EquipmentNumber

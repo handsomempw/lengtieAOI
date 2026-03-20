@@ -3454,6 +3454,11 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 writeLog($"🔄 开始报工: SN={DataModel.Processmodel.CurrentProductSN}, 结果={qualityResult}", false);
 
+                // 兼容旧配置：历史版本把“工序编号”误用成了工位号；现在优先使用工序码，空则回退工位号
+                string procedureNumber = string.IsNullOrWhiteSpace(DataModel.Settingmodel.ReportWorkConfig.ProcedureCode)
+                    ? DataModel.Settingmodel.ReportWorkConfig.StationCode
+                    : DataModel.Settingmodel.ReportWorkConfig.ProcedureCode;
+
                 var reportResult = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.Save_EquipmentRecord_mes(
                     DataModel.Settingmodel.ReportWorkConfig.StationCode,     // 工位码
                     "", // 工单号 - 由MES系统内部获取
@@ -3461,7 +3466,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Settingmodel.ReportWorkConfig.ProcedureName,   // 工序名称
                     DataModel.Settingmodel.ReportWorkConfig.EquipmentNumber, // 设备编号
                     qualityResult,                                           // 检测结果
-                    DataModel.Settingmodel.ReportWorkConfig.StationCode      // 工序编号
+                    procedureNumber                                        // 工序编号(PPROCEDURE_NUMBER)
                 );
 
                 if (reportResult)

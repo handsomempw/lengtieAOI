@@ -371,6 +371,14 @@ namespace F7_L12_Position_Detect
             }
         }
 
+        private void txtProcedureCode_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                SaveConfigWithDelay();
+            }
+        }
+
         private void txtEquipmentNumber_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
