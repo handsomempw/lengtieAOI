@@ -2305,7 +2305,9 @@ namespace F7_L12_Position_Detect.ViewModel
             writeLog("[相机] 已订阅回调(ImageReceived)，等待回图", false);
         }
         /// <summary>
-        /// 相机 SDK 的 ImageReceived 入口：先经 <see cref="TryAcceptImageCallback"/> 门闩，再投递到 UI 线程执行 <see cref="OnReceiveProcess"/>。
+        /// 相机 SDK 的 ImageReceived 入口：
+        /// - PLC 执行窗口且“等图门闩”通过时，投递到 UI 线程执行 <see cref="OnReceiveProcess"/>（识别/报工）。
+        /// - 未在执行态时仅做预览显示（<see cref="TryAcceptImageCallback"/> 失败且原因为“当前不在执行态”），不走识别/报工。
         /// </summary>
         private void OnReceive(object sender, EventArgs e)
         {
@@ -2314,13 +2316,35 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 writeLog($"相机->视觉:接收照片", false);
 
-                if (!TryAcceptImageCallback(out string dropReason))
+                MyEventArgs myEventArgs = e as MyEventArgs;
+                if (myEventArgs == null)
                 {
-                    WriteDetailLog($"[回调丢弃] {dropReason}");
+                    WriteDetailLog("[回调丢弃] ImageReceived 参数类型异常");
                     return;
                 }
 
-                MyEventArgs myEventArgs = e as MyEventArgs;
+                if (!TryAcceptImageCallback(out string dropReason))
+                {
+                    // 未在执行态：仅显示预览，不参与识别/报工逻辑。
+                    if (dropReason == "当前不在执行态")
+                    {
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            try
+                            {
+                                HWindow hwindow = DataModel.Settingmodel.HWindow;
+                                hwindow.ClearWindow();
+                                hwindow.DispObj(myEventArgs.Image);
+                            }
+                            catch {; }
+                        }));
+                        return;
+                    }
+
+                    // 执行窗口内但不满足“等图帧”：仍保持丢弃，避免晚到帧污染本轮识别序列。
+                    WriteDetailLog($"[回调丢弃] {dropReason}");
+                    return;
+                }
 
                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
