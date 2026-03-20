@@ -585,6 +585,10 @@ namespace F7_L12_Position_Detect.ViewModel
         private int ExecutionTimeoutMs => Math.Max(500, DataModel?.Settingmodel?.ExecutionTimeoutMs ?? 5000);
         private int _plcProbeCounter = 0;
 
+        // 扫码自动触发阶段执行：用独立互斥与取消源，避免影响现有 PLC 互斥逻辑
+        private CancellationTokenSource _scanAutoTriggerCts = null;
+        private readonly object _scanAutoLock = new object();
+
         private bool TryConnectPLCOnce(out string message)
         {
             message = string.Empty;
@@ -1001,6 +1005,9 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
+                // 新一轮扫码开始时，先停止可能存在的“扫码自动触发执行循环”
+                StopScanAutoExecution();
+
                 // 更新扫码状态为处理中
                 DataModel.Processmodel.ScanCodeStatus = "正在处理...";
 
@@ -1031,11 +1038,23 @@ namespace F7_L12_Position_Detect.ViewModel
                             {
                                 DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
                                 writeLog($"工序校验通过: SN={scanResult.SN}, 工序={procedureName}");
+
+                                // 扫码触发模式：扫码校验成功后，自动依次执行后续阶段
+                                if (DataModel.Settingmodel.EnableScanAutoTriggerStages)
+                                {
+                                    StartScanAutoExecution(scanResult.SN);
+                                }
+                                else
+                                {
+                                    StopScanAutoExecution();
+                                }
                             }
                             else
                             {
                                 DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
                                 writeLog($"工序校验失败: {validationResult.ErrorMessage}");
+
+                                StopScanAutoExecution();
                             }
                         }));
                     }
@@ -1047,6 +1066,8 @@ namespace F7_L12_Position_Detect.ViewModel
                     {
                         DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
                         writeLog($"扫码处理失败: {scanResult.ErrorMessage}");
+
+                        StopScanAutoExecution();
                     }));
                 }
             }
@@ -1057,6 +1078,169 @@ namespace F7_L12_Position_Detect.ViewModel
                     DataModel.Processmodel.ScanCodeStatus = "处理异常";
                     writeLog($"扫码处理异常: {ex.Message}");
                 }));
+            }
+        }
+
+        /// <summary>
+        /// 扫码触发自动执行循环入口（不改动PLC触发代码）。
+        /// - 仅当 EnableScanAutoTriggerStages=true 且工序校验通过时启动
+        /// - 复用视觉端内部阶段状态机：CurrentStageIndex/CompletedStages/NeedRestart
+        /// </summary>
+        private void StartScanAutoExecution(string sn)
+        {
+            if (DataModel?.Settingmodel == null) return;
+            if (!DataModel.Settingmodel.EnableScanAutoTriggerStages) return;
+            if (string.IsNullOrEmpty(sn)) return;
+
+            lock (_scanAutoLock)
+            {
+                _scanAutoTriggerCts?.Cancel();
+                _scanAutoTriggerCts = new CancellationTokenSource();
+            }
+
+            var localCts = _scanAutoTriggerCts;
+            var token = localCts.Token;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    while (!token.IsCancellationRequested)
+                    {
+                        // 若已经切换到别的SN，停止
+                        if (DataModel?.Processmodel?.CurrentProductSN != sn) break;
+
+                        // 关闭开关时停止
+                        if (!DataModel.Settingmodel.EnableScanAutoTriggerStages) break;
+
+                        // 未满足“SN + 工序校验通过”，停止（避免误触发）
+                        if (!HasValidSNAndValidation()) break;
+
+                        // 已完成所有阶段，退出
+                        if (DataModel.Processmodel.CurrentStageIndex >= DataModel.Processmodel.ConfiguredStages.Count)
+                            break;
+
+                        // 避免在报工过程中推进检测
+                        if (DataModel.Processmodel.IsReportingWork)
+                        {
+                            await Task.Delay(100, token);
+                            continue;
+                        }
+
+                        // 等待本轮执行窗口释放
+                        if (_isExecuting)
+                        {
+                            await Task.Delay(50, token);
+                            continue;
+                        }
+
+                        bool started = TriggerNextStageByScan();
+                        if (!started) break;
+
+                        // 等待相机回调收口并释放执行窗口
+                        while (_isExecuting && !token.IsCancellationRequested)
+                        {
+                            await Task.Delay(50, token);
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // ignore
+                }
+                catch (Exception ex)
+                {
+                    writeError($"扫码自动执行循环异常: {ex.Message}");
+                }
+                finally
+                {
+                    lock (_scanAutoLock)
+                    {
+                        if (ReferenceEquals(_scanAutoTriggerCts, localCts))
+                        {
+                            _scanAutoTriggerCts = null;
+                        }
+                    }
+                }
+            }, token);
+        }
+
+        private void StopScanAutoExecution()
+        {
+            lock (_scanAutoLock)
+            {
+                _scanAutoTriggerCts?.Cancel();
+                _scanAutoTriggerCts = null;
+            }
+        }
+
+        /// <summary>
+        /// 触发“下一阶段”（扫码驱动版本，不包含PLC的复位写0与IO状态更新）。
+        /// 复用与 ProcessSerialTrigger 相同的阶段选择与重试策略。
+        /// </summary>
+        private bool TriggerNextStageByScan()
+        {
+            try
+            {
+                if (!TryBeginExecution())
+                {
+                    return false;
+                }
+
+                if (!HasValidSNAndValidation())
+                {
+                    writeLog($"报工状态不满足: 跳过扫码阶段触发 (SN={DataModel.Processmodel.CurrentProductSN})");
+                    EndExecution();
+                    return false;
+                }
+
+                if (DataModel.Processmodel.NeedRestart)
+                {
+                    if (DataModel.Settingmodel.StageFailRetryStrategy == StageFailRetryStrategy.从头开始重跑)
+                    {
+                        ResetDetectionCycle();
+                    }
+                    else
+                    {
+                        DataModel.Processmodel.NeedRestart = false;
+                    }
+                }
+
+                var stages = DataModel.Processmodel.ConfiguredStages;
+                int idx = DataModel.Processmodel.CurrentStageIndex;
+                if (idx < 0) idx = 0;
+                if (idx >= stages.Count)
+                {
+                    EndExecution();
+                    return false;
+                }
+
+                string command = stages[idx];
+                DataModel.Processmodel.RCMD = command;
+
+                ClearToolsByCommand(command);
+
+                _pendingCameraGroups = BuildCameraGroupsForStageCommand(command);
+                if (_pendingCameraGroups.Count == 0)
+                {
+                    EndExecution();
+                    return false;
+                }
+
+                bool triggered = TriggerNextCameraGroupCapture(command);
+                if (!triggered)
+                {
+                    EndExecution();
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                writeError($"扫码阶段触发处理异常: {ex.Message}");
+                try { EndExecution(); } catch { }
+                return false;
             }
         }
 

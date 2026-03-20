@@ -395,6 +395,22 @@ namespace F7_L12_Position_Detect
             }
         }
 
+        private void chkEnableScanAutoTriggerStages_Checked(object sender, RoutedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                SaveConfigWithDelay();
+            }
+        }
+
+        private void chkEnableScanAutoTriggerStages_Unchecked(object sender, RoutedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                SaveConfigWithDelay();
+            }
+        }
+
         // 产品SN输入框文本变化事件处理 - 检测扫码枪输入的换行符
         private async void txtProductSN_TextChanged(object sender, TextChangedEventArgs e)
         {

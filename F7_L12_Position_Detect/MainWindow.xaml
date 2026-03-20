@@ -262,6 +262,7 @@
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto"/>
@@ -305,6 +306,16 @@
                               IsEnabled="{Binding DataModel.Settingmodel.permission}"
                               Checked="chkEnableAutoReportWork_Checked"
                               Unchecked="chkEnableAutoReportWork_Unchecked"
+                              VerticalAlignment="Center" Margin="5" FontSize="12"
+                              Foreground="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigForeground}}"/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="扫码触发自动执行:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"/>
+                    <CheckBox Grid.Row="4" Grid.Column="1" Name="chkEnableScanAutoTriggerStages"
+                              IsChecked="{Binding DataModel.Settingmodel.EnableScanAutoTriggerStages}"
+                              IsEnabled="{Binding DataModel.Settingmodel.permission}"
+                              Checked="chkEnableScanAutoTriggerStages_Checked"
+                              Unchecked="chkEnableScanAutoTriggerStages_Unchecked"
                               VerticalAlignment="Center" Margin="5" FontSize="12"
                               Foreground="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigForeground}}"/>
                 </Grid>

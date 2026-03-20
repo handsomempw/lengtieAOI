@@ -129,6 +129,9 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("执行超时ms")]
         public int ExecutionTimeoutMs { get; set; } = 5000;
 
+        [XmlElement("扫码触发自动执行阶段")]
+        public bool EnableScanAutoTriggerStages { get; set; } = false;
+
     }
 
     /// <summary>
