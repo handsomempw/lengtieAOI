@@ -637,7 +637,13 @@ namespace F7_L12_Position_Detect.ViewModel
          * - OnReceiveProcess() 只处理 RCMD 且匹配当前 _activeCameraSerial 的工具；
          * - OnReceiveProcess() finally 中：
          *     - 若还有相机组未处理，则继续触发下一组取图（不 EndExecution）；
+         *     - 若 TriggerNextCameraGroupCapture 返回 false 或抛异常，立即 NG、NeedRestart、EndExecution，不等超时看门狗；
          *     - 若相机组处理完毕，才 EndExecution() 释放 PLC 执行互斥窗口。
+         *
+         * 等图门闩（_waitingImage）：
+         * - 仅在成功软触发 bnTriggerExec 前置 true；相机线程 OnReceive 入口 TryAcceptImageCallback 原子消费为 false。
+         * - 非执行态、或非“等图”态到达的回调直接丢弃，减少晚到帧误入当前轮（日志用 WriteDetailLog，不作为拦截依据）。
+         * - 手动“照片测试”直接调用 OnReceiveProcess，不经 OnReceive，不受门闩影响。
          *
          * 注意：
          * - 当前实现为“串行多相机”（依次取图），避免并行回调竞态；
@@ -655,6 +661,8 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         private Queue<CameraGroup> _pendingCameraGroups = null;
+        /// <summary>等图门闩：仅在一次软触发之后为 true，回调入口原子消费为 false，避免非预期帧进入处理。</summary>
+        private bool _waitingImage = false;
         private string _activeCameraSerial = null; // null 表示不按相机过滤（兼容旧逻辑）
 
         /// <summary>
@@ -707,6 +715,7 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <remarks>
         /// 该方法只负责“切相机 + 设置曝光 + 触发一次取图”，
         /// 工具识别与阶段结算在相机回调 <see cref="OnReceiveProcess"/> 中完成。
+        /// 软触发前在锁内置 <see cref="_waitingImage"/> 为 true，供 <see cref="TryAcceptImageCallback"/> 校验。
         /// </remarks>
         private bool TriggerNextCameraGroupCapture(string command)
         {
@@ -738,6 +747,10 @@ namespace F7_L12_Position_Detect.ViewModel
             Thread.Sleep(DataModel.Settingmodel.delaytime);
 
             writeLog($"开始拍照: {command}阶段 - 相机='{_activeCameraSerial}', 工具数={group.ToolIndices.Count}");
+            lock (_executionLock)
+            {
+                _waitingImage = true;
+            }
             DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
             return true;
         }
@@ -752,7 +765,33 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 if (_isExecuting) return false;
                 _isExecuting = true;
+                _waitingImage = false;
                 _executionStartTime = DateTime.UtcNow;
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 相机 SDK 线程上调用：仅当处于 PLC 执行窗口且本帧为“软触发所等待的那一帧”时放行，并原子清除等图门闩。
+        /// </summary>
+        private bool TryAcceptImageCallback(out string dropReason)
+        {
+            lock (_executionLock)
+            {
+                if (!_isExecuting)
+                {
+                    dropReason = "当前不在执行态";
+                    return false;
+                }
+
+                if (!_waitingImage)
+                {
+                    dropReason = "当前不在等待图像";
+                    return false;
+                }
+
+                _waitingImage = false;
+                dropReason = string.Empty;
                 return true;
             }
         }
@@ -765,6 +804,7 @@ namespace F7_L12_Position_Detect.ViewModel
             lock (_executionLock)
             {
                 _isExecuting = false;
+                _waitingImage = false;
             }
             _pendingCameraGroups = null;
             _activeCameraSerial = null;
@@ -1290,16 +1330,15 @@ namespace F7_L12_Position_Detect.ViewModel
                     string logstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{LogContent}";
                     if (showdatarecord)
                     {
-                        App.Current.Dispatcher.Invoke(() =>
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
                         {
                             int num = 200;
                             if (DataModel.Recordmodel.workLog.Count > num)
                             {
-                                //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
                                 DataModel.Recordmodel.workLog.Clear();
                             }
                             DataModel.Recordmodel.workLog.Insert(0, logstr);
-                        });
+                        }));
                     }
 
                     string filename = $"{Environment.CurrentDirectory}\\日志\\日志\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
@@ -1329,15 +1368,17 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     int num = 200;
                     string bugstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{Content}";
-                    App.Current.Dispatcher.Invoke(() =>
+                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         if (DataModel.Recordmodel.ErrorLog.Count > num)
-                        {
-                            //DataModel.Recordmodel.workLog.RemoveAt(DataModel.Recordmodel.workLog.Count - 1);
                             DataModel.Recordmodel.ErrorLog.Clear();
-                        }
                         DataModel.Recordmodel.ErrorLog.Insert(0, bugstr);
-                    });
+
+                        // 同步到 workLog，利用现有日志区显示错误，不改布局
+                        if (DataModel.Recordmodel.workLog.Count > num)
+                            DataModel.Recordmodel.workLog.Clear();
+                        DataModel.Recordmodel.workLog.Insert(0, bugstr);
+                    }));
                     string filename = $"{Environment.CurrentDirectory}\\日志\\错误\\{DateTime.Now.ToString("yyyyMMdd")}.txt";
                     string dir = Path.GetDirectoryName(filename);
                     if (!Directory.Exists(dir))
@@ -2263,12 +2304,21 @@ namespace F7_L12_Position_Detect.ViewModel
             DataModel.Processmodel.CameraStatus = "等待回图";
             writeLog("[相机] 已订阅回调(ImageReceived)，等待回图", false);
         }
+        /// <summary>
+        /// 相机 SDK 的 ImageReceived 入口：先经 <see cref="TryAcceptImageCallback"/> 门闩，再投递到 UI 线程执行 <see cref="OnReceiveProcess"/>。
+        /// </summary>
         private void OnReceive(object sender, EventArgs e)
         {
 
             try
             {
                 writeLog($"相机->视觉:接收照片", false);
+
+                if (!TryAcceptImageCallback(out string dropReason))
+                {
+                    WriteDetailLog($"[回调丢弃] {dropReason}");
+                    return;
+                }
 
                 MyEventArgs myEventArgs = e as MyEventArgs;
 
@@ -2286,6 +2336,13 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
 
+        /// <summary>
+        /// UI 线程上处理一帧图像：按当前 RCMD 与 <see cref="_activeCameraSerial"/> 匹配工具并跑识别，最后做阶段/报工判断。
+        /// </summary>
+        /// <remarks>
+        /// 多相机阶段：在 finally 中若仍有 <see cref="_pendingCameraGroups"/>，会调用 <see cref="TriggerNextCameraGroupCapture"/>；
+        /// 若返回 false 或抛异常，则立即 NG、NeedRestart、<see cref="EndExecution"/>，不等待超时看门狗。
+        /// </remarks>
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
             HObject processImage = null;
@@ -2813,10 +2870,30 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
                 if (_isExecuting)
                 {
-                    // 若同一阶段存在多相机分组，则在上一张图处理结束后继续触发下一相机取图
+                    // 若同一阶段存在多相机分组，则在上一张图处理结束后继续触发下一相机取图；
+                    // 下一组触发失败或异常时立即 NG、NeedRestart、收口，不依赖超时看门狗。
                     if (_pendingCameraGroups != null && _pendingCameraGroups.Count > 0)
                     {
-                        TriggerNextCameraGroupCapture(DataModel.Processmodel.RCMD);
+                        try
+                        {
+                            bool triggered = TriggerNextCameraGroupCapture(DataModel.Processmodel.RCMD);
+                            if (!triggered)
+                            {
+                                DataModel.Processmodel.Status = ToolStatus.NG;
+                                DataModel.Processmodel.NeedRestart = true;
+                                DataModel.Processmodel.CameraStatus = "相机异常";
+                                writeError("下一相机组触发失败，已按失败立即收口");
+                                EndExecution();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            DataModel.Processmodel.Status = ToolStatus.NG;
+                            DataModel.Processmodel.NeedRestart = true;
+                            DataModel.Processmodel.CameraStatus = "相机异常";
+                            writeError($"下一相机组触发异常，已按失败立即收口: {ex.Message}");
+                            EndExecution();
+                        }
                     }
                     else
                     {
