@@ -1,4 +1,4 @@
-﻿using GalaSoft.MvvmLight;
+using GalaSoft.MvvmLight;
 using HalconDotNet;
 using System;
 using System.Collections.Generic;
@@ -45,7 +45,7 @@ namespace F7_L12_Position_Detect.Model.Tool
         public int Index { set; get; } = 0;
 
         [XmlElement("触发指令")]
-        public string Command { set; get; } = "T1-1";
+        public string Command { set; get; } = "A1";
 
         [XmlElement("工具名称")]
         public string Name { set; get; } = string.Empty;

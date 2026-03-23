@@ -35,6 +35,124 @@ namespace F7_L12_Position_Detect
     {
         ViewModelLocator vml = null;
 
+        /// <summary>防止 SN 框 TextChanged 与赋值 cleanScanCode 形成重入，重复跑 MES。</summary>
+        private bool _productSnTextHandling;
+
+        /// <summary>串口 SDK（ScannerModel）全局互斥：同一 COM 只能一处打开，避免连点/并发读导致占用失败或无响应。</summary>
+        private static readonly object ScannerSerialApiLock = new object();
+        private CancellationTokenSource _serialScanListenerCts;
+        private Task _serialScanListenerTask;
+        private DateTime _serialScanWarmupUntilUtc = DateTime.MinValue;
+        private string _lastAcceptedSerialScanCode = string.Empty;
+        private DateTime _lastAcceptedSerialScanTimeUtc = DateTime.MinValue;
+
+        private static bool IsKeyboardWedgeScannerMode(string mode)
+        {
+            if (string.IsNullOrWhiteSpace(mode)) return false;
+            var m = mode.Trim();
+            return string.Equals(m, "Keyboard", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(m, "HID", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(m, "键盘口", StringComparison.Ordinal);
+        }
+
+        private bool IsSerialScannerMode()
+        {
+            string mode = vml?.Main?.DataModel?.Settingmodel?.ScannerMode;
+            return !string.Equals(mode, "HF800", StringComparison.OrdinalIgnoreCase)
+                   && !IsKeyboardWedgeScannerMode(mode);
+        }
+
+        private void StartSerialScannerListener()
+        {
+            if (_serialScanListenerTask != null && !_serialScanListenerTask.IsCompleted)
+                return;
+
+            _serialScanListenerCts = new CancellationTokenSource();
+            CancellationToken token = _serialScanListenerCts.Token;
+            _serialScanWarmupUntilUtc = DateTime.UtcNow.AddSeconds(2);
+            _lastAcceptedSerialScanCode = string.Empty;
+            _lastAcceptedSerialScanTimeUtc = DateTime.MinValue;
+
+            _serialScanListenerTask = Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        if (!IsSerialScannerMode())
+                        {
+                            await Task.Delay(300, token);
+                            continue;
+                        }
+
+                        string scanCode = string.Empty;
+                        bool isSuccess = false;
+
+                        lock (ScannerSerialApiLock)
+                        {
+                            var r = vml.Main.DataModel.Settingmodel.ScannerModel.Scanner();
+                            scanCode = (r.receivestring ?? string.Empty).Replace("\r", "").Replace("\n", "").Trim();
+                            isSuccess = r.IsSuccess && !string.IsNullOrEmpty(scanCode);
+                        }
+
+                        if (!isSuccess)
+                        {
+                            await Task.Delay(80, token);
+                            continue;
+                        }
+
+                        var nowUtc = DateTime.UtcNow;
+                        // 刚启动监听时，丢弃预热窗口内的历史缓存码/噪声，避免“启动即自动扫一枪”。
+                        if (nowUtc < _serialScanWarmupUntilUtc)
+                        {
+                            await Task.Delay(80, token);
+                            continue;
+                        }
+                        // 同一码短时间重复上报去抖，避免设备重复回传导致重复流程。
+                        if (string.Equals(scanCode, _lastAcceptedSerialScanCode, StringComparison.Ordinal) &&
+                            (nowUtc - _lastAcceptedSerialScanTimeUtc).TotalMilliseconds < 1500)
+                        {
+                            await Task.Delay(80, token);
+                            continue;
+                        }
+                        _lastAcceptedSerialScanCode = scanCode;
+                        _lastAcceptedSerialScanTimeUtc = nowUtc;
+
+                        await Dispatcher.InvokeAsync(async () =>
+                        {
+                            vml.Main.DataModel.Processmodel.Scannerstr = scanCode;
+                            vml.Main.DataModel.Processmodel.SNList.Clear();
+                            vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
+                            await vml.Main.ProcessScanCodeWithMESAsync(scanCode);
+                        }).Task.Unwrap();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            vml?.Main?.writeLog($"串口扫码监听异常: {ex.Message}", true);
+                        });
+                        await Task.Delay(500, token);
+                    }
+                }
+            }, token);
+        }
+
+        private void StopSerialScannerListener()
+        {
+            try
+            {
+                _serialScanListenerCts?.Cancel();
+            }
+            catch
+            {
+            }
+        }
+
         /// <summary>
         /// 主窗口构造：初始化界面并获取全局 ViewModel 定位器。
         /// </summary>
@@ -133,6 +251,9 @@ namespace F7_L12_Position_Detect
                 NoticeBox.Show($"相机初始化调度失败: {ex.Message}", "错误", MessageBoxIcon.Error, true, 5000);
             }
 
+            // 串口模式常驻监听：物理按键触发后自动接收并走 MES 流程（HF800/键盘口模式自动跳过）。
+            StartSerialScannerListener();
+
         }
 
 
@@ -217,6 +338,8 @@ namespace F7_L12_Position_Detect
                 e.Cancel = true;
                 return;
             }
+
+            StopSerialScannerListener();
             vml.Main.DataModel.Settingmodel.camedata.closing($"{Environment.CurrentDirectory}\\配置\\相机配置.xml");
             vml.Main.SaveProcessmodel();
             vml.Main.SaveRecordModel();
@@ -291,36 +414,54 @@ namespace F7_L12_Position_Detect
 
         private async void scannertrig_Click(object sender, RoutedEventArgs e)
         {
+            var mode = vml.Main.DataModel.Settingmodel.ScannerMode;
+
+            if (IsKeyboardWedgeScannerMode(mode))
+            {
+                vml.Main.writeLog("当前为键盘口/HID 模式：不占串口。已聚焦「产品 SN」框，请直接扫码（勿依赖本按钮读串口）。", false);
+                txtProductSN?.Focus();
+                txtProductSN?.SelectAll();
+                return;
+            }
+
             string scanCode = string.Empty;
             bool scanSuccess = false;
 
-            if (vml.Main.DataModel.Settingmodel.ScannerMode == "HF800")
+            try
             {
-                var r = vml.Main.DataModel.Settingmodel.HF800.Scanner();
-                scanCode = r.value.Replace("\r", "").Replace("\n", "");
+                // 串口/网口读码可能阻塞较久；放后台线程避免 UI 假死。串口 SDK 路径加全局锁，避免 COM 独占冲突。
+                await Task.Run(() =>
+                {
+                    if (string.Equals(mode, "HF800", StringComparison.Ordinal))
+                    {
+                        var r = vml.Main.DataModel.Settingmodel.HF800.Scanner();
+                        scanCode = (r.value ?? string.Empty).Replace("\r", "").Replace("\n", "");
+                        scanSuccess = (r.Status == Status.OK);
+                    }
+                    else
+                    {
+                        lock (ScannerSerialApiLock)
+                        {
+                            var r = vml.Main.DataModel.Settingmodel.ScannerModel.Scanner();
+                            scanCode = (r.receivestring ?? string.Empty).Replace("\r", "").Replace("\n", "");
+                            scanSuccess = r.IsSuccess;
+                        }
+                    }
+                });
                 vml.Main.DataModel.Processmodel.Scannerstr = scanCode;
                 vml.Main.DataModel.Processmodel.SNList.Clear();
                 vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
-                scanSuccess = (r.Status == Status.OK);
             }
-            else
+            catch (Exception ex)
             {
-                var r = vml.Main.DataModel.Settingmodel.ScannerModel.Scanner();
-                scanCode = r.receivestring.Replace("\r", "").Replace("\n", "");
-                vml.Main.DataModel.Processmodel.Scannerstr = scanCode;
-                scanSuccess = r.IsSuccess;
+                vml.Main.writeLog($"扫码测试取码异常: {ex.Message}", true);
+                return;
             }
 
-            // 如果扫码成功，调用MES服务处理
             if (scanSuccess && !string.IsNullOrEmpty(scanCode))
-            {
-                // 调用MainViewModel中的MES处理方法
                 await vml.Main.ProcessScanCodeWithMESAsync(scanCode);
-            }
             else if (!scanSuccess)
-            {
                 vml.Main.DataModel.Processmodel.ScanCodeStatus = "扫码失败";
-            }
         }
 
         private void ClearBarcodes_Click(object sender, RoutedEventArgs e)
@@ -422,6 +563,9 @@ namespace F7_L12_Position_Detect
         // 产品SN输入框文本变化事件处理 - 检测扫码枪输入的换行符
         private async void txtProductSN_TextChanged(object sender, TextChangedEventArgs e)
         {
+            if (_productSnTextHandling)
+                return;
+
             try
             {
                 if (sender is TextBox textBox)
@@ -431,23 +575,26 @@ namespace F7_L12_Position_Detect
                     // 检测是否包含换行符（扫码枪输入完成的标志）
                     if (inputText.Contains("\n") || inputText.Contains("\r"))
                     {
-                        // 清除换行符，获取纯净的扫码内容
                         string cleanScanCode = inputText.Replace("\r", "").Replace("\n", "").Trim();
 
                         if (!string.IsNullOrEmpty(cleanScanCode))
                         {
-                            // 更新输入框内容（移除换行符）
-                            textBox.Text = cleanScanCode;
-
-                            // 调用扫码处理流程：编码转换为SN码并进行工序校验
-                            await ProcessScanCodeFromInput(cleanScanCode);
+                            _productSnTextHandling = true;
+                            try
+                            {
+                                textBox.Text = cleanScanCode;
+                                await ProcessScanCodeFromInput(cleanScanCode);
+                            }
+                            finally
+                            {
+                                _productSnTextHandling = false;
+                            }
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                // 记录错误但不中断用户操作
                 vml?.Main?.writeLog($"产品SN输入处理异常: {ex.Message}", true);
             }
         }

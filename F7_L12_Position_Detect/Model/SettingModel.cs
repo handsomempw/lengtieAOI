@@ -47,7 +47,12 @@ namespace F7_L12_Position_Detect.Model
 
         public Honeywell.HF800 HF800 { set; get; } = new Honeywell.HF800();
 
-
+        /// <summary>
+        /// 扫码数据进入本软件的方式（配置里可改字符串）：<br/>
+        /// <b>HF800</b>：网口指令取码（Honeywell HF800），占用 TCP 连接，不占 COM。<br/>
+        /// <b>其它值</b>（如 Serial、空、自定义）：走 <see cref="ScannerModel"/> 串口 SDK，<b>串口被本进程独占</b>，勿与其它软件或第二处同时打开同一 COM。<br/>
+        /// <b>Keyboard</b> / <b>键盘口</b> / <b>HID</b>：键盘楔入，不占串口；请把焦点放在主界面「产品 SN」框用枪扫，「扫码测试」不会打开串口。
+        /// </summary>
         public string ScannerMode { set; get; } = "HF800";
 
         #region 工程配置
