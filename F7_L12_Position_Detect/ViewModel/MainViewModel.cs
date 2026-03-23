@@ -80,8 +80,33 @@ namespace F7_L12_Position_Detect.ViewModel
         // MES服务实例
         private readonly MESService _mesService = new MESService();
 
+        /// <summary>
+        /// 串行化「扫码→MES 解析/校验」流程。
+        /// </summary>
+        /// <remarks>
+        /// 业务意图：
+        /// - 现场可能同时存在「扫码测试按钮」「串口常驻监听」「SN 框键盘楔入」等入口，若并发进入 MES，易造成串口占用异常或状态错乱。
+        /// - <c>WaitAsync(0)</c>：上一轮未结束则直接丢弃本次并打日志，避免排队堆积。
+        /// </remarks>
+        private readonly SemaphoreSlim _mesScanProcessLock = new SemaphoreSlim(1, 1);
 
         private string _lastProductSN = string.Empty;
+
+        /// <summary>
+        /// 归一化阶段指令字符串，供阶段列表、工具匹配、阶段结算统一使用。
+        /// </summary>
+        /// <remarks>
+        /// 业务背景：
+        /// - 工程 XML 或人工录入可能出现 <c>A1</c>、<c>a1</c>、<c>"A1 "</c> 等写法；若按原字符串比较，会被当成多个阶段，
+        ///   进而出现「明明全是 A1 却提示阶段未全部完成」、<c>ConfiguredStages</c> 序列异常（如日志里 <c>A1-&gt;T1-1</c>）等问题。
+        /// - 规则：<c>Trim</c> + <c>ToUpperInvariant</c>；空或仅空白视为无阶段指令。
+        /// </remarks>
+        private static string NormalizeStageCommand(string command)
+        {
+            return string.IsNullOrWhiteSpace(command)
+                ? string.Empty
+                : command.Trim().ToUpperInvariant();
+        }
 
         /// <summary>
         /// 从当前工具配置推导“串行阶段列表”。
@@ -91,11 +116,13 @@ namespace F7_L12_Position_Detect.ViewModel
         /// - 根据 ToolModel.Command 动态形成阶段序列（A1/A2/A3...）。
         /// - 阶段顺序按工具列表首次出现顺序（Distinct 保序）生成，确保与现场配置习惯一致。
         /// - 该方法只负责阶段“配置”，阶段“进度”由 CompletedStages / CurrentStageIndex 管理。
+        /// - 构建前对每个 Command 做 <see cref="NormalizeStageCommand"/>，并过滤空串，避免脏字符串拆成多阶段。
         /// </remarks>
         private void BuildConfiguredStages()
         {
             DataModel.Processmodel.ConfiguredStages = DataModel.Processmodel.Tools
-                .Select(t => t.Command)
+                .Select(t => NormalizeStageCommand(t.Command))
+                .Where(c => !string.IsNullOrEmpty(c))
                 .Distinct()
                 .ToList();
         }
@@ -107,13 +134,14 @@ namespace F7_L12_Position_Detect.ViewModel
         /// 业务意图：
         /// - 报工成功后，只需要清 SN + 扫码状态 + 阶段进度，保留界面上工具 OK/NG 以便人员确认上一件结果。
         /// - NG 后下一次从头开始时，会在 ResetDetectionCycle 内同时清工具运行态。
+        /// - 不在此处清空 <see cref="Processmodel.ReportWorkStatus"/>：否则报工成功后在 <see cref="ResetProductContext"/> 中会立刻抹掉
+        ///   「报工成功」提示。报工文案由 <see cref="ExecuteReportWorkAsync"/>、新扫码入口、<see cref="ClearCurrentProductContext"/> 分别管理。
         /// </remarks>
         private void ResetStageProgress()
         {
             DataModel.Processmodel.CompletedStages.Clear();
             DataModel.Processmodel.CurrentStageIndex = 0;
             DataModel.Processmodel.NeedRestart = false;
-            DataModel.Processmodel.ReportWorkStatus = string.Empty;
         }
 
         /// <summary>
@@ -170,13 +198,21 @@ namespace F7_L12_Position_Detect.ViewModel
             }));
         }
 
+        /// <summary>
+        /// 手动清空当前产品：工具结果、SN、扫码状态、阶段进度及报工提示。
+        /// </summary>
+        /// <remarks>
+        /// 业务意图：
+        /// - 与「报工成功后仅 ResetProductContext」不同：操作员主动清空表示放弃当前件上下文，应同步清工具显示与报工提示，避免误读上一枪结果。
+        /// - 必须在 UI 线程投递执行，与绑定属性更新一致。
+        /// </remarks>
         public void ClearCurrentProductContext()
         {
             App.Current?.Dispatcher?.BeginInvoke(new Action(() =>
             {
-                // 手动清空：既清工具运行态（ResetDetectionCycle），也清产品上下文（ResetProductContext）
                 ResetDetectionCycle();
                 ResetProductContext();
+                DataModel.Processmodel.ReportWorkStatus = string.Empty;
             }));
         }
 
@@ -364,11 +400,19 @@ namespace F7_L12_Position_Detect.ViewModel
         /// 按指令范围清理工具的运行态数据（不会改变工具配置）。
         /// </summary>
         /// <param name="command">指令名；传入 "ALL" 表示清理全部工具。</param>
+        /// <remarks>
+        /// 业务意图：
+        /// - 阶段触发前需把本阶段工具的识别结果、状态位复位，避免沿用上一张图的结果。
+        /// - 与 <see cref="BuildCameraGroupsForStageCommand"/> 一致，对 command 与工具 Command 做 <see cref="NormalizeStageCommand"/> 再比较，
+        ///   保证与阶段列表、结算逻辑使用同一套阶段键。
+        /// </remarks>
         public void ClearToolsByCommand(string command)
         {
+            string normalizedCommand = NormalizeStageCommand(command);
             for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
             {
-                if (command == "ALL" || DataModel.Processmodel.Tools[i].Command == command)
+                string toolCommand = NormalizeStageCommand(DataModel.Processmodel.Tools[i].Command);
+                if (normalizedCommand == "ALL" || toolCommand == normalizedCommand)
                 {
                     ClearTool(DataModel.Processmodel.Tools[i]);
                 }
@@ -683,17 +727,20 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <remarks>
         /// - 仅收集 <paramref name="command"/> 对应阶段的工具；
         /// - 按工具列表的首次出现顺序稳定输出分组（避免 Dictionary 枚举导致顺序不稳定）。
+        /// - 工具是否属于本阶段：对 <paramref name="command"/> 与 <see cref="ToolModel.Command"/> 均做 <see cref="NormalizeStageCommand"/> 后相等判断，
+        ///   与 <see cref="BuildConfiguredStages"/>、阶段结算一致。
         /// </remarks>
         private Queue<CameraGroup> BuildCameraGroupsForStageCommand(string command)
         {
             // 按工具列表顺序稳定分组：同一阶段内不同相机 -> 多次取图
             var groups = new Dictionary<string, List<int>>();
             var groupOrder = new List<string>();
+            string normalizedCommand = NormalizeStageCommand(command);
 
             for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
             {
                 var tool = DataModel.Processmodel.Tools[i];
-                if (tool.Command != command) continue;
+                if (NormalizeStageCommand(tool.Command) != normalizedCommand) continue;
 
                 string cam = NormalizeCameraSerial(tool.CameraSerialNumber);
                 if (!groups.TryGetValue(cam, out var list))
@@ -997,18 +1044,31 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 处理扫码并集成MES服务（异步公共方法）
-        /// 包括SN解析和工序校验
+        /// 处理扫码并集成 MES：解码 SN、更新界面、工序校验；可选启动扫码自动阶段循环。
         /// </summary>
-        /// <param name="scanCode">扫码内容</param>
+        /// <param name="scanCode">扫码原始内容。</param>
+        /// <remarks>
+        /// 业务意图：
+        /// - 任意入口（扫码测试、串口监听、SN 框换行）最终汇聚到此方法，统一走 MES 与状态更新。
+        /// - 进入时先 <see cref="StopScanAutoExecution"/>，避免上一轮的扫码自动循环与新 SN 交错。
+        /// - 清空 <see cref="Processmodel.ReportWorkStatus"/>：表示「新一件扫码开始」，避免仍显示上一枪的报工提示。
+        /// - 使用 <see cref="_mesScanProcessLock"/> 保证同一时刻只有一条扫码/MES 链路在执行。
+        /// </remarks>
         public async Task ProcessScanCodeWithMESAsync(string scanCode)
         {
+            if (!await _mesScanProcessLock.WaitAsync(0))
+            {
+                writeLog("扫码/MES 处理尚未结束，本次已忽略（请勿连续快速触发扫码测试或等待上一次完成）", false);
+                return;
+            }
+
             try
             {
                 // 新一轮扫码开始时，先停止可能存在的“扫码自动触发执行循环”
                 StopScanAutoExecution();
 
-                // 更新扫码状态为处理中
+                // 更新扫码状态为处理中；新一件扫码时清掉上一枪的报工提示，避免与本次混淆
+                DataModel.Processmodel.ReportWorkStatus = string.Empty;
                 DataModel.Processmodel.ScanCodeStatus = "正在处理...";
 
                 // 获取工序名称
@@ -1042,10 +1102,13 @@ namespace F7_L12_Position_Detect.ViewModel
                                 // 扫码触发模式：扫码校验成功后，自动依次执行后续阶段
                                 if (DataModel.Settingmodel.EnableScanAutoTriggerStages)
                                 {
+                                    writeLog($"扫码自动执行: 工序校验通过，准备启动阶段循环 SN={scanResult.SN}", false);
+                                    WriteDetailLog($"[扫码自动] 工序校验通过，调用 StartScanAutoExecution SN={scanResult.SN}");
                                     StartScanAutoExecution(scanResult.SN);
                                 }
                                 else
                                 {
+                                    WriteDetailLog("[扫码自动] EnableScanAutoTriggerStages=false，不启动阶段循环");
                                     StopScanAutoExecution();
                                 }
                             }
@@ -1079,18 +1142,50 @@ namespace F7_L12_Position_Detect.ViewModel
                     writeLog($"扫码处理异常: {ex.Message}");
                 }));
             }
+            finally
+            {
+                _mesScanProcessLock.Release();
+            }
         }
 
         /// <summary>
-        /// 扫码触发自动执行循环入口（不改动PLC触发代码）。
-        /// - 仅当 EnableScanAutoTriggerStages=true 且工序校验通过时启动
-        /// - 复用视觉端内部阶段状态机：CurrentStageIndex/CompletedStages/NeedRestart
+        /// 扫码触发自动执行循环入口（不改动 PLC 触发代码）。
         /// </summary>
+        /// <param name="sn">本循环绑定的产品 SN；若运行中 SN 被替换则退出。</param>
+        /// <remarks>
+        /// 业务意图：
+        /// - 仅当 <see cref="SettingModel.EnableScanAutoTriggerStages"/> 为 true 且工序校验通过后，由 <see cref="ProcessScanCodeWithMESAsync"/> 调用。
+        /// - 复用视觉端阶段状态机：<see cref="Processmodel.CurrentStageIndex"/> / <see cref="Processmodel.CompletedStages"/> / <see cref="Processmodel.NeedRestart"/>。
+        /// - 每一轮阶段在相机回调收口后，若 <see cref="Processmodel.NeedRestart"/> 为 true（本阶段 NG/NG2/超时等），必须结束循环，
+        ///   等待现场重扫或人工处理，避免同一 SN 上无限重跑。
+        /// </remarks>
         private void StartScanAutoExecution(string sn)
         {
-            if (DataModel?.Settingmodel == null) return;
-            if (!DataModel.Settingmodel.EnableScanAutoTriggerStages) return;
-            if (string.IsNullOrEmpty(sn)) return;
+            if (DataModel?.Settingmodel == null)
+            {
+                WriteDetailLog("[扫码自动] StartScanAutoExecution 放弃: Settingmodel 为空");
+                return;
+            }
+            if (!DataModel.Settingmodel.EnableScanAutoTriggerStages)
+            {
+                WriteDetailLog("[扫码自动] StartScanAutoExecution 放弃: 开关未启用");
+                return;
+            }
+            if (string.IsNullOrEmpty(sn))
+            {
+                writeLog("扫码自动执行: SN 为空，未启动阶段循环", false);
+                WriteDetailLog("[扫码自动] StartScanAutoExecution 放弃: SN 为空");
+                return;
+            }
+
+            int stageCount = DataModel.Processmodel.ConfiguredStages?.Count ?? 0;
+            string stagesList = DataModel.Processmodel.ConfiguredStages == null || stageCount == 0
+                ? "(无)"
+                : string.Join("->", DataModel.Processmodel.ConfiguredStages);
+            writeLog($"扫码自动执行: 已启动循环 SN={sn} 阶段数={stageCount} 序列={stagesList}", false);
+            WriteDetailLog($"[扫码自动] 启动循环 SN={sn} CurrentStageIndex={DataModel.Processmodel.CurrentStageIndex} " +
+                          $"NeedRestart={DataModel.Processmodel.NeedRestart} CompletedStages={DataModel.Processmodel.CompletedStages?.Count ?? 0} " +
+                          $"阶段数={stageCount} 序列=[{stagesList}] Tools数量={DataModel.Processmodel.Tools?.Count ?? 0}");
 
             lock (_scanAutoLock)
             {
@@ -1103,22 +1198,54 @@ namespace F7_L12_Position_Detect.ViewModel
 
             Task.Run(async () =>
             {
+                string exitReason = "正常结束";
                 try
                 {
+                    if (stageCount == 0)
+                    {
+                        exitReason = "未配置阶段(工具「触发指令Command」为空或工程无工具)";
+                        writeLog("扫码自动执行: 未配置阶段，无法执行 A1 等检测；请检查各工具的 Command 与工程加载", false);
+                        WriteDetailLog($"[扫码自动] {exitReason} Tools数量={DataModel.Processmodel.Tools?.Count ?? 0}");
+                        return;
+                    }
+
                     while (!token.IsCancellationRequested)
                     {
                         // 若已经切换到别的SN，停止
-                        if (DataModel?.Processmodel?.CurrentProductSN != sn) break;
+                        if (DataModel?.Processmodel?.CurrentProductSN != sn)
+                        {
+                            exitReason = $"SN 已变更(期望={sn}, 当前={DataModel?.Processmodel?.CurrentProductSN ?? "空"})";
+                            writeLog($"扫码自动执行: 中断-{exitReason}", false);
+                            WriteDetailLog($"[扫码自动] 循环退出 {exitReason}");
+                            break;
+                        }
 
                         // 关闭开关时停止
-                        if (!DataModel.Settingmodel.EnableScanAutoTriggerStages) break;
+                        if (!DataModel.Settingmodel.EnableScanAutoTriggerStages)
+                        {
+                            exitReason = "已关闭「扫码触发自动执行」开关";
+                            writeLog($"扫码自动执行: 中断-{exitReason}", false);
+                            WriteDetailLog($"[扫码自动] 循环退出 {exitReason}");
+                            break;
+                        }
 
                         // 未满足“SN + 工序校验通过”，停止（避免误触发）
-                        if (!HasValidSNAndValidation()) break;
+                        if (!HasValidSNAndValidation())
+                        {
+                            exitReason = $"报工前置不满足 SN={DataModel.Processmodel.CurrentProductSN ?? "空"} ScanCodeStatus={DataModel.Processmodel.ScanCodeStatus ?? "空"}";
+                            writeLog($"扫码自动执行: 中断-工序/SN 状态不满足 (详见详细调试日志 [报工状态])", false);
+                            WriteDetailLog($"[扫码自动] 循环退出 HasValidSNAndValidation=false {exitReason}");
+                            break;
+                        }
 
                         // 已完成所有阶段，退出
                         if (DataModel.Processmodel.CurrentStageIndex >= DataModel.Processmodel.ConfiguredStages.Count)
+                        {
+                            exitReason = $"全部阶段已完成 Index={DataModel.Processmodel.CurrentStageIndex} 总阶段={DataModel.Processmodel.ConfiguredStages.Count}";
+                            writeLog($"扫码自动执行: {exitReason}", false);
+                            WriteDetailLog($"[扫码自动] 循环正常退出 {exitReason}");
                             break;
+                        }
 
                         // 避免在报工过程中推进检测
                         if (DataModel.Processmodel.IsReportingWork)
@@ -1135,25 +1262,52 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
 
                         bool started = TriggerNextStageByScan();
-                        if (!started) break;
+                        if (!started)
+                        {
+                            exitReason = "TriggerNextStageByScan 返回 false(见上一条扫码阶段触发日志/详细调试)";
+                            writeLog("扫码自动执行: 阶段触发失败，流程中断；请查看「未找到匹配工具」或错误日志及 日志\\详细调试", false);
+                            WriteDetailLog($"[扫码自动] 循环退出 {exitReason}");
+                            break;
+                        }
+
+                        WriteDetailLog($"[扫码自动] 已触发阶段，等待执行窗口释放 _isExecuting={_isExecuting}");
 
                         // 等待相机回调收口并释放执行窗口
                         while (_isExecuting && !token.IsCancellationRequested)
                         {
                             await Task.Delay(50, token);
                         }
+
+                        WriteDetailLog($"[扫码自动] 本轮阶段执行窗口已释放 CurrentStageIndex={DataModel.Processmodel.CurrentStageIndex} NeedRestart={DataModel.Processmodel.NeedRestart}");
+
+                        // 当前一轮检测已判定 NG/NG2/超时（NeedRestart=true）时，扫码自动循环应当收口，
+                        // 等待人工处理/重新扫码，而不是在同一 SN 上无穷重跑。
+                        if (DataModel.Processmodel.NeedRestart)
+                        {
+                            exitReason = "阶段判定失败(NeedRestart=true)，停止当前SN的扫码自动循环，等待重扫";
+                            writeLog($"扫码自动执行: 中断-{exitReason}", false);
+                            WriteDetailLog($"[扫码自动] 循环退出 {exitReason}");
+                            break;
+                        }
                     }
+
+                    if (token.IsCancellationRequested && exitReason == "正常结束")
+                        exitReason = "任务已取消(CancellationToken)";
                 }
                 catch (OperationCanceledException)
                 {
-                    // ignore
+                    exitReason = "OperationCanceledException";
                 }
                 catch (Exception ex)
                 {
+                    exitReason = $"异常: {ex.Message}";
                     writeError($"扫码自动执行循环异常: {ex.Message}");
+                    WriteDetailLog($"[扫码自动] 循环异常 {ex.Message}\n{ex.StackTrace}");
                 }
                 finally
                 {
+                    writeLog($"扫码自动执行: 循环结束 原因={exitReason}", false);
+                    WriteDetailLog($"[扫码自动] 循环结束 最终原因={exitReason}");
                     lock (_scanAutoLock)
                     {
                         if (ReferenceEquals(_scanAutoTriggerCts, localCts))
@@ -1169,6 +1323,10 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             lock (_scanAutoLock)
             {
+                if (_scanAutoTriggerCts != null)
+                {
+                    WriteDetailLog("[扫码自动] StopScanAutoExecution: 取消正在运行的扫码自动循环");
+                }
                 _scanAutoTriggerCts?.Cancel();
                 _scanAutoTriggerCts = null;
             }
@@ -1182,14 +1340,19 @@ namespace F7_L12_Position_Detect.ViewModel
         {
             try
             {
+                WriteDetailLog($"[扫码触发阶段] 进入 TryBeginExecution 前 _isExecuting={_isExecuting}");
+
                 if (!TryBeginExecution())
                 {
+                    writeLog("扫码自动执行: 系统忙碌(_isExecuting)，无法开始新阶段；若持续出现请检查 PLC 与扫码是否并发触发", false);
+                    WriteDetailLog("[扫码触发阶段] TryBeginExecution 失败: 已有执行窗口未释放");
                     return false;
                 }
 
                 if (!HasValidSNAndValidation())
                 {
                     writeLog($"报工状态不满足: 跳过扫码阶段触发 (SN={DataModel.Processmodel.CurrentProductSN})");
+                    WriteDetailLog($"[扫码触发阶段] HasValidSNAndValidation=false SN={DataModel.Processmodel.CurrentProductSN} Status={DataModel.Processmodel.ScanCodeStatus}");
                     EndExecution();
                     return false;
                 }
@@ -1198,10 +1361,12 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     if (DataModel.Settingmodel.StageFailRetryStrategy == StageFailRetryStrategy.从头开始重跑)
                     {
+                        WriteDetailLog("[扫码触发阶段] NeedRestart=true，策略=从头开始重跑，执行 ResetDetectionCycle");
                         ResetDetectionCycle();
                     }
                     else
                     {
+                        WriteDetailLog("[扫码触发阶段] NeedRestart=true，策略=仅重试失败阶段，清除 NeedRestart 标志");
                         DataModel.Processmodel.NeedRestart = false;
                     }
                 }
@@ -1209,8 +1374,17 @@ namespace F7_L12_Position_Detect.ViewModel
                 var stages = DataModel.Processmodel.ConfiguredStages;
                 int idx = DataModel.Processmodel.CurrentStageIndex;
                 if (idx < 0) idx = 0;
+                if (stages == null || stages.Count == 0)
+                {
+                    writeLog("扫码自动执行: ConfiguredStages 为空，无法匹配阶段", false);
+                    WriteDetailLog("[扫码触发阶段] ConfiguredStages 为空或 null");
+                    EndExecution();
+                    return false;
+                }
                 if (idx >= stages.Count)
                 {
+                    writeLog($"扫码自动执行: 阶段索引越界 idx={idx} 阶段数={stages.Count}", false);
+                    WriteDetailLog($"[扫码触发阶段] idx>=stages.Count idx={idx} count={stages.Count}");
                     EndExecution();
                     return false;
                 }
@@ -1218,11 +1392,17 @@ namespace F7_L12_Position_Detect.ViewModel
                 string command = stages[idx];
                 DataModel.Processmodel.RCMD = command;
 
+                writeLog($"扫码自动执行: 开始阶段 {command} (序号 {idx + 1}/{stages.Count})", false);
+                WriteDetailLog($"[扫码触发阶段] RCMD={command} idx={idx} stages=[{string.Join(",", stages)}]");
+
                 ClearToolsByCommand(command);
 
                 _pendingCameraGroups = BuildCameraGroupsForStageCommand(command);
-                if (_pendingCameraGroups.Count == 0)
+                if (_pendingCameraGroups == null || _pendingCameraGroups.Count == 0)
                 {
+                    writeLog($"未找到匹配工具: {command}阶段(扫码触发)；请检查工具 Command 是否与阶段一致、相机序列号是否配置", false);
+                    WriteDetailLog($"[扫码触发阶段] 相机分组为空 command={command}，各工具 Command 一览: " +
+                                  string.Join("; ", DataModel.Processmodel.Tools.Select((t, i) => $"[{i}]'{t.Command}' Cam='{t.CameraSerialNumber}'")));
                     EndExecution();
                     return false;
                 }
@@ -1230,15 +1410,19 @@ namespace F7_L12_Position_Detect.ViewModel
                 bool triggered = TriggerNextCameraGroupCapture(command);
                 if (!triggered)
                 {
+                    writeLog($"扫码自动执行: 相机软触发失败({command})；请检查相机初始化、曝光与连接", false);
+                    WriteDetailLog($"[扫码触发阶段] TriggerNextCameraGroupCapture 返回 false command={command} 剩余分组队列长度={_pendingCameraGroups?.Count ?? -1}");
                     EndExecution();
                     return false;
                 }
 
+                WriteDetailLog($"[扫码触发阶段] 已发送软触发 command={command} 等待回图");
                 return true;
             }
             catch (Exception ex)
             {
                 writeError($"扫码阶段触发处理异常: {ex.Message}");
+                WriteDetailLog($"[扫码触发阶段] 异常: {ex.Message}\n{ex.StackTrace}");
                 try { EndExecution(); } catch { }
                 return false;
             }
@@ -2430,6 +2614,12 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
             }
 
+            // 工程工具从 XML 加载后必须重建阶段列表；否则 ConfiguredStages 为空，扫码自动执行会报「未配置阶段」。
+            // （MainWindow 启动时 LoadProcessmodel 未调用，不能依赖其 finally 中的 BuildConfiguredStages。）
+            BuildConfiguredStages();
+            WriteDetailLog($"[工具加载] BuildConfiguredStages 完成 工具数={DataModel.Processmodel.Tools.Count} " +
+                          $"阶段序列=[{string.Join("->", DataModel.Processmodel.ConfiguredStages ?? new List<string>())}]");
+
             //for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
             //{
             //    DataModel.Processmodel.Tools[i].Index = i + 1;
@@ -2550,6 +2740,8 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <remarks>
         /// 多相机阶段：在 finally 中若仍有 <see cref="_pendingCameraGroups"/>，会调用 <see cref="TriggerNextCameraGroupCapture"/>；
         /// 若返回 false 或抛异常，则立即 NG、NeedRestart、<see cref="EndExecution"/>，不等待超时看门狗。
+        /// 阶段结算：按当前 <see cref="Processmodel.RCMD"/> 与工具 <see cref="ToolModel.Command"/> 做 <see cref="NormalizeStageCommand"/> 后筛选本阶段工具，
+        /// 再聚合 OK/NG/NG2 决定阶段是否完成、是否推进 <see cref="Processmodel.CurrentStageIndex"/> 以及是否触发自动报工。
         /// </remarks>
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
@@ -2970,9 +3162,11 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
 
                 #region 阶段结算（按当前指令过滤工具集合）
-                string currentCommand = DataModel.Processmodel.RCMD;
+                // 业务说明：currentCommand 与工具 Command 均经 NormalizeStageCommand，与 ConfiguredStages、PLC/扫码触发的阶段键一致，
+                // 避免「全 A1 却判阶段未完成」等由字符串脏数据导致的误判。
+                string currentCommand = NormalizeStageCommand(DataModel.Processmodel.RCMD);
                 var currentCommandTools = (from t in DataModel.Processmodel.Tools
-                                           where (t.Command == currentCommand)
+                                           where (NormalizeStageCommand(t.Command) == currentCommand)
                                            select t).ToList();
                 int toolCount = currentCommandTools.Count;
 
@@ -3432,8 +3626,16 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 执行报工操作
+        /// 调用 MES 保存设备/报工记录，并更新界面报工状态与成功列表。
         /// </summary>
+        /// <param name="qualityResult">检测结果文案（如「合格」），传入 DLL 由 MES 侧映射 OK/NG 及不良参数。</param>
+        /// <remarks>
+        /// 业务意图：
+        /// - 成功：写入成功列表、<see cref="Processmodel.ReportWorkStatus"/> 显示成功；提示保留至下一次扫码（由 <see cref="ProcessScanCodeWithMESAsync"/> 清空），
+        ///   不再用定时器清空，避免现场看不清结果。
+        /// - 失败/异常：状态文案保留，并引导查看日志与「数据库\错误日志」目录下 MES 诊断输出。
+        /// - 成功后 <see cref="ResetProductContext"/> 清理 SN 与阶段进度，保留工具红绿便于追溯上一件。
+        /// </remarks>
         private async Task<bool> ExecuteReportWorkAsync(string qualityResult = "合格")
         {
             if (DataModel.Processmodel.IsReportingWork)
@@ -3485,14 +3687,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             DataModel.Processmodel.ReportWorkSuccessLog.RemoveAt(DataModel.Processmodel.ReportWorkSuccessLog.Count - 1);
                         }
 
-                        // 3秒后清除状态提示
-                        Task.Delay(3000).ContinueWith(_ =>
-                        {
-                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                            {
-                                DataModel.Processmodel.ReportWorkStatus = "";
-                            }));
-                        });
+                        // 不报工状态：成功提示保留至下一次扫码（ProcessScanCodeWithMESAsync 会清空），便于现场核对
                     }));
 
                     writeLog($"✅ 报工成功: SN={DataModel.Processmodel.CurrentProductSN}", false);
@@ -3510,16 +3705,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     // 在UI线程更新界面
                     App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        DataModel.Processmodel.ReportWorkStatus = "❌ 报工失败";
-
-                        // 5秒后清除状态提示
-                        Task.Delay(5000).ContinueWith(_ =>
-                        {
-                            App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                            {
-                                DataModel.Processmodel.ReportWorkStatus = "";
-                            }));
-                        });
+                        DataModel.Processmodel.ReportWorkStatus = "❌ 报工失败（详情见日志与 数据库\\错误日志）";
                     }));
 
                     writeError($"❌ 报工失败: SN={DataModel.Processmodel.CurrentProductSN}");
@@ -3532,15 +3718,6 @@ namespace F7_L12_Position_Detect.ViewModel
                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     DataModel.Processmodel.ReportWorkStatus = $"❌ 报工异常: {ex.Message}";
-
-                    // 5秒后清除状态提示
-                    Task.Delay(5000).ContinueWith(_ =>
-                    {
-                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            DataModel.Processmodel.ReportWorkStatus = "";
-                        }));
-                    });
                 }));
 
                 writeError($"❌ 报工异常: {ex.Message}");
