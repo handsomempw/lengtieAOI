@@ -62,6 +62,7 @@ namespace F7_L12_Position_Detect
             {
                 // 获取全局相机数据并更新相机列表
                 var cameraData = vml.Main.DataModel.Settingmodel.camedata;
+                vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 初始化开始 工具下标={t?.Index ?? -1} 当前工具相机序列号='{t?.CameraSerialNumber}'");
 
                 // 清空并重新填充相机列表，直接添加所有枚举到的相机设备
                 t.AvailableCameras.Clear();
@@ -70,8 +71,11 @@ namespace F7_L12_Position_Detect
                     t.AvailableCameras.Add(camera);
                 }
 
+                vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 枚举到可用相机数量={t.AvailableCameras.Count} 列表=[{string.Join("|", t.AvailableCameras)}]");
+
                 // 设置当前选择：查找匹配的相机序列号
                 t.SelectedCameraIndex = -1; // 默认未选择
+                int matchedIndex = -1;
                 if (!string.IsNullOrEmpty(t.CameraSerialNumber))
                 {
                     // 查找匹配的相机序列号
@@ -80,21 +84,36 @@ namespace F7_L12_Position_Detect
                         if (t.AvailableCameras[i].Contains(t.CameraSerialNumber))
                         {
                             t.SelectedCameraIndex = i;
+                            matchedIndex = i;
                             break;
                         }
                     }
                 }
 
+                vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 匹配结果 工具相机序列号='{t.CameraSerialNumber}' 匹配下标={matchedIndex} 最终选中下标={t.SelectedCameraIndex}");
+
                 // 如果没有找到匹配的相机或者没有配置相机，选择第一个可用相机
                 if (t.SelectedCameraIndex == -1 && t.AvailableCameras.Count > 0)
                 {
+                    vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 未匹配到相机：回退到第一个设备 旧工具相机序列号='{t.CameraSerialNumber}' 第一个设备='{t.AvailableCameras[0]}'");
                     t.SelectedCameraIndex = 0;
                     // 自动设置第一个相机的序列号
                     UpdateCameraSerialNumber();
+                    vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 回退后工具相机序列号='{t.CameraSerialNumber}'");
                 }
             }
             catch (Exception ex)
             {
+                // 如果 UI 初始化失败，保持现有行为：清空列表
+                //（这里不改变逻辑，只记录一下异常）
+                try
+                {
+                    if (vml?.Main != null)
+                    {
+                        vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 初始化异常: {ex.Message}");
+                    }
+                }
+                catch {; }
                 // 如果初始化失败，清空列表
                 t.AvailableCameras.Clear();
                 t.SelectedCameraIndex = -1;

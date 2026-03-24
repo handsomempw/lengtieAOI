@@ -451,6 +451,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 var cameraData = DataModel.Settingmodel.camedata;
                 var camera = cameraData.CameraModel.camera;
 
+                WriteCameraDebugLog($"[工具相机切换] 工具序号={tool.Index} 工具相机序列号='{tool.CameraSerialNumber}' 可用相机数量={camera.cbDeviceList?.Count ?? -1} 当前所选相机下标={camera.SelectedIndex}");
+
                 // 查找匹配的相机索引
                 int targetIndex = -1;
                 for (int j = 0; j < camera.cbDeviceList.Count; j++)
@@ -465,6 +467,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 如果找到匹配的相机且与当前选择不同，则切换相机
                 if (targetIndex >= 0 && camera.SelectedIndex != targetIndex)
                 {
+                    WriteCameraDebugLog($"[工具相机切换] 匹配成功 目标下标={targetIndex} 目标设备='{camera.cbDeviceList[targetIndex]}' 现在开始切换");
                     writeLog($"工具{tool.Index}切换到相机: {camera.cbDeviceList[targetIndex]}", false);
 
                     // 关闭当前相机 - 使用状态轮询替代固定延时
@@ -493,10 +496,12 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
                 else if (targetIndex >= 0)
                 {
+                    WriteCameraDebugLog($"[工具相机切换] 匹配成功 目标下标={targetIndex} 已经是当前所选相机（无需切换）");
                     writeLog($"工具{tool.Index}相机已是目标相机，无需切换", false);
                 }
                 else
                 {
+                    WriteCameraDebugLog($"[工具相机切换] 匹配失败 未在当前枚举列表找到相机序列号='{tool.CameraSerialNumber}' 将继续使用当前相机（不切换）");
                     writeLog($"工具{tool.Index}指定的相机序列号{tool.CameraSerialNumber}未找到，请检查相机连接", false);
                 }
             }
@@ -790,6 +795,7 @@ namespace F7_L12_Position_Detect.ViewModel
             DataModel.Processmodel.ToolIndex = firstToolIndex + 1;
 
             // 切换到该相机并按该组第一个工具设置曝光
+            WriteCameraDebugLog($"[阶段触发下一相机组] 指令='{command}' 当前激活相机序列号='{_activeCameraSerial}' 本组工具数={group.ToolIndices.Count} 首工具下标={firstToolIndex} 首工具相机序列号='{firstTool.CameraSerialNumber}'");
             SwitchCameraForTool(firstTool);
             Thread.Sleep(100);
             DataModel.Settingmodel.camedata.CameraModel.exposuretime = firstTool.ExposureTime;
@@ -1689,6 +1695,8 @@ namespace F7_L12_Position_Detect.ViewModel
 
         private object writeBug_Locker = new object();
 
+        private object writeCameraDebugLog_Locker = new object();
+
         internal void writeLog(string LogContent, bool showdatarecord = true)
         {
             lock (writeLog_Locker)
@@ -1793,6 +1801,35 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     // 详细日志写入失败时，记录到错误日志
                     writeError($"详细日志写入失败: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 相机专项排查日志：单独落盘，避免与界面日志/详细调试日志混在一起。
+        /// </summary>
+        internal void WriteCameraDebugLog(string LogContent)
+        {
+            lock (writeCameraDebugLog_Locker)
+            {
+                try
+                {
+                    string logstr = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{LogContent}";
+                    string filename = $"{Environment.CurrentDirectory}\\日志\\相机排查\\{DateTime.Now.ToString("yyyyMMdd")}_camera.txt";
+                    string dir = Path.GetDirectoryName(filename);
+                    if (!Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
+                    using (StreamWriter sw = new StreamWriter(filename, true))
+                    {
+                        sw.WriteLine(logstr);
+                        sw.Close();
+                    }
+                }
+                catch
+                {
+                    // 相机排查日志不影响主流程
                 }
             }
         }
@@ -2507,6 +2544,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 Directory.CreateDirectory(dir);
             }
 
+            WriteCameraDebugLog($"[保存工具配置] 工具下标={td?.Index ?? -1} 工具XML='{filename}' 相机序列号='{td?.CameraSerialNumber}' 触发指令='{td?.Command}' 曝光时间={td?.ExposureTime ?? -1}");
             using (var stream = File.Open(filename, FileMode.Create))
             {
                 try
@@ -2746,6 +2784,9 @@ namespace F7_L12_Position_Detect.ViewModel
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
             HObject processImage = null;
+            // 同一帧回图在多工具/多相机逻辑下可能被复用；先收集本帧匹配工具结果，
+            // 再在帧尾按 OK/NG 合并保存，避免重复落盘。
+            List<ToolModel> matchedTools = new List<ToolModel>();
             try
             {
                 DataModel.Processmodel.CameraStatus = "正常";
@@ -3042,51 +3083,8 @@ namespace F7_L12_Position_Detect.ViewModel
                         Save_record(s1);
                         stopwatch.Restart();
 
-                        #region 保存图片
-                        try
-                        {
-                            if (tool.ToolStatus == ToolStatus.OK)
-                            {
-                                if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
-                                {
-
-                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    try
-                                    {
-                                        savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    }
-                                    catch {; }
-
-                                    string dir = Path.GetDirectoryName(savefilename);
-                                    if (!Directory.Exists(dir))
-                                    { Directory.CreateDirectory(dir); }
-                                    HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
-                                }
-                            }
-                            else
-                            {
-                                if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
-                                {
-                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.BarcodeStr}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    try
-                                    {
-                                        savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{DataModel.Processmodel.SNList[DataModel.Processmodel.Tools[i].ProductPositionNO]}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    }
-                                    catch {; }
-                                    string dir = Path.GetDirectoryName(savefilename);
-                                    if (!Directory.Exists(dir))
-                                    { Directory.CreateDirectory(dir); }
-                                    HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
-
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            writeLog($"视觉->保存照片:保存失败：{ex.ToString()}", false);
-                        }
-
-                        #endregion
+                        // 记录本帧匹配工具的最终状态；图片保存改到帧尾合并处理
+                        matchedTools.Add(tool);
 
                         if (tool.SendStatus)
                         {
@@ -3153,13 +3151,100 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
 
 
-                        writeLog($"视觉->视觉:保存完成", false);
+                        writeLog($"视觉->视觉:发送完成", false);
 
-                        string s2 = $"{DataModel.Processmodel.Tools[i].Name}:保存图片发送结果耗时:{stopwatch.ElapsedMilliseconds}ms";
+                        string s2 = $"{DataModel.Processmodel.Tools[i].Name}:发送结果耗时:{stopwatch.ElapsedMilliseconds}ms";
                         Save_record(s2);
 
                     }
                 }
+
+                #region 保存图片（合并，按 OK/NG 分组每状态组只保存一次）
+                try
+                {
+                    var okTools = matchedTools.Where(t => t.ToolStatus == ToolStatus.OK).ToList();
+                    var ngTools = matchedTools.Where(t => t.ToolStatus != ToolStatus.OK).ToList(); // NG/NG2/识别中都归到 NG
+
+                    // SN 取值兜底顺序：
+                    // 1) SNList[ProductPositionNO]：只要元素非空就直接用
+                    // 2) CurrentProductSN
+                    // 3) 本帧任一工具的 tool.BarcodeStr
+                    // 4) 兼容旧字段 Processmodel.BarcodeStr
+                    // 5) UNKNOWN
+                    Func<IEnumerable<ToolModel>, string> getSnForTools = tools =>
+                    {
+                        var list = tools == null ? null : tools.ToList();
+                        if (list == null || list.Count == 0) return "UNKNOWN";
+
+                        try
+                        {
+                            foreach (var t in list)
+                            {
+                                int pos = t.ProductPositionNO;
+                                if (pos >= 0 && pos < DataModel.Processmodel.SNList.Count)
+                                {
+                                    string snFromList = DataModel.Processmodel.SNList[pos];
+                                    if (!string.IsNullOrWhiteSpace(snFromList))
+                                        return snFromList;
+                                }
+                            }
+                        }
+                        catch { ; }
+
+                        if (!string.IsNullOrWhiteSpace(DataModel.Processmodel.CurrentProductSN))
+                            return DataModel.Processmodel.CurrentProductSN;
+
+                        foreach (var t in list)
+                        {
+                            if (!string.IsNullOrWhiteSpace(t.BarcodeStr))
+                                return t.BarcodeStr;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(DataModel.Processmodel.BarcodeStr))
+                            return DataModel.Processmodel.BarcodeStr;
+
+                        return "UNKNOWN";
+                    };
+
+                    var now = DateTime.Now;
+                    string day = now.ToString("yyyyMMdd");
+                    string ts = now.ToString("yyyyMMddHHmmssFFF");
+
+                    if (okTools.Count > 0 && DataModel.Settingmodel.ImageSaveSetting.SaveOK)
+                    {
+                        string sn = getSnForTools(okTools);
+                        string indicesPart = string.Join("_", okTools.Select(t => t.Index.ToString("00")).Distinct().OrderBy(x => x));
+                        string namesPart = string.Join("_", okTools.Select(t => t.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct());
+                        string statusPart = string.Join("_", okTools.Select(t => t.ToolStatus.ToString()).Distinct());
+
+                        string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{day}\\OK\\{sn}-{indicesPart}-{namesPart}-{statusPart}-{ts}.jpg";
+                        string dir = Path.GetDirectoryName(savefilename);
+                        if (!Directory.Exists(dir))
+                        { Directory.CreateDirectory(dir); }
+
+                        HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                    }
+
+                    if (ngTools.Count > 0 && DataModel.Settingmodel.ImageSaveSetting.SaveNG)
+                    {
+                        string sn = getSnForTools(ngTools);
+                        string indicesPart = string.Join("_", ngTools.Select(t => t.Index.ToString("00")).Distinct().OrderBy(x => x));
+                        string namesPart = string.Join("_", ngTools.Select(t => t.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct());
+                        string statusPart = string.Join("_", ngTools.Select(t => t.ToolStatus.ToString()).Distinct());
+
+                        string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{day}\\NG\\{sn}-{indicesPart}-{namesPart}-{statusPart}-{ts}.jpg";
+                        string dir = Path.GetDirectoryName(savefilename);
+                        if (!Directory.Exists(dir))
+                        { Directory.CreateDirectory(dir); }
+
+                        HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    writeLog($"视觉->保存照片(合并)失败：{ex.ToString()}", false);
+                }
+                #endregion
 
                 #region 阶段结算（按当前指令过滤工具集合）
                 // 业务说明：currentCommand 与工具 Command 均经 NormalizeStageCommand，与 ConfiguredStages、PLC/扫码触发的阶段键一致，
