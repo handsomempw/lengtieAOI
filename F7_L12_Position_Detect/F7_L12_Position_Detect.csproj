@@ -139,6 +139,9 @@
     <Compile Include="View\InputPassword.xaml.cs">
       <DependentUpon>InputPassword.xaml</DependentUpon>
     </Compile>
+    <Compile Include="View\InspectionWindow.xaml.cs">
+      <DependentUpon>InspectionWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="View\ModelWindow.xaml.cs">
       <DependentUpon>ModelWindow.xaml</DependentUpon>
     </Compile>
@@ -174,6 +177,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="View\InputPassword.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="View\InspectionWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

@@ -361,5 +361,146 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        #region 点检状态（24小时强制点检：待扫码 / 执行中 / 完成状态）
+
+        private string _pendingInspectionType = null; // "OK" / "NG" / null
+        /// <summary>
+        /// 已选择点检类型，但尚未扫描匹配的点检SN；等待状态不可触发检测。
+        /// </summary>
+        [XmlIgnore]
+        public string PendingInspectionType
+        {
+            get { return _pendingInspectionType; }
+            set
+            {
+                _pendingInspectionType = value;
+                RaisePropertyChanged(() => PendingInspectionType);
+                RaisePropertyChanged(() => InspectionStatusText);
+                RaisePropertyChanged(() => IsInspectionActive);
+            }
+        }
+
+        private bool _isInspectionMode = false;
+        [XmlIgnore]
+        public bool IsInspectionMode
+        {
+            get { return _isInspectionMode; }
+            set
+            {
+                _isInspectionMode = value;
+                RaisePropertyChanged(() => IsInspectionMode);
+                RaisePropertyChanged(() => InspectionStatusText);
+                RaisePropertyChanged(() => IsInspectionActive);
+            }
+        }
+
+        private string _inspectionType = null; // "OK" / "NG" / null
+        [XmlIgnore]
+        public string InspectionType
+        {
+            get { return _inspectionType; }
+            set
+            {
+                _inspectionType = value;
+                RaisePropertyChanged(() => InspectionType);
+                RaisePropertyChanged(() => InspectionStatusText);
+            }
+        }
+
+        private bool _okInspectionCompleted = false;
+        [XmlIgnore]
+        public bool OKInspectionCompleted
+        {
+            get { return _okInspectionCompleted; }
+            set
+            {
+                _okInspectionCompleted = value;
+                RaisePropertyChanged(() => OKInspectionCompleted);
+                RaisePropertyChanged(() => InspectionStatusText);
+            }
+        }
+
+        private bool _ngInspectionCompleted = false;
+        [XmlIgnore]
+        public bool NGInspectionCompleted
+        {
+            get { return _ngInspectionCompleted; }
+            set
+            {
+                _ngInspectionCompleted = value;
+                RaisePropertyChanged(() => NGInspectionCompleted);
+                RaisePropertyChanged(() => InspectionStatusText);
+            }
+        }
+
+        [XmlIgnore]
+        public string InspectionStatusText
+        {
+            get
+            {
+                if (IsInspectionMode)
+                    return $"点检模式: {InspectionType}点检";
+                if (!string.IsNullOrEmpty(PendingInspectionType))
+                    return $"等待{PendingInspectionType}点检扫码";
+                return string.Empty;
+            }
+        }
+
+        [XmlIgnore]
+        public bool IsInspectionActive
+        {
+            get { return IsInspectionMode || !string.IsNullOrEmpty(PendingInspectionType); }
+        }
+
+        private TimeSpan _timeToNextInspection = TimeSpan.Zero;
+        [XmlIgnore]
+        public TimeSpan TimeToNextInspection
+        {
+            get { return _timeToNextInspection; }
+            set
+            {
+                _timeToNextInspection = value;
+                RaisePropertyChanged(() => TimeToNextInspection);
+                RaisePropertyChanged(() => TimeToNextInspectionText);
+                RaisePropertyChanged(() => InspectionCountdownColor);
+                RaisePropertyChanged(() => IsInspectionOverdue);
+            }
+        }
+
+        [XmlIgnore]
+        public string TimeToNextInspectionText
+        {
+            get
+            {
+                if (_timeToNextInspection.TotalHours < 0)
+                    return "已到期";
+                int hours = (int)_timeToNextInspection.TotalHours;
+                int minutes = _timeToNextInspection.Minutes;
+                return $"{hours:00}:{minutes:00}";
+            }
+        }
+
+        [XmlIgnore]
+        public SolidColorBrush InspectionCountdownColor
+        {
+            get
+            {
+                if (IsInspectionOverdue)
+                    return Brushes.OrangeRed;
+                else if (_timeToNextInspection.TotalHours < 1)
+                    return Brushes.Orange;
+                else
+                    return Brushes.LightGreen;
+            }
+        }
+
+        [XmlIgnore]
+        public bool IsInspectionOverdue
+        {
+            get { return _timeToNextInspection.TotalHours < 0; }
+        }
+
+        #endregion
+
     }
 }

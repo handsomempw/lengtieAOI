@@ -204,6 +204,43 @@ namespace F7_L12_Position_Detect.Model
                 RaisePropertyChanged(() => EnableAutoReportWork);
             }
         }
+
+        // 点检：弹窗按钮只选择待点检类型；必须扫描对应点检SN后才进入点检模式
+        private string _okInspectionSN = "OK_INSPECTION";
+        [XmlElement("OK点检SN码")]
+        public string OKInspectionSN
+        {
+            get { return _okInspectionSN; }
+            set
+            {
+                _okInspectionSN = value;
+                RaisePropertyChanged(() => OKInspectionSN);
+            }
+        }
+
+        private string _ngInspectionSN = "NG_INSPECTION";
+        [XmlElement("NG点检SN码")]
+        public string NGInspectionSN
+        {
+            get { return _ngInspectionSN; }
+            set
+            {
+                _ngInspectionSN = value;
+                RaisePropertyChanged(() => NGInspectionSN);
+            }
+        }
+
+        private DateTime _lastInspectionTime = DateTime.MinValue;
+        [XmlElement("上次点检时间")]
+        public DateTime LastInspectionTime
+        {
+            get { return _lastInspectionTime; }
+            set
+            {
+                _lastInspectionTime = value;
+                RaisePropertyChanged(() => LastInspectionTime);
+            }
+        }
     }
 
     public enum IOstatus

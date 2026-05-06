@@ -173,6 +173,9 @@ namespace F7_L12_Position_Detect.ViewModel
             ResetStageProgress();
             DataModel.Processmodel.CurrentProductSN = string.Empty;
             DataModel.Processmodel.ScanCodeStatus = "等待扫码";
+            DataModel.Processmodel.PendingInspectionType = null;
+            DataModel.Processmodel.IsInspectionMode = false;
+            DataModel.Processmodel.InspectionType = null;
         }
 
         /// <summary>
@@ -1076,6 +1079,41 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 更新扫码状态为处理中；新一件扫码时清掉上一枪的报工提示，避免与本次混淆
                 DataModel.Processmodel.ReportWorkStatus = string.Empty;
                 DataModel.Processmodel.ScanCodeStatus = "正在处理...";
+
+                // 点检扫码：不走MES；按钮选择类型后，只有扫描到对应点检SN才进入点检模式
+                string okInspectionSN = DataModel?.Settingmodel?.ReportWorkConfig?.OKInspectionSN;
+                string ngInspectionSN = DataModel?.Settingmodel?.ReportWorkConfig?.NGInspectionSN;
+                string normalizedScan = (scanCode ?? string.Empty).Trim();
+                string pendingInspectionType = DataModel?.Processmodel?.PendingInspectionType;
+                if (!string.IsNullOrEmpty(pendingInspectionType))
+                {
+                    string expectedSN = pendingInspectionType == "OK" ? okInspectionSN : ngInspectionSN;
+                    if (!string.IsNullOrEmpty(normalizedScan) && normalizedScan == expectedSN)
+                    {
+                        BeginInspectionMode(pendingInspectionType, normalizedScan);
+                    }
+                    else
+                    {
+                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            DataModel.Processmodel.CurrentProductSN = string.Empty;
+                            DataModel.Processmodel.IsInspectionMode = false;
+                            DataModel.Processmodel.InspectionType = null;
+                            DataModel.Processmodel.ScanCodeStatus = $"点检码不匹配，请扫描{pendingInspectionType}点检样件码";
+                            writeLog($"点检扫码不匹配: type={pendingInspectionType}, scan={normalizedScan}", false);
+                        }));
+                    }
+
+                    return;
+                }
+                if (!string.IsNullOrEmpty(normalizedScan) &&
+                    ((!string.IsNullOrEmpty(okInspectionSN) && normalizedScan == okInspectionSN) ||
+                     (!string.IsNullOrEmpty(ngInspectionSN) && normalizedScan == ngInspectionSN)))
+                {
+                    string type = normalizedScan == okInspectionSN ? "OK" : "NG";
+                    BeginInspectionMode(type, normalizedScan);
+                    return;
+                }
 
                 // 获取工序名称
                 string procedureName = DataModel.Settingmodel.ReportWorkConfig.ProcedureName;
@@ -3281,7 +3319,36 @@ namespace F7_L12_Position_Detect.ViewModel
                             stageStatus = 1;
                         }
 
-                        if (stageStatus == 0)
+                        // 点检模式不推进正常阶段、不触发报工；只判定当前点检项是否通过
+                        if (DataModel.Processmodel.IsInspectionMode)
+                        {
+                            DataModel.Processmodel.Status = stageStatus == 0 ? ToolStatus.OK : (stageStatus == 2 ? ToolStatus.NG2 : ToolStatus.NG);
+
+                            string type = DataModel.Processmodel.InspectionType;
+                            bool pass = false;
+                            if (type == "OK")
+                            {
+                                pass = stageStatus == 0;
+                            }
+                            else if (type == "NG")
+                            {
+                                pass = stageStatus == 1; // NG点检只接受明确NG；NG2按工具/流程异常处理
+                            }
+
+                            if (pass)
+                            {
+                                CompleteInspection(type);
+                            }
+                            else if (stageStatus == 2)
+                            {
+                                UpdateInspectionStatusMessage($"点检异常：类型={type}，当前结果=NG2，请检查工具/流程后重试");
+                            }
+                            else
+                            {
+                                UpdateInspectionStatusMessage($"点检未通过：类型={type}，当前结果={DataModel.Processmodel.Status}");
+                            }
+                        }
+                        else if (stageStatus == 0)
                         {
                             DataModel.Processmodel.Status = ToolStatus.OK;
                             DataModel.Processmodel.CompletedStages.Add(currentCommand);
@@ -3684,18 +3751,25 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 检查报工模块是否有有效SN且工序校验成功
+        /// 检查当前上下文是否允许PLC/视觉检测：正常生产需SN+工序校验通过；点检需已扫描匹配的点检SN并进入点检模式。
         /// </summary>
         /// <returns>true表示状态满足，可以进行PLC轮询和视觉检测</returns>
         private bool HasValidSNAndValidation()
         {
             bool hasSN = !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN);
-            bool isValidated = DataModel.Processmodel.ScanCodeStatus == "工序校验通过";
+            bool isInspectionMode = DataModel.Processmodel.IsInspectionMode;
+            bool isInspectionReady = isInspectionMode &&
+                                     string.IsNullOrEmpty(DataModel.Processmodel.PendingInspectionType) &&
+                                     !string.IsNullOrEmpty(DataModel.Processmodel.InspectionType) &&
+                                     (DataModel.Processmodel.ScanCodeStatus ?? string.Empty).Contains("点检模式");
+            bool isValidated = DataModel.Processmodel.ScanCodeStatus == "工序校验通过" || isInspectionReady;
             bool result = hasSN && isValidated;
 
             // 详细调试日志：记录状态检查结果
             WriteDetailLog($"[报工状态] SN={DataModel.Processmodel.CurrentProductSN ?? "空"}, " +
                           $"校验状态={DataModel.Processmodel.ScanCodeStatus}, " +
+                          $"点检模式={isInspectionMode}, " +
+                          $"待点检={DataModel.Processmodel.PendingInspectionType ?? "空"}, " +
                           $"有SN={hasSN}, 校验通过={isValidated}, 最终结果={result}");
 
             return result;
@@ -3709,6 +3783,216 @@ namespace F7_L12_Position_Detect.ViewModel
             // 修改：只要不在报工中就可以开始检测，不强制要求工序校验通过
             return !DataModel.Processmodel.IsReportingWork;
         }
+
+        #region 点检功能（24小时强制点检）
+
+        private System.Windows.Threading.DispatcherTimer _inspectionTimer;
+        private Window _inspectionWindow = null;
+
+        private void UpdateInspectionStatusMessage(string message)
+        {
+            App.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+            {
+                // 点检提示属于“扫码状态/流程提示”的一部分：避免新增额外 UI 字段，复用现有状态区展示
+                DataModel.Processmodel.ScanCodeStatus = string.IsNullOrWhiteSpace(message) ? DataModel.Processmodel.ScanCodeStatus : message;
+            }));
+        }
+
+        private string GetInspectionProgressSummary()
+        {
+            List<string> summary = new List<string>();
+            summary.Add($"OK点检={(DataModel.Processmodel.OKInspectionCompleted ? "已完成" : "未完成")}");
+            summary.Add($"NG点检={(DataModel.Processmodel.NGInspectionCompleted ? "已完成" : "未完成")}");
+            return string.Join("，", summary);
+        }
+
+        public void InitializeInspection()
+        {
+            CheckInspectionStatus();
+
+            _inspectionTimer = new System.Windows.Threading.DispatcherTimer();
+            _inspectionTimer.Interval = TimeSpan.FromMinutes(1);
+            _inspectionTimer.Tick += (s, e) =>
+            {
+                UpdateInspectionCountdown();
+                CheckInspectionStatus();
+            };
+            _inspectionTimer.Start();
+
+            UpdateInspectionCountdown();
+        }
+
+        private void CheckInspectionStatus()
+        {
+            var cfg = DataModel?.Settingmodel?.ReportWorkConfig;
+            if (cfg == null) return;
+
+            var lastTime = cfg.LastInspectionTime;
+            if (lastTime == DateTime.MinValue)
+            {
+                lastTime = DateTime.Now;
+                cfg.LastInspectionTime = lastTime;
+                SaveSettingModel();
+            }
+
+            var timeElapsed = DateTime.Now - lastTime;
+            bool isOverdue = timeElapsed.TotalHours >= 24;
+            bool needInspection = isOverdue &&
+                                  (!DataModel.Processmodel.OKInspectionCompleted ||
+                                   !DataModel.Processmodel.NGInspectionCompleted);
+
+            if (needInspection && _inspectionWindow == null)
+            {
+                App.Current?.Dispatcher?.BeginInvoke(new Action(ShowInspectionWindow));
+            }
+            else if (!needInspection && _inspectionWindow != null)
+            {
+                App.Current?.Dispatcher?.BeginInvoke(new Action(CloseInspectionWindow));
+            }
+        }
+
+        private void UpdateInspectionCountdown()
+        {
+            var cfg = DataModel?.Settingmodel?.ReportWorkConfig;
+            if (cfg == null) return;
+
+            var lastTime = cfg.LastInspectionTime;
+            if (lastTime == DateTime.MinValue)
+            {
+                DataModel.Processmodel.TimeToNextInspection = TimeSpan.FromHours(24);
+                return;
+            }
+
+            var elapsed = DateTime.Now - lastTime;
+            var remaining = TimeSpan.FromHours(24) - elapsed;
+            DataModel.Processmodel.TimeToNextInspection = remaining;
+        }
+
+        private void ShowInspectionWindow()
+        {
+            if (_inspectionWindow != null && _inspectionWindow.IsLoaded)
+                return;
+
+            try
+            {
+                _inspectionWindow = new InspectionWindow();
+                _inspectionWindow.Show();
+                UpdateInspectionStatusMessage($"点检已到期：{GetInspectionProgressSummary()}");
+                writeLog("⚠️ 点检已到期，请完成OK点检和NG点检", false);
+            }
+            catch (Exception ex)
+            {
+                writeLog($"显示点检弹窗失败: {ex.Message}", false);
+            }
+        }
+
+        public void CloseInspectionWindow()
+        {
+            if (_inspectionWindow != null)
+            {
+                try { _inspectionWindow.Close(); } catch { }
+                _inspectionWindow = null;
+            }
+        }
+
+        private void BeginInspectionMode(string type, string inspectionSN)
+        {
+            if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(inspectionSN))
+                return;
+
+            _lastProductSN = inspectionSN;
+            App.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                ResetDetectionCycle();
+                DataModel.Processmodel.PendingInspectionType = null;
+                DataModel.Processmodel.IsInspectionMode = true;
+                DataModel.Processmodel.InspectionType = type;
+                DataModel.Processmodel.CurrentProductSN = inspectionSN;
+                DataModel.Processmodel.ScanCodeStatus = $"点检模式({type})";
+                writeLog($"进入点检模式: type={type}, SN={inspectionSN}", false);
+            }));
+        }
+
+        public void StartOKInspection()
+        {
+            StopScanAutoExecution();
+            ResetDetectionCycle();
+            ResetProductContext();
+
+            DataModel.Processmodel.PendingInspectionType = "OK";
+            DataModel.Processmodel.IsInspectionMode = false;
+            DataModel.Processmodel.InspectionType = "OK";
+            DataModel.Processmodel.OKInspectionCompleted = false;
+            DataModel.Processmodel.CurrentProductSN = string.Empty;
+            DataModel.Processmodel.ScanCodeStatus = "等待OK点检扫码";
+
+            UpdateInspectionStatusMessage($"已选择OK点检，请扫描OK点检样件码。当前进度：{GetInspectionProgressSummary()}");
+            writeLog("已选择OK点检，请扫描OK点检样件码", false);
+        }
+
+        public void StartNGInspection()
+        {
+            StopScanAutoExecution();
+            ResetDetectionCycle();
+            ResetProductContext();
+
+            DataModel.Processmodel.PendingInspectionType = "NG";
+            DataModel.Processmodel.IsInspectionMode = false;
+            DataModel.Processmodel.InspectionType = "NG";
+            DataModel.Processmodel.NGInspectionCompleted = false;
+            DataModel.Processmodel.CurrentProductSN = string.Empty;
+            DataModel.Processmodel.ScanCodeStatus = "等待NG点检扫码";
+
+            UpdateInspectionStatusMessage($"已选择NG点检，请扫描NG点检样件码。当前进度：{GetInspectionProgressSummary()}");
+            writeLog("已选择NG点检，请扫描NG点检样件码", false);
+        }
+
+        private void CompleteInspection(string type)
+        {
+            if (type == "OK")
+            {
+                DataModel.Processmodel.OKInspectionCompleted = true;
+                UpdateInspectionStatusMessage($"OK点检完成。当前进度：{GetInspectionProgressSummary()}");
+                writeLog("✅ OK点检完成", false);
+            }
+            else if (type == "NG")
+            {
+                DataModel.Processmodel.NGInspectionCompleted = true;
+                UpdateInspectionStatusMessage($"NG点检完成。当前进度：{GetInspectionProgressSummary()}");
+                writeLog("✅ NG点检完成", false);
+            }
+
+            if (DataModel.Processmodel.OKInspectionCompleted && DataModel.Processmodel.NGInspectionCompleted)
+            {
+                DataModel.Processmodel.IsInspectionMode = false;
+                DataModel.Processmodel.InspectionType = null;
+
+                var cfg = DataModel?.Settingmodel?.ReportWorkConfig;
+                if (cfg != null)
+                {
+                    cfg.LastInspectionTime = DateTime.Now;
+                    SaveSettingModel();
+                }
+
+                UpdateInspectionCountdown();
+                CloseInspectionWindow();
+                writeLog("✅ 点检全部完成，计时已重置", false);
+
+                // 点检结束后清理“点检SN”上下文，避免影响正常生产
+                ClearCurrentProductContext();
+                UpdateInspectionStatusMessage("✅ 点检全部完成，计时已重置");
+            }
+            else
+            {
+                DataModel.Processmodel.PendingInspectionType = null;
+                DataModel.Processmodel.IsInspectionMode = false;
+                DataModel.Processmodel.InspectionType = null;
+                DataModel.Processmodel.CurrentProductSN = string.Empty;
+                ResetStageProgress();
+            }
+        }
+
+        #endregion
 
         /// <summary>
         /// 调用 MES 保存设备/报工记录，并更新界面报工状态与成功列表。
