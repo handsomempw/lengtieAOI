@@ -182,6 +182,18 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        private string _currentWorkOrderCode = string.Empty;
+        [XmlElement("当前工单号")]
+        public string CurrentWorkOrderCode
+        {
+            get { return _currentWorkOrderCode; }
+            set
+            {
+                _currentWorkOrderCode = value;
+                RaisePropertyChanged(() => CurrentWorkOrderCode);
+            }
+        }
+
         private string _equipmentNumber = "VIS001";
         [XmlElement("设备编号")]
         public string EquipmentNumber

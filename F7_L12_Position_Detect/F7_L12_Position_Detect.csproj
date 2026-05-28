@@ -142,6 +142,9 @@
     <Compile Include="View\InspectionWindow.xaml.cs">
       <DependentUpon>InspectionWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="View\WorkOrderInputWindow.xaml.cs">
+      <DependentUpon>WorkOrderInputWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="View\ModelWindow.xaml.cs">
       <DependentUpon>ModelWindow.xaml</DependentUpon>
     </Compile>
@@ -181,6 +184,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="View\InspectionWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="View\WorkOrderInputWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>

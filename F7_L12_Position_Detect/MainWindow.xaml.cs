@@ -105,6 +105,15 @@ namespace F7_L12_Position_Detect
             SF.ShowDialog();
         }
 
+        private void WorkOrderButton_Click(object sender, RoutedEventArgs e)
+        {
+            F7_L12_Position_Detect.View.WorkOrderInputWindow window = new F7_L12_Position_Detect.View.WorkOrderInputWindow
+            {
+                Owner = this
+            };
+            window.ShowDialog();
+        }
+
         private void ListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (!vml.Main.DataModel.Settingmodel.permission)

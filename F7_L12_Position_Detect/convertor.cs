@@ -495,6 +495,7 @@ namespace F7_L12_Position_Detect
                 case "扫码失败":
                 case "SN获取失败":
                 case "工序校验失败":
+                case "工单校验失败":
                     return Brushes.Red;
                 case "正在处理...":
                     return Brushes.Orange;

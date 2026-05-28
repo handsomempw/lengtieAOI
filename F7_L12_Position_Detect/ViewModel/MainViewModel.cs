@@ -987,8 +987,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 获取工序名称
                 string procedureName = DataModel.Settingmodel.ReportWorkConfig.ProcedureName;
 
-                // 关键链路：优先最外层（最终绑定）SN，再执行工序校验。
-                var (scanResult, validationResult) = await _mesService.ProcessScanCodeWithValidationAsync(scanCode, procedureName);
+                // 关键链路：先获取最外层（最终绑定）SN，点检旁路和工单校验通过后再执行工序校验。
+                var scanResult = await _mesService.ProcessScanCodeAsync(scanCode);
 
                 // 处理扫码结果
                 if (scanResult.Success)
@@ -1032,6 +1032,19 @@ namespace F7_L12_Position_Detect.ViewModel
                         // 点检模式下不需要进行工序校验，直接返回
                         return;
                     }
+
+                    string workOrderError = ValidateScanWorkOrder(scanResult.SN);
+                    if (!string.IsNullOrEmpty(workOrderError))
+                    {
+                        UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "工单校验失败");
+                        UIBeginInvoke(new Action(() =>
+                        {
+                            writeLog(workOrderError, true);
+                        }));
+                        return;
+                    }
+
+                    var validationResult = await _mesService.ValidateProcessAsync(scanResult.SN, procedureName);
 
                     // 处理工序校验结果（正常流程）
                     if (validationResult != null)
@@ -1078,6 +1091,44 @@ namespace F7_L12_Position_Detect.ViewModel
                     writeLog($"扫码处理异常: {ex.Message}");
                 }));
             }
+        }
+
+        /// <summary>
+        /// 校验普通生产扫码的工单号与已保存工单号/批号是否一致。
+        /// 点检SN在调用前已经进入点检旁路，该校验只影响普通产品进入工序校验和后续报工的资格。
+        /// </summary>
+        /// <param name="sn">MES解析后的产品SN，用于日志追溯。</param>
+        /// <returns>校验通过返回空字符串；返回非空文本时停止普通扫码流程。</returns>
+        private string ValidateScanWorkOrder(string sn)
+        {
+            string currentWorkOrder = (DataModel.Settingmodel.ReportWorkConfig.CurrentWorkOrderCode ?? string.Empty).Trim();
+            string actualWorkOrder = string.Empty;
+
+            if (string.IsNullOrEmpty(currentWorkOrder))
+            {
+                return $"[扫码工单校验失败] 当前工单号/批号为空，扫码工单={actualWorkOrder}, SN={sn}；已拦截扫码，未进入工序校验和报工流程。";
+            }
+
+            try
+            {
+                actualWorkOrder = (MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.get_WO_CODE(sn) ?? string.Empty).Trim();
+            }
+            catch (Exception ex)
+            {
+                return $"[扫码工单校验失败] 当前工单号/批号={currentWorkOrder}, 扫码工单查询异常={ex.Message}, SN={sn}；已拦截扫码，未进入工序校验和报工流程。";
+            }
+
+            if (string.IsNullOrEmpty(actualWorkOrder))
+            {
+                return $"[扫码工单校验失败] 当前工单号/批号={currentWorkOrder}, 扫码工单为空, SN={sn}；已拦截扫码，未进入工序校验和报工流程。";
+            }
+
+            if (!string.Equals(currentWorkOrder, actualWorkOrder, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"[扫码工单校验失败] 当前工单号/批号={currentWorkOrder}, 扫码工单={actualWorkOrder}, SN={sn}；已拦截扫码，未进入工序校验和报工流程。";
+            }
+
+            return string.Empty;
         }
 
         /// <summary>
