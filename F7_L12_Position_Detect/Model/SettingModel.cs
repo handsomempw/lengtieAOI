@@ -220,6 +220,9 @@ namespace F7_L12_Position_Detect.Model
 
         // 点检相关配置
         private string _okInspectionSN = "OK_INSPECTION";
+        /// <summary>
+        /// OK点检专用SN。扫描到该SN时进入OK点检流程，跳过普通产品的工单、工序和点检到期门禁。
+        /// </summary>
         [XmlElement("OK点检SN码")]
         public string OKInspectionSN
         {
@@ -232,6 +235,9 @@ namespace F7_L12_Position_Detect.Model
         }
 
         private string _ngInspectionSN = "NG_INSPECTION";
+        /// <summary>
+        /// NG点检专用SN。扫描到该SN时进入NG点检流程，跳过普通产品的工单、工序和点检到期门禁。
+        /// </summary>
         [XmlElement("NG点检SN码")]
         public string NGInspectionSN
         {
@@ -244,6 +250,9 @@ namespace F7_L12_Position_Detect.Model
         }
 
         private DateTime _lastInspectionTime = DateTime.MinValue;
+        /// <summary>
+        /// OK和NG点检全部完成的时间。该值随配置保存，是主界面倒计时、弹窗提醒和普通产品作业门禁的共同时间依据。
+        /// </summary>
         [XmlElement("上次点检完成时间")]
         public DateTime LastInspectionTime
         {

@@ -197,6 +197,11 @@ namespace F7_L12_Position_Detect.ViewModel
         // 点检弹窗引用
         private Window _inspectionWindow = null;
 
+        /// <summary>
+        /// 点检有效周期，单位为小时。该周期用于主界面倒计时、点检弹窗和普通产品作业门禁，保持三处口径一致。
+        /// </summary>
+        private const double InspectionIntervalHours = 24;
+
         private void UIInvoke(Action action)
         {
             var dispatcher = App.Current?.Dispatcher;
@@ -1030,6 +1035,19 @@ namespace F7_L12_Position_Detect.ViewModel
                         }));
                         
                         // 点检模式下不需要进行工序校验，直接返回
+                        return;
+                    }
+
+                    // 点检SN已经在上方进入点检流程；这里处理普通产品，点检到期时停在工单、工序和视觉检测之前。
+                    string inspectionError = ValidateInspectionGateForProduction(scanResult.SN);
+                    if (!string.IsNullOrEmpty(inspectionError))
+                    {
+                        UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "点检到期");
+                        UIBeginInvoke(new Action(() =>
+                        {
+                            writeLog(inspectionError, true);
+                            ShowInspectionWindow();
+                        }));
                         return;
                     }
 
@@ -3727,23 +3745,36 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 检查报工模块是否有有效SN且工序校验成功
+        /// 判断PLC触发后的作业资格。普通产品需要有效SN、工序校验通过且点检仍在有效周期内；点检到期后只放行点检SN触发形成的点检模式流程。
         /// </summary>
-        /// <returns>true表示状态满足，可以进行PLC轮询和视觉检测</returns>
+        /// <returns>true表示当前PLC指令可继续进入视觉检测；false表示停在业务门禁并保留状态与日志提示。</returns>
         private bool HasValidSNAndValidation()
         {
             bool hasSN = !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN);
             
-            // 点检模式下，允许通过（点检模式会跳过工序校验）
+            // 到期门禁以ScanCodeStatus中的点检类型状态作为放行凭据，避免普通产品或错误点检类型借用残留的IsInspectionMode标志进入检测。
             bool isInspectionMode = DataModel.Processmodel.IsInspectionMode;
-            bool isValidated = DataModel.Processmodel.ScanCodeStatus == "工序校验通过" || 
-                              (isInspectionMode && DataModel.Processmodel.ScanCodeStatus.Contains("点检模式"));
-            bool result = hasSN && isValidated;
+            bool isInspectionScan = isInspectionMode && DataModel.Processmodel.ScanCodeStatus == $"点检模式-{DataModel.Processmodel.InspectionType}点检";
+            bool isValidated = DataModel.Processmodel.ScanCodeStatus == "工序校验通过" || isInspectionScan;
+            bool isInspectionRequired = IsInspectionRequired();
+            RefreshInspectionProgressForDueCycle();
+            bool result = hasSN && (isInspectionRequired ? isInspectionScan : isValidated);
+
+            if (hasSN && isValidated && isInspectionRequired && !isInspectionScan)
+            {
+                UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "点检到期");
+                UIBeginInvoke(new Action(() =>
+                {
+                    writeLog(BuildInspectionGateMessage(DataModel.Processmodel.CurrentProductSN), true);
+                    ShowInspectionWindow();
+                }));
+            }
 
             // 详细调试日志：记录状态检查结果
             WriteDetailLog($"[报工状态] SN={DataModel.Processmodel.CurrentProductSN ?? "空"}, " +
                           $"校验状态={DataModel.Processmodel.ScanCodeStatus}, " +
                           $"点检模式={isInspectionMode}, " +
+                          $"点检到期={isInspectionRequired}, " +
                           $"有SN={hasSN}, 校验通过={isValidated}, 最终结果={result}");
 
             return result;
@@ -3952,6 +3983,64 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
+        /// 判断当前点检周期是否已经超过配置有效期。首次启动时由CheckInspectionStatus写入起始时间，正常生产按该时间计算24小时有效窗口。
+        /// </summary>
+        /// <returns>true表示普通产品作业需要先完成点检；false表示普通产品可继续走工单、工序和视觉检测门禁。</returns>
+        private bool IsInspectionRequired()
+        {
+            var lastTime = DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime;
+            if (lastTime == DateTime.MinValue)
+            {
+                return false;
+            }
+
+            return (DateTime.Now - lastTime).TotalHours >= InspectionIntervalHours;
+        }
+
+        /// <summary>
+        /// 在新一轮点检周期到期时重置本轮OK/NG完成标志。该状态只影响点检弹窗和本轮进度显示，历史完成时间仍由LastInspectionTime保留。
+        /// </summary>
+        private void RefreshInspectionProgressForDueCycle()
+        {
+            if (!IsInspectionRequired() || !DataModel.Processmodel.OKInspectionCompleted || !DataModel.Processmodel.NGInspectionCompleted)
+            {
+                return;
+            }
+
+            UIInvoke(() =>
+            {
+                DataModel.Processmodel.OKInspectionCompleted = false;
+                DataModel.Processmodel.NGInspectionCompleted = false;
+            });
+        }
+
+        /// <summary>
+        /// 生成普通产品被点检门禁拦截时的日志文本，记录SN以便现场追溯。
+        /// </summary>
+        /// <param name="sn">MES解析后的产品SN；用于日志定位被拦截的普通产品。</param>
+        /// <returns>面向操作员和日志追踪的拦截原因。</returns>
+        private string BuildInspectionGateMessage(string sn)
+        {
+            return $"[点检到期拦截] 24小时点检已到期，SN={sn}；请先完成OK点检和NG点检。";
+        }
+
+        /// <summary>
+        /// 校验普通产品扫码是否满足点检周期要求。点检SN由扫码入口提前分流，该方法只服务普通产品进入工单和工序校验前的门禁。
+        /// </summary>
+        /// <param name="sn">MES解析后的普通产品SN，用于生成拦截日志。</param>
+        /// <returns>空字符串表示点检周期有效；非空文本表示普通产品需要先完成点检。</returns>
+        private string ValidateInspectionGateForProduction(string sn)
+        {
+            if (!IsInspectionRequired())
+            {
+                return string.Empty;
+            }
+
+            RefreshInspectionProgressForDueCycle();
+            return BuildInspectionGateMessage(sn);
+        }
+
+        /// <summary>
         /// 初始化点检功能
         /// </summary>
         public void InitializeInspection()
@@ -3974,7 +4063,7 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 检查点检状态，决定是否显示强制点检弹窗
+        /// 根据上次点检完成时间刷新点检弹窗。该检查负责提醒和进度显示，普通产品的实际作业拦截由扫码门禁和PLC作业门禁共同执行。
         /// </summary>
         private void CheckInspectionStatus()
         {
@@ -3987,8 +4076,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 SaveSettingModel();
             }
             
-            var timeElapsed = DateTime.Now - lastTime;
-            bool isOverdue = timeElapsed.TotalHours >= 24;
+            bool isOverdue = IsInspectionRequired();
+            RefreshInspectionProgressForDueCycle();
             bool needInspection = isOverdue && 
                                  (!DataModel.Processmodel.OKInspectionCompleted || 
                                   !DataModel.Processmodel.NGInspectionCompleted);
@@ -4013,19 +4102,19 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 更新点检倒计时
+        /// 刷新主界面点检倒计时。倒计时与作业门禁共享同一个24小时周期，红色到期状态与普通产品拦截口径一致。
         /// </summary>
         private void UpdateInspectionCountdown()
         {
             var lastTime = DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime;
             if (lastTime == DateTime.MinValue)
             {
-                DataModel.Processmodel.TimeToNextInspection = TimeSpan.FromHours(24);
+                DataModel.Processmodel.TimeToNextInspection = TimeSpan.FromHours(InspectionIntervalHours);
                 return;
             }
             
             var elapsed = DateTime.Now - lastTime;
-            var remaining = TimeSpan.FromHours(24) - elapsed;
+            var remaining = TimeSpan.FromHours(InspectionIntervalHours) - elapsed;
             DataModel.Processmodel.TimeToNextInspection = remaining;
         }
 
@@ -4064,32 +4153,35 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 开始OK点检
+        /// 启动OK点检流程。该动作只设置当前点检类型和操作提示，真正的放行凭据仍来自后续扫描到OK点检SN。
         /// </summary>
         public void StartOKInspection()
         {
             DataModel.Processmodel.IsInspectionMode = true;
             DataModel.Processmodel.InspectionType = "OK";
             DataModel.Processmodel.OKInspectionCompleted = false;
+            DataModel.Processmodel.ScanCodeStatus = "等待OK点检SN";
             UpdateInspectionStatusMessage($"开始OK点检，请触发PLC执行检测。当前进度：{GetInspectionProgressSummary()}");
             writeLog("开始OK点检，请使用PLC触发扫码和检测", false);
         }
 
         /// <summary>
-        /// 开始NG点检
+        /// 启动NG点检流程。该动作只设置当前点检类型和操作提示，真正的放行凭据仍来自后续扫描到NG点检SN。
         /// </summary>
         public void StartNGInspection()
         {
             DataModel.Processmodel.IsInspectionMode = true;
             DataModel.Processmodel.InspectionType = "NG";
             DataModel.Processmodel.NGInspectionCompleted = false;
+            DataModel.Processmodel.ScanCodeStatus = "等待NG点检SN";
             UpdateInspectionStatusMessage($"开始NG点检，请触发PLC执行检测。当前进度：{GetInspectionProgressSummary()}");
             writeLog("开始NG点检，请使用PLC触发扫码和检测", false);
         }
 
         /// <summary>
-        /// 完成点检后调用
+        /// 记录单项点检结果，并在OK和NG均完成后刷新点检完成时间。完成时间写入配置文件，是下一轮24小时周期的唯一起点。
         /// </summary>
+        /// <param name="type">本次完成的点检类型，取值为OK或NG，来自当前点检模式的检测结果。</param>
         private void CompleteInspection(string type)
         {
             if (type == "OK")

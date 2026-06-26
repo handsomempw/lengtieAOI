@@ -173,10 +173,13 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        /// <summary>
+        /// 主界面作业准备状态。普通产品需要有SN、空闲且点检在有效周期内；点检模式保持可检测，用于到期后完成OK/NG点检。
+        /// </summary>
         [XmlIgnore]
         public bool CanStartDetection
         {
-            get { return !string.IsNullOrEmpty(CurrentProductSN) && !IsReportingWork; }
+            get { return !string.IsNullOrEmpty(CurrentProductSN) && !IsReportingWork && (!IsInspectionOverdue || IsInspectionMode); }
         }
 
         // 扫码状态相关属性
@@ -208,6 +211,7 @@ namespace F7_L12_Position_Detect.Model
                     case "SN获取失败":
                     case "工序校验失败":
                     case "工单校验失败":
+                    case "点检到期":
                         return Brushes.Red;
                     case "正在处理...":
                         return Brushes.Orange;
@@ -339,6 +343,9 @@ namespace F7_L12_Position_Detect.Model
 
         // 点检相关状态
         private bool _isInspectionMode = false;
+        /// <summary>
+        /// 点检流程标志。该标志由点检SN或点检窗口启动，表示当前PLC触发服务OK/NG点检流程。
+        /// </summary>
         [XmlIgnore]
         public bool IsInspectionMode
         {
@@ -348,6 +355,7 @@ namespace F7_L12_Position_Detect.Model
                 _isInspectionMode = value;
                 RaisePropertyChanged(() => IsInspectionMode);
                 RaisePropertyChanged(() => InspectionStatusText);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
@@ -404,6 +412,9 @@ namespace F7_L12_Position_Detect.Model
         }
 
         private TimeSpan _timeToNextInspection = TimeSpan.Zero;
+        /// <summary>
+        /// 距离下次点检的剩余时间。小于零时表示点检到期，并同步驱动倒计时颜色和主界面可检测状态。
+        /// </summary>
         [XmlIgnore]
         public TimeSpan TimeToNextInspection
         {
@@ -415,6 +426,7 @@ namespace F7_L12_Position_Detect.Model
                 RaisePropertyChanged(() => TimeToNextInspectionText);
                 RaisePropertyChanged(() => InspectionCountdownColor);
                 RaisePropertyChanged(() => IsInspectionOverdue);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
