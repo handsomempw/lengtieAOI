@@ -1325,11 +1325,11 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 WriteDetailLog($"[工具执行] 开始执行指令{command}，总工具数={DataModel.Processmodel.Tools.Count}");
 
-                // 检查是否可以开始检测（只检查是否在报工中）
-                if (!CanStartDetection())
+                string blockReason = GetDetectionBlockReason();
+                if (!string.IsNullOrEmpty(blockReason))
                 {
-                    writeLog($"检测被阻止: 报工正在进行中");
-                    WriteDetailLog($"[工具执行] 检测被阻止，原因：报工正在进行中");
+                    writeLog($"检测被阻止: {blockReason}");
+                    WriteDetailLog($"[工具执行] 检测被阻止，原因：{blockReason}");
                     // 注释掉PLC返回，不向PLC返回OK/NG标志
                     // PLC_write((UInt16)2); // 返回NG状态
                     return;
@@ -3745,7 +3745,8 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 判断PLC触发后的作业资格。普通产品需要有效SN、工序校验通过且点检仍在有效周期内；点检到期后只放行点检SN触发形成的点检模式流程。
+        /// 判断PLC触发后的正式作业资格，是普通产品进入视觉检测前的主业务门禁。该门禁负责确认SN已经取得、工序校验已经通过，并在点检到期时只放行由OK/NG点检SN形成的点检流程。
+        /// 工具执行入口还会执行一次轻量启动保护，用于报工中、空SN和到期状态的异常入口兜底；两处检查职责分层，避免把完整工序校验散落到工具执行内部。
         /// </summary>
         /// <returns>true表示当前PLC指令可继续进入视觉检测；false表示停在业务门禁并保留状态与日志提示。</returns>
         private bool HasValidSNAndValidation()
@@ -3822,12 +3823,35 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 检查是否可以开始检测
+        /// 获取工具执行入口的轻量拦截原因。该入口不是工序校验的主门禁，主要负责设备启动前的安全保险：报工中不重复启动检测、空SN不直接跑工具、点检到期不放行普通产品。
+        /// 点检周期在这里即时刷新，保证按钮状态、工具执行保护和24小时到期边界使用同一口径；正常PLC路径仍以HasValidSNAndValidation完成SN和工序校验。
         /// </summary>
-        private bool CanStartDetection()
+        /// <returns>空字符串表示允许继续执行视觉工具；非空文本表示停在当前入口并写入操作日志。</returns>
+        private string GetDetectionBlockReason()
         {
-            // 修改：只要不在报工中就可以开始检测，不强制要求工序校验通过
-            return !DataModel.Processmodel.IsReportingWork;
+            UpdateInspectionCountdown();
+
+            if (DataModel.Processmodel.CanStartDetection)
+            {
+                return string.Empty;
+            }
+
+            if (string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN))
+            {
+                return "SN为空";
+            }
+
+            if (DataModel.Processmodel.IsReportingWork)
+            {
+                return "报工正在进行中";
+            }
+
+            if (DataModel.Processmodel.IsInspectionOverdue)
+            {
+                return "24小时点检已到期，请先完成OK点检和NG点检";
+            }
+
+            return "作业状态不满足";
         }
 
         /// <summary>

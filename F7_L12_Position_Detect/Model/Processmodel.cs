@@ -170,16 +170,22 @@ namespace F7_L12_Position_Detect.Model
             {
                 _isReportingWork = value;
                 RaisePropertyChanged(() => IsReportingWork);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
         /// <summary>
-        /// 主界面作业准备状态。普通产品需要有SN、空闲且点检在有效周期内；点检模式保持可检测，用于到期后完成OK/NG点检。
+        /// 检测启动保护状态，用于主界面按钮显示和工具执行前的最后保险。正式生产作业资格由PLC触发门禁校验SN、工序和点检类型；这里保留SN、报工中和点检周期检查，避免异常入口在空SN、报工清理中或点检到期时直接启动视觉工具。
+        /// 点检到期后只认可已经扫描对应点检SN形成的点检模式状态，防止只点击点检按钮或残留模式标志放行普通产品。
         /// </summary>
         [XmlIgnore]
         public bool CanStartDetection
         {
-            get { return !string.IsNullOrEmpty(CurrentProductSN) && !IsReportingWork && (!IsInspectionOverdue || IsInspectionMode); }
+            get
+            {
+                bool isInspectionScan = IsInspectionMode && ScanCodeStatus == $"点检模式-{InspectionType}点检";
+                return !string.IsNullOrEmpty(CurrentProductSN) && !IsReportingWork && (!IsInspectionOverdue || isInspectionScan);
+            }
         }
 
         // 扫码状态相关属性
@@ -193,6 +199,7 @@ namespace F7_L12_Position_Detect.Model
                 _scanCodeStatus = value;
                 RaisePropertyChanged(() => ScanCodeStatus);
                 RaisePropertyChanged(() => ScanCodeStatusColor);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
@@ -369,6 +376,7 @@ namespace F7_L12_Position_Detect.Model
                 _inspectionType = value;
                 RaisePropertyChanged(() => InspectionType);
                 RaisePropertyChanged(() => InspectionStatusText);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
@@ -413,7 +421,7 @@ namespace F7_L12_Position_Detect.Model
 
         private TimeSpan _timeToNextInspection = TimeSpan.Zero;
         /// <summary>
-        /// 距离下次点检的剩余时间。小于零时表示点检到期，并同步驱动倒计时颜色和主界面可检测状态。
+        /// 距离下次点检的剩余时间。小于等于零时表示点检到期，并同步驱动倒计时颜色和主界面可检测状态。
         /// </summary>
         [XmlIgnore]
         public TimeSpan TimeToNextInspection
@@ -435,7 +443,7 @@ namespace F7_L12_Position_Detect.Model
         {
             get
             {
-                if (_timeToNextInspection.TotalHours < 0)
+                if (IsInspectionOverdue)
                     return "已到期";
                 int hours = (int)_timeToNextInspection.TotalHours;
                 int minutes = _timeToNextInspection.Minutes;
@@ -460,7 +468,7 @@ namespace F7_L12_Position_Detect.Model
         [XmlIgnore]
         public bool IsInspectionOverdue
         {
-            get { return _timeToNextInspection.TotalHours < 0; }
+            get { return _timeToNextInspection <= TimeSpan.Zero; }
         }
 
     }
