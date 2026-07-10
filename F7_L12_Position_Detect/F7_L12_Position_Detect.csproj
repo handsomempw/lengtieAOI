@@ -113,6 +113,7 @@
     <Compile Include="Control\Toolcontrol.xaml.cs">
       <DependentUpon>Toolcontrol.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Config\ConfigXmlSaveHelper.cs" />
     <Compile Include="convertor.cs" />
     <Compile Include="Hobject2Bitmap.cs" />
     <Compile Include="Log\Log.cs" />

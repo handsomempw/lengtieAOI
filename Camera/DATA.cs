@@ -15,41 +15,31 @@ namespace Camera
     {
         public CameraModel CameraModel { get; set; } = new CameraModel();
 
+        /// <summary>
+        /// 相机配置本轮启动的加载健康状态。相机配置曾经存在但主文件和备份均无法读取时，该状态阻止关闭软件时写回默认相机参数；
+        /// 首装无配置文件时，该状态保持为 false，允许默认相机模板生成首份 <c>相机配置.xml</c>。
+        /// </summary>
+        public bool ConfigLoadFailed { get; private set; }
+
         #region 保存设置
+        /// <summary>
+        /// 保存相机配置。相机序列号和曝光时间属于现场调机参数，保存入口通过安全 XML 组件保护已有配置。
+        /// </summary>
+        /// <param name="filename">相机配置 XML 完整路径。</param>
         public void save_setting(string filename)
         {
-            try
-            {
-                string dir = Path.GetDirectoryName(filename);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                using (var stream = new FileStream(filename, FileMode.Create))
-                {
-                    XmlSerializer sz = new XmlSerializer(typeof(CameraModel));
-                    sz.Serialize(stream, CameraModel);
-                }
-            }
-            catch {; }
+            ConfigXmlSaveHelper.TrySave(filename, CameraModel, ConfigLoadFailed);
         }
+
+        /// <summary>
+        /// 加载相机配置。主文件损坏时尝试从同名备份恢复；恢复失败时使用默认模板初始化相机对象，并阻止本轮默认参数覆盖磁盘文件。
+        /// </summary>
+        /// <param name="filename">相机配置 XML 完整路径。</param>
         public void load_setting(string filename)
         {
-            try
-            {
-                if (File.Exists(filename))
-                {
-                    using (var stream = new StreamReader(filename))
-                    {
-                        XmlSerializer sz = new XmlSerializer(typeof(CameraModel));
-                        CameraModel = sz.Deserialize(stream) as CameraModel;
-                    }
-                    return;
-                }
-            }
-            catch
-            {; }
-            CameraModel = new CameraModel();
+            ConfigLoadResult<CameraModel> result = ConfigXmlSaveHelper.TryLoad(filename);
+            CameraModel = result.Data;
+            ConfigLoadFailed = result.LoadFailed;
         }
         #endregion
 

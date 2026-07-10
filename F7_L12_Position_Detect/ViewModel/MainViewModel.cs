@@ -1,3 +1,4 @@
+using F7_L12_Position_Detect.Config;
 using F7_L12_Position_Detect.Model;
 using F7_L12_Position_Detect.View;
 using GalaSoft.MvvmLight;
@@ -2272,9 +2273,33 @@ namespace F7_L12_Position_Detect.ViewModel
         #endregion
 
         #region 配置数据
+        /// <summary>
+        /// 主配置文件本轮启动的加载健康状态。该状态只服务 <c>配置\配置数据.xml</c> 的保存保护：
+        /// 文件损坏且备份恢复失败时，关闭软件、自动保存和点检完成保存都会跳过写回，保留现场磁盘文件供维护人员恢复；
+        /// 首次部署没有配置文件时，该状态保持为 false，允许默认模板生成首份配置。
+        /// </summary>
+        private bool _settingConfigLoadFailed;
+
+        /// <summary>
+        /// 保存主配置数据。该文件承载工位、工序、当前工单、点检码、点检完成时间、PLC 地址和图片保存策略等现场生产参数。
+        /// 保存入口统一交给安全 XML 组件处理，确保加载失败后的默认内存配置不会覆盖磁盘上的现场文件。
+        /// </summary>
         public void SaveSettingModel()
         {
+            string filename = $"{Environment.CurrentDirectory}\\配置\\配置数据.xml";
+            ConfigXmlSaveHelper.TrySave(
+                filename,
+                DataModel.Settingmodel,
+                _settingConfigLoadFailed,
+                WriteDetailLog);
+        }
 
+        /// <summary>
+        /// 加载主配置数据。启动时优先读取 <c>配置数据.xml</c>，主文件损坏时尝试 <c>.bak</c> 和 <c>.lastgood</c>，
+        /// 全部不可用时使用默认模板进入内存，并通过加载失败标志阻止后续保存覆盖现场文件。
+        /// </summary>
+        public void LoadSettingModel()
+        {
             string filename = $"{Environment.CurrentDirectory}\\配置\\配置数据.xml";
             string dir = Path.GetDirectoryName(filename);
             if (!Directory.Exists(dir))
@@ -2282,41 +2307,22 @@ namespace F7_L12_Position_Detect.ViewModel
                 Directory.CreateDirectory(dir);
             }
 
-            using (var stream = File.Open(filename, FileMode.Create))
-            {
-                var serializer = new XmlSerializer(typeof(SettingModel));
-                serializer.Serialize(stream, DataModel.Settingmodel);
-            }
-        }
-        public void LoadSettingModel()
-        {
-            try
-            {
-                string filename = $"{Environment.CurrentDirectory}\\配置\\配置数据.xml";
-                string dir = Path.GetDirectoryName(filename);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                if (File.Exists(filename))
-                {
-                    using (var stream = File.OpenRead(filename))
-                    {
-                        var serializer = new XmlSerializer(typeof(SettingModel));
-                        DataModel.Settingmodel = serializer.Deserialize(stream) as SettingModel;
-                    }
-                }
-                else
-                {
-                    DataModel.Settingmodel = new SettingModel();
-                }
-            }
-            catch (Exception ex)
-            {
-                DataModel.Settingmodel = new SettingModel();
+            ConfigLoadResult<SettingModel> result = ConfigXmlSaveHelper.TryLoad(
+                filename,
+                () => new SettingModel(),
+                WriteDetailLog);
 
-                MessageBox.Show($"配置数据.xml加载失败,软件已重置配置，请进入配置文件按需求修改,再重新打开软件:\r\n{ex.Message}");
+            DataModel.Settingmodel = result.Data;
+            _settingConfigLoadFailed = result.LoadFailed;
 
+            if (result.RestoredFromBackup)
+            {
+                writeLog($"配置已从备份恢复：{Path.GetFileName(result.RestoredFrom)}", false);
+            }
+            else if (result.LoadFailed)
+            {
+                MessageBox.Show(
+                    $"配置数据.xml 损坏且无法从 .bak / .lastgood 恢复，软件已使用默认配置。\r\n本次关闭不会覆盖磁盘上的损坏文件，请检查配置目录或联系维护人员。");
             }
         }
         #endregion
@@ -2369,52 +2375,84 @@ namespace F7_L12_Position_Detect.ViewModel
         #endregion
         #region 配方保存加载
 
+        /// <summary>
+        /// 保存当前工程配方工具。该流程先确认内存工具列表包含真实配方，再逐个安全写入 <c>Tool*.xml</c>，
+        /// 最后清理超出当前工具数量的旧工具文件，避免加载失败后的空白工具列表删除现场工程配方。
+        /// </summary>
         public void SavePrjXmls()
         {
             try
             {
-                #region 删除旧xml文件
-                foreach (string s in Directory.GetFiles($"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}"))
+                if (!ConfigXmlSaveHelper.HasValidTools(DataModel.Processmodel.Tools))
                 {
-                    if (s.ToUpper().EndsWith(".XML"))
-                    {
-                        try
-                        {
-                            File.Delete(s);
-                        }
-                        catch (Exception ex) { continue; }
-                    }
+                    WriteDetailLog("[配置保存] 跳过：工程配方为空壳，不删除现有 Tool*.xml");
+                    return;
                 }
-                #endregion
+
+                string projectDir = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}";
                 for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 {
                     SavePrjXml(DataModel.Processmodel.Tools[i], i + 1);
                 }
+
+                if (!Directory.Exists(projectDir))
+                {
+                    return;
+                }
+
+                foreach (string filePath in Directory.GetFiles(projectDir))
+                {
+                    if (!filePath.ToUpper().EndsWith(".XML"))
+                    {
+                        continue;
+                    }
+
+                    string fileName = Path.GetFileNameWithoutExtension(filePath);
+                    if (!fileName.StartsWith("Tool", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string indexText = fileName.Substring(4);
+                    if (!int.TryParse(indexText, out int toolIndex) || toolIndex > DataModel.Processmodel.Tools.Count)
+                    {
+                        try
+                        {
+                            File.Delete(filePath);
+                            WriteDetailLog($"[配置保存] 删除多余配方：{Path.GetFileName(filePath)}");
+                        }
+                        catch (Exception ex)
+                        {
+                            WriteDetailLog($"[配置保存] 删除多余配方失败：{Path.GetFileName(filePath)}，{ex.Message}");
+                        }
+                    }
+                }
             }
-            catch (Exception ex) {; }
+            catch (Exception ex)
+            {
+                WriteDetailLog($"[配置保存] 工程配方保存异常：{ex.Message}");
+            }
         }
 
+        /// <summary>
+        /// 保存单个工程工具配方。工具文件使用与主配置一致的安全 XML 写入流程，保留 <c>.bak</c> 和 <c>.lastgood</c> 供后续加载恢复。
+        /// </summary>
+        /// <param name="td">准备保存的工具配置。</param>
+        /// <param name="index">工具在当前工程中的序号，对应磁盘文件名 <c>Tool{index}.xml</c>。</param>
         private void SavePrjXml(ToolModel td, int index)
         {
             string filename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index}.xml";
-            string dir = Path.GetDirectoryName(filename);
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
-            using (var stream = File.Open(filename, FileMode.Create))
-            {
-                try
-                {
-                    var serializer = new XmlSerializer(typeof(ToolModel));
-                    serializer.Serialize(stream, td);
-                    return;
-                }
-                catch {; }
-            }
+            ConfigXmlSaveHelper.TrySave(
+                filename,
+                td,
+                false,
+                WriteDetailLog);
         }
 
+        /// <summary>
+        /// 加载当前工程目录下的工具配方。每个 <c>Tool*.xml</c> 通过安全 XML 组件读取，
+        /// 主文件损坏时自动从同名备份恢复，单个工具无法恢复时只跳过该工具并记录日志。
+        /// </summary>
         public void LoadPrjXmls()
         {
 
@@ -2544,25 +2582,32 @@ namespace F7_L12_Position_Detect.ViewModel
 
         }
 
+        /// <summary>
+        /// 加载指定序号的工具配方。主 <c>Tool*.xml</c> 损坏时按同名 <c>.bak</c>、<c>.lastgood</c> 恢复；
+        /// 恢复失败时返回 null，由工程加载流程保留其他可用工具并记录该工具缺失，避免一个坏文件拖垮整套工程。
+        /// </summary>
+        /// <param name="index">工具序号，对应磁盘文件名 <c>Tool{index}.xml</c>。</param>
+        /// <returns>返回成功加载或恢复的工具配置；文件缺失或无法恢复时返回 null。</returns>
         private ToolModel LoadPrjXml(int index)
         {
             string dir = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}";
             string filename = $"{dir}\\Tool{index}.xml";
 
-            if (File.Exists(filename))
+            ConfigLoadResult<ToolModel> result = ConfigXmlSaveHelper.TryLoad<ToolModel>(
+                filename,
+                () => null,
+                WriteDetailLog);
+
+            if (result.RestoredFromBackup)
             {
-                using (var stream = File.OpenRead(filename))
-                {
-                    try
-                    {
-                        var serializer = new XmlSerializer(typeof(ToolModel));
-                        var r = serializer.Deserialize(stream) as ToolModel;
-                        return (ToolModel)r;
-                    }
-                    catch {; }
-                }
+                writeLog($"配方 Tool{index} 已从备份恢复：{Path.GetFileName(result.RestoredFrom)}", false);
             }
-            return null;
+            else if (result.LoadFailed)
+            {
+                writeLog($"配方 Tool{index}.xml 损坏且无法从备份恢复", true);
+            }
+
+            return result.Data;
         }
         #endregion
         #endregion
