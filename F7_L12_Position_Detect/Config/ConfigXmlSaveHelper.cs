@@ -2,8 +2,10 @@ using F7_L12_Position_Detect.Model;
 using F7_L12_Position_Detect.Model.Tool;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Xml.Serialization;
 
 namespace F7_L12_Position_Detect.Config
@@ -42,6 +44,11 @@ namespace F7_L12_Position_Detect.Config
     /// </summary>
     public static class ConfigXmlSaveHelper
     {
+        private const string BackupExtension = ".bak";
+        private const string LastGoodExtension = ".lastgood";
+        private const int MaxTimestampBackupDirectories = 30;
+        private const string RecoveryReadmeFileName = "readme.txt";
+
         /// <summary>
         /// 判断工具配置是否属于启动阶段的空白占位。工程配方保存以该结果保护现有 <c>Tool*.xml</c>，防止加载失败后的占位工具清空现场配方。
         /// </summary>
@@ -164,6 +171,166 @@ namespace F7_L12_Position_Detect.Config
         }
 
         /// <summary>
+        /// 启动加载前将目录中的 XML 复制到带时间戳的备份目录。系统配置和当前工程配方使用分类子目录保存。
+        /// </summary>
+        /// <param name="sourceDir">待备份的配置目录。</param>
+        /// <param name="backupRoot">程序目录下的备份根目录。</param>
+        /// <param name="categoryName">系统配置或工程名称，用于区分同一启动时刻的文件来源。</param>
+        /// <param name="log">现场诊断日志入口。</param>
+        public static void BackupXmlFiles(string sourceDir, string backupRoot, string categoryName, Action<string> log = null)
+        {
+            try
+            {
+                PrepareBackupRoot(backupRoot, log);
+
+                if (string.IsNullOrWhiteSpace(sourceDir) || !Directory.Exists(sourceDir))
+                {
+                    return;
+                }
+
+                string[] xmlFiles = Directory.GetFiles(sourceDir, "*.xml", SearchOption.TopDirectoryOnly);
+                if (xmlFiles.Length == 0)
+                {
+                    return;
+                }
+
+                string targetDir = Path.Combine(
+                    backupRoot,
+                    DateTime.Now.ToString("yyyyMMdd_HHmmss"),
+                    SanitizeDirectoryName(categoryName));
+                Directory.CreateDirectory(targetDir);
+
+                int copiedCount = 0;
+                foreach (string sourceFile in xmlFiles)
+                {
+                    try
+                    {
+                        File.Copy(sourceFile, Path.Combine(targetDir, Path.GetFileName(sourceFile)), true);
+                        copiedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        log?.Invoke($"[配置备份] 文件备份失败：{Path.GetFileName(sourceFile)}，{ex.Message}");
+                    }
+                }
+
+                if (copiedCount > 0)
+                {
+                    log?.Invoke($"[配置备份] 已备份{copiedCount}个XML到：{targetDir}");
+                }
+
+                PruneTimestampBackupDirectories(backupRoot, log);
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[配置备份] 目录备份失败：{sourceDir}，{ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 初始化备份根目录，生成现场恢复说明，并按保留上限清理旧时间戳目录。
+        /// </summary>
+        /// <param name="backupRoot">备份根目录。</param>
+        /// <param name="log">现场诊断日志入口。</param>
+        private static void PrepareBackupRoot(string backupRoot, Action<string> log)
+        {
+            if (string.IsNullOrWhiteSpace(backupRoot))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(backupRoot);
+            WriteRecoveryReadme(backupRoot, log);
+            PruneTimestampBackupDirectories(backupRoot, log);
+        }
+
+        /// <summary>
+        /// 生成配置恢复说明。文件位于备份根目录，只服务现场维护，不参与程序加载。
+        /// </summary>
+        /// <param name="backupRoot">备份根目录。</param>
+        /// <param name="log">现场诊断日志入口。</param>
+        private static void WriteRecoveryReadme(string backupRoot, Action<string> log)
+        {
+            const string content =
+                "配置备份与恢复说明\r\n" +
+                "\r\n" +
+                "1. 本目录由软件自动管理，保留最近30个 yyyyMMdd_HHmmss 时间戳目录。\r\n" +
+                "2. 系统配置位于时间戳目录的“系统配置”中；工具配方位于“工程_工程名”中。\r\n" +
+                "3. 正常运行时无需手工修改、移动或删除这些文件。\r\n" +
+                "4. 需要人工恢复时：先关闭软件，备份当前故障文件，再把选定时间戳中的 XML 复制回原“配置”或工程目录。\r\n" +
+                "5. 正式 XML 旁的 .bak 是上一次保存版本，.lastgood 是最近一次校验通过版本，由软件自动恢复。\r\n" +
+                "6. 恢复后请核对当前工程、相机序列号、PLC参数、工单工序和点检配置后再投入生产。\r\n";
+
+            try
+            {
+                string readmePath = Path.Combine(backupRoot, RecoveryReadmeFileName);
+                if (!File.Exists(readmePath) || !string.Equals(File.ReadAllText(readmePath), content, StringComparison.Ordinal))
+                {
+                    File.WriteAllText(readmePath, content, new UTF8Encoding(true));
+                }
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[配置备份] 恢复说明生成失败：{ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 仅保留最近的时间戳备份目录。恢复说明和其他非时间戳目录不受该清理策略影响。
+        /// </summary>
+        /// <param name="backupRoot">备份根目录。</param>
+        /// <param name="log">现场诊断日志入口。</param>
+        private static void PruneTimestampBackupDirectories(string backupRoot, Action<string> log)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(backupRoot) || !Directory.Exists(backupRoot))
+                {
+                    return;
+                }
+
+                var timestampDirectories = new List<KeyValuePair<DateTime, DirectoryInfo>>();
+                foreach (DirectoryInfo directory in new DirectoryInfo(backupRoot).GetDirectories())
+                {
+                    DateTime timestamp;
+                    if (DateTime.TryParseExact(
+                        directory.Name,
+                        "yyyyMMdd_HHmmss",
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out timestamp))
+                    {
+                        timestampDirectories.Add(new KeyValuePair<DateTime, DirectoryInfo>(timestamp, directory));
+                    }
+                }
+
+                DirectoryInfo[] expiredDirectories = timestampDirectories
+                    .OrderByDescending(item => item.Key)
+                    .ThenByDescending(item => item.Value.Name, StringComparer.Ordinal)
+                    .Skip(MaxTimestampBackupDirectories)
+                    .Select(item => item.Value)
+                    .ToArray();
+
+                foreach (DirectoryInfo directory in expiredDirectories)
+                {
+                    try
+                    {
+                        directory.Delete(true);
+                        log?.Invoke($"[配置备份] 已清理超出保留数量的旧备份：{directory.Name}");
+                    }
+                    catch (Exception ex)
+                    {
+                        log?.Invoke($"[配置备份] 旧备份清理失败：{directory.FullName}，{ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[配置备份] 保留策略执行失败：{ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 判断主文件或任一备份文件是否曾经存在。该判断用于区分首装无文件和已有文件损坏两类现场状态。
         /// </summary>
         /// <param name="filename">主配置文件完整路径。</param>
@@ -171,8 +338,8 @@ namespace F7_L12_Position_Detect.Config
         private static bool HasAnyPersistedFile(string filename)
         {
             return File.Exists(filename)
-                || File.Exists(filename + ".bak")
-                || File.Exists(filename + ".lastgood");
+                || File.Exists(filename + BackupExtension)
+                || File.Exists(filename + LastGoodExtension);
         }
 
         /// <summary>
@@ -183,8 +350,28 @@ namespace F7_L12_Position_Detect.Config
         private static IEnumerable<string> GetLoadCandidates(string filename)
         {
             yield return filename;
-            yield return filename + ".bak";
-            yield return filename + ".lastgood";
+            yield return filename + BackupExtension;
+            yield return filename + LastGoodExtension;
+        }
+
+        private static string SanitizeDirectoryName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return "XML";
+            }
+
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            char[] chars = name.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (invalidChars.Contains(chars[i]))
+                {
+                    chars[i] = '_';
+                }
+            }
+
+            return new string(chars);
         }
 
         /// <summary>
@@ -251,8 +438,8 @@ namespace F7_L12_Position_Detect.Config
                 Directory.CreateDirectory(dir);
             }
 
-            string backupFile = filename + ".bak";
-            string lastGoodFile = filename + ".lastgood";
+            string backupFile = filename + BackupExtension;
+            string lastGoodFile = filename + LastGoodExtension;
             string tempFile = filename + ".tmp";
 
             try

@@ -46,6 +46,7 @@ namespace F7_L12_Position_Detect
             vml.Main.DataModel.Processmodel.Tools.Add(new Model.Tool.ToolModel());
             vml.Main.DataModel.Processmodel.Tools.Add(new Model.Tool.ToolModel());
             vml.Main.DataModel.Processmodel.Tools.Add(new Model.Tool.ToolModel());
+            vml.Main.BackupConfigXmlsBeforeLoad();
             vml.Main.LoadSettingModel();
             //vml.Main.LoadProcessmodel();
             vml.Main.Load_Prj();
@@ -129,6 +130,10 @@ namespace F7_L12_Position_Detect
                 SettingForm settingForm = new SettingForm();
                 //settingForm.Topmost = true;
                 settingForm.ShowDialog();
+                if (!vml.Main.SavePrjXmls())
+                {
+                    NoticeBox.Show("工具参数未落盘，请查看详细日志", "提示", MessageBoxIcon.Warning, true, 5000);
+                }
                 //settingForm.Show();
 
 
