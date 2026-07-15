@@ -399,6 +399,28 @@ namespace Camera
 
         }
 
+        /// <summary>
+        /// 从相机枚举显示文本中读取完整序列号。工具编辑和执行时的相机定位共用该解析口径。
+        /// </summary>
+        /// <param name="cameraDisplayName">格式为 <c>GEV: 名称 (序列号)</c> 或 <c>U3V: 名称 (序列号)</c> 的显示文本。</param>
+        /// <returns>括号内的完整序列号；文本格式无法识别时返回空字符串。</returns>
+        public static string ExtractSerialNumberFromDisplayName(string cameraDisplayName)
+        {
+            if (string.IsNullOrWhiteSpace(cameraDisplayName))
+            {
+                return string.Empty;
+            }
+
+            int startIndex = cameraDisplayName.LastIndexOf('(');
+            int endIndex = cameraDisplayName.LastIndexOf(')');
+            if (startIndex < 0 || endIndex <= startIndex)
+            {
+                return string.Empty;
+            }
+
+            return cameraDisplayName.Substring(startIndex + 1, endIndex - startIndex - 1).Trim();
+        }
+
         public void DeviceListAcq()
         {
             // ch:创建设备列表 | en:Create Device List

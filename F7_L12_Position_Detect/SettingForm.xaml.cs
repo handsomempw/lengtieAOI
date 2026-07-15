@@ -56,6 +56,20 @@ namespace F7_L12_Position_Detect
             t.PropertyChanged += Tool_PropertyChanged;
         }
 
+        /// <summary>
+        /// 关闭工具编辑窗口时解除属性事件。工程保存由打开该窗口的工具编辑入口在对话框返回后执行。
+        /// </summary>
+        /// <param name="e">窗口关闭事件参数。</param>
+        protected override void OnClosed(EventArgs e)
+        {
+            if (t != null)
+            {
+                t.PropertyChanged -= Tool_PropertyChanged;
+            }
+
+            base.OnClosed(e);
+        }
+
         private void InitializeCameraList()
         {
             try
@@ -73,15 +87,16 @@ namespace F7_L12_Position_Detect
 
                 vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 枚举到可用相机数量={t.AvailableCameras.Count} 列表=[{string.Join("|", t.AvailableCameras)}]");
 
-                // 设置当前选择：查找匹配的相机序列号
-                t.SelectedCameraIndex = -1; // 默认未选择
+                // 工具配置以完整序列号定位相机，避免短序列号命中型号或另一台相机。
+                string configuredSerialNumber = (t.CameraSerialNumber ?? string.Empty).Trim();
+                t.SelectedCameraIndex = -1;
                 int matchedIndex = -1;
-                if (!string.IsNullOrEmpty(t.CameraSerialNumber))
+                if (!string.IsNullOrEmpty(configuredSerialNumber))
                 {
-                    // 查找匹配的相机序列号
                     for (int i = 0; i < t.AvailableCameras.Count; i++)
                     {
-                        if (t.AvailableCameras[i].Contains(t.CameraSerialNumber))
+                        string availableSerialNumber = Hikvision.ExtractSerialNumberFromDisplayName(t.AvailableCameras[i]);
+                        if (string.Equals(availableSerialNumber, configuredSerialNumber, StringComparison.OrdinalIgnoreCase))
                         {
                             t.SelectedCameraIndex = i;
                             matchedIndex = i;
@@ -90,17 +105,23 @@ namespace F7_L12_Position_Detect
                     }
                 }
 
-                vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 匹配结果 工具相机序列号='{t.CameraSerialNumber}' 匹配下标={matchedIndex} 最终选中下标={t.SelectedCameraIndex}");
-
-                // 如果没有找到匹配的相机或者没有配置相机，选择第一个可用相机
-                if (t.SelectedCameraIndex == -1 && t.AvailableCameras.Count > 0)
+                if (!string.IsNullOrEmpty(configuredSerialNumber) && matchedIndex == -1)
                 {
-                    vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 未匹配到相机：回退到第一个设备 旧工具相机序列号='{t.CameraSerialNumber}' 第一个设备='{t.AvailableCameras[0]}'");
+                    // 相机临时离线时保留已配置序列号，编辑窗口关闭后不会把第一台在线相机写回工具配方。
+                    t.AvailableCameras.Insert(0, $"离线: 已配置相机 ({configuredSerialNumber})");
                     t.SelectedCameraIndex = 0;
-                    // 自动设置第一个相机的序列号
-                    UpdateCameraSerialNumber();
-                    vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 回退后工具相机序列号='{t.CameraSerialNumber}'");
+                    matchedIndex = 0;
+                    vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 已配置相机离线，保留序列号='{configuredSerialNumber}'");
                 }
+                else if (string.IsNullOrEmpty(configuredSerialNumber) && t.AvailableCameras.Count > 0)
+                {
+                    // 无相机配置的历史工具保持原有兼容行为，首次打开时使用第一台在线相机。
+                    t.SelectedCameraIndex = 0;
+                    matchedIndex = 0;
+                    UpdateCameraSerialNumber();
+                }
+
+                vml.Main.WriteCameraDebugLog($"[工具UI相机列表] 匹配结果 工具相机序列号='{t.CameraSerialNumber}' 匹配下标={matchedIndex} 最终选中下标={t.SelectedCameraIndex}");
             }
             catch (Exception ex)
             {
@@ -132,7 +153,7 @@ namespace F7_L12_Position_Detect
         }
 
         /// <summary>
-        /// 根据选择的相机索引更新相机序列号
+        /// 根据操作员选择的相机更新工具序列号。索引无效或列表文本无法解析时保留原配置。
         /// </summary>
         private void UpdateCameraSerialNumber()
         {
@@ -142,46 +163,22 @@ namespace F7_L12_Position_Detect
                 {
                     // 从相机名称中提取序列号
                     string cameraName = t.AvailableCameras[t.SelectedCameraIndex];
-                    string serialNumber = ExtractSerialNumberFromCameraName(cameraName);
-                    t.CameraSerialNumber = serialNumber;
-                }
-                else
-                {
-                    // 无效索引时清空序列号
-                    t.CameraSerialNumber = "";
+                    string serialNumber = Hikvision.ExtractSerialNumberFromDisplayName(cameraName);
+                    if (!string.IsNullOrWhiteSpace(serialNumber))
+                    {
+                        t.CameraSerialNumber = serialNumber;
+                        vml.Main.WriteCameraDebugLog($"[工具UI相机选择] 工具下标={t.Index} 已更新相机序列号='{serialNumber}'");
+                    }
+                    else
+                    {
+                        vml.Main.WriteCameraDebugLog($"[工具UI相机选择] 相机文本无法解析，保留原序列号='{t.CameraSerialNumber}' 文本='{cameraName}'");
+                    }
                 }
             }
             catch (Exception ex)
             {
-                // 出错时清空序列号
-                t.CameraSerialNumber = "";
+                vml.Main.WriteCameraDebugLog($"[工具UI相机选择] 更新异常，保留原序列号='{t.CameraSerialNumber}' 原因={ex.Message}");
             }
-        }
-
-        /// <summary>
-        /// 从相机名称中提取序列号
-        /// </summary>
-        /// <param name="cameraName">相机名称，格式如 "GEV: 厂商名 型号 (序列号)" 或 "U3V: 厂商名 型号 (序列号)"</param>
-        /// <returns>序列号</returns>
-        private string ExtractSerialNumberFromCameraName(string cameraName)
-        {
-            try
-            {
-                // 查找最后一个括号中的内容作为序列号
-                int startIndex = cameraName.LastIndexOf('(');
-                int endIndex = cameraName.LastIndexOf(')');
-
-                if (startIndex >= 0 && endIndex > startIndex)
-                {
-                    return cameraName.Substring(startIndex + 1, endIndex - startIndex - 1);
-                }
-            }
-            catch
-            {
-                // 解析失败时返回空字符串
-            }
-
-            return "";
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)

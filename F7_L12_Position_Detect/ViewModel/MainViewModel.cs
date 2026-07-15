@@ -1,3 +1,4 @@
+using F7_L12_Position_Detect.Config;
 using F7_L12_Position_Detect.Model;
 using F7_L12_Position_Detect.View;
 using GalaSoft.MvvmLight;
@@ -24,7 +25,6 @@ using HalconDotNet;
 using QRCode;
 using PositionDetect;
 using Camera;
-using System.Collections.Generic;
 using static System.Net.Mime.MediaTypeNames;
 using System.Runtime;
 using System.Linq;
@@ -371,7 +371,11 @@ namespace F7_L12_Position_Detect.ViewModel
                             DataModel.Processmodel.ToolIndex = i + 1;
 
                             // 检查工具是否指定了特定相机，如果是则切换相机
-                            SwitchCameraForTool(DataModel.Processmodel.Tools[i]);
+                            if (!SwitchCameraForTool(DataModel.Processmodel.Tools[i]))
+                            {
+                                writeLog($"机器人->视觉:{cmd}指定相机不可用，本次停止触发", false);
+                                return;
+                            }
 
                             DataModel.Settingmodel.camedata.CameraModel.exposuretime = DataModel.Processmodel.Tools[i].ExposureTime;
                             DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = DataModel.Processmodel.Tools[i].ExposureTime;
@@ -437,10 +441,11 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 根据工具配置切换相机
+        /// 根据工具配置的完整序列号切换相机。指定相机离线时返回失败，调用方据此停止拍照触发。
         /// </summary>
-        /// <param name="tool">工具对象</param>
-        private void SwitchCameraForTool(ToolModel tool)
+        /// <param name="tool">准备执行的工具配置。</param>
+        /// <returns>指定相机已就绪时返回 true；序列号为空、相机离线或切换异常时返回 false。</returns>
+        private bool SwitchCameraForTool(ToolModel tool)
         {
             try
             {
@@ -448,7 +453,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (string.IsNullOrEmpty(tool.CameraSerialNumber))
                 {
                     writeLog($"工具{tool.Index}未配置相机序列号，请在工具设置中选择相机", false);
-                    return;
+                    DataModel.Processmodel.CameraStatus = "工具未配置相机";
+                    return false;
                 }
 
                 var cameraData = DataModel.Settingmodel.camedata;
@@ -460,7 +466,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 int targetIndex = -1;
                 for (int j = 0; j < camera.cbDeviceList.Count; j++)
                 {
-                    if (camera.cbDeviceList[j].Contains(tool.CameraSerialNumber))
+                    string availableSerialNumber = NormalizeCameraSerial(Hikvision.ExtractSerialNumberFromDisplayName(camera.cbDeviceList[j]));
+                    if (string.Equals(availableSerialNumber, NormalizeCameraSerial(tool.CameraSerialNumber), StringComparison.Ordinal))
                     {
                         targetIndex = j;
                         break;
@@ -496,21 +503,27 @@ namespace F7_L12_Position_Detect.ViewModel
                     camera.bnStartGrab_Click();
 
                     writeLog($"工具{tool.Index}相机切换完成", false);
+                    return true;
                 }
                 else if (targetIndex >= 0)
                 {
                     WriteCameraDebugLog($"[工具相机切换] 匹配成功 目标下标={targetIndex} 已经是当前所选相机（无需切换）");
                     writeLog($"工具{tool.Index}相机已是目标相机，无需切换", false);
+                    return true;
                 }
                 else
                 {
-                    WriteCameraDebugLog($"[工具相机切换] 匹配失败 未在当前枚举列表找到相机序列号='{tool.CameraSerialNumber}' 将继续使用当前相机（不切换）");
+                    WriteCameraDebugLog($"[工具相机切换] 匹配失败 未在当前枚举列表找到完整相机序列号='{tool.CameraSerialNumber}' 本次停止触发");
                     writeLog($"工具{tool.Index}指定的相机序列号{tool.CameraSerialNumber}未找到，请检查相机连接", false);
+                    DataModel.Processmodel.CameraStatus = "指定相机离线";
+                    return false;
                 }
             }
             catch (Exception ex)
             {
                 writeLog($"工具{tool.Index}相机切换失败: {ex.Message}", false);
+                DataModel.Processmodel.CameraStatus = "相机切换失败";
+                return false;
             }
         }
 
@@ -703,7 +716,7 @@ namespace F7_L12_Position_Detect.ViewModel
          *
          * 注意：
          * - 当前实现为“串行多相机”（依次取图），避免并行回调竞态；
-         * - NormalizeCameraSerial 将 null 视为空串，空串也会作为一个分组存在（用于未配置序列号的工具）。
+         * - NormalizeCameraSerial 将 null 视为空串，并统一去除首尾空格和字母大小写。
          */
         private sealed class CameraGroup
         {
@@ -722,11 +735,11 @@ namespace F7_L12_Position_Detect.ViewModel
         private string _activeCameraSerial = null; // null 表示不按相机过滤（兼容旧逻辑）
 
         /// <summary>
-        /// 归一化相机序列号：将 null 统一视为 ""，确保分组键稳定。
+        /// 归一化相机序列号：将 null 统一视为空串，并去除首尾空格、统一为大写，确保分组和精确匹配口径一致。
         /// </summary>
         private static string NormalizeCameraSerial(string cameraSerial)
         {
-            return cameraSerial ?? string.Empty;
+            return (cameraSerial ?? string.Empty).Trim().ToUpperInvariant();
         }
 
         /// <summary>
@@ -799,7 +812,11 @@ namespace F7_L12_Position_Detect.ViewModel
 
             // 切换到该相机并按该组第一个工具设置曝光
             WriteCameraDebugLog($"[阶段触发下一相机组] 指令='{command}' 当前激活相机序列号='{_activeCameraSerial}' 本组工具数={group.ToolIndices.Count} 首工具下标={firstToolIndex} 首工具相机序列号='{firstTool.CameraSerialNumber}'");
-            SwitchCameraForTool(firstTool);
+            if (!SwitchCameraForTool(firstTool))
+            {
+                WriteDetailLog($"[阶段触发下一相机组] 指定相机不可用 工具下标={firstToolIndex} 序列号='{firstTool.CameraSerialNumber}'");
+                return false;
+            }
             Thread.Sleep(100);
             DataModel.Settingmodel.camedata.CameraModel.exposuretime = firstTool.ExposureTime;
             DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = firstTool.ExposureTime;
@@ -1669,7 +1686,11 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     WriteDetailLog($"[相机切换] 使用工具{firstToolIndex}({firstTool.Name})的相机设置: {firstTool.CameraSerialNumber}");
                 }
-                SwitchCameraForTool(firstTool);
+                if (!SwitchCameraForTool(firstTool))
+                {
+                    WriteDetailLog($"[相机切换] 指定相机不可用，停止{command}指令触发");
+                    return false;
+                }
                 Thread.Sleep(100);
 
                 DataModel.Settingmodel.camedata.CameraModel.exposuretime = firstTool.ExposureTime;
@@ -1932,8 +1953,13 @@ namespace F7_L12_Position_Detect.ViewModel
             //SaveAPPXml();
             SaveProcessmodel();
             SaveSettingModel();
-            SavePrjXmls();
-            NoticeBox.Show($"工程保存完成", "成功", MessageBoxIcon.Success, true, 5000);
+            bool projectSaved = SavePrjXmls();
+            NoticeBox.Show(
+                projectSaved ? "工程保存完成" : "工程配方未保存，请查看详细日志",
+                projectSaved ? "成功" : "提示",
+                projectSaved ? MessageBoxIcon.Success : MessageBoxIcon.Warning,
+                true,
+                5000);
 
         }
 
@@ -2325,6 +2351,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
         public void Load_Prj()
         {
+            BackupCurrentProjectXmlsBeforeLoad();
             LoadPrjXmls();
             CheckPrj();
             Prjs_selectedindex();
@@ -2399,205 +2426,210 @@ namespace F7_L12_Position_Detect.ViewModel
         #region 数据保存加载
 
         #region 过程数据
+
+        /// <summary>
+        /// 过程数据本轮启动的加载健康状态，用于防止加载失败后的默认运行状态覆盖现场文件。
+        /// </summary>
+        private bool _processConfigLoadFailed;
+
         public void SaveProcessmodel()
         {
-
             string filename = $"{Environment.CurrentDirectory}\\配置\\过程数据.xml";
-            string dir = Path.GetDirectoryName(filename);
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
-            using (var stream = File.Open(filename, FileMode.Create))
-            {
-                var serializer = new XmlSerializer(typeof(Processmodel));
-                serializer.Serialize(stream, DataModel.Processmodel);
-            }
+            ConfigXmlSaveHelper.TrySave(
+                filename,
+                DataModel.Processmodel,
+                _processConfigLoadFailed,
+                WriteDetailLog);
         }
+
         public void LoadProcessmodel()
         {
-            try
-            {
-                string filename = $"{Environment.CurrentDirectory}\\配置\\过程数据.xml";
-                string dir = Path.GetDirectoryName(filename);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                if (File.Exists(filename))
-                {
-                    using (var stream = File.OpenRead(filename))
-                    {
-                        var serializer = new XmlSerializer(typeof(Processmodel));
-                        DataModel.Processmodel = serializer.Deserialize(stream) as Processmodel;
-                    }
-                }
-                else
-                {
-                    DataModel.Processmodel = new Processmodel();
-                }
-            }
-            catch (Exception ex)
-            {
-                DataModel.Processmodel = new Processmodel();
+            string filename = $"{Environment.CurrentDirectory}\\配置\\过程数据.xml";
+            ConfigLoadResult<Processmodel> result = ConfigXmlSaveHelper.TryLoad(
+                filename,
+                () => new Processmodel(),
+                WriteDetailLog);
 
-            }
-            finally
-            {
-                BuildConfiguredStages();
-            }
+            DataModel.Processmodel = result.Data;
+            _processConfigLoadFailed = result.LoadFailed;
+            BuildConfiguredStages();
         }
         #endregion
 
         #region 配置数据
+
+        /// <summary>
+        /// 主配置本轮启动的加载健康状态。现场文件损坏且备份无法恢复时，该状态会阻止关闭和点检流程写回默认配置。
+        /// </summary>
+        private bool _settingConfigLoadFailed;
+
+        /// <summary>
+        /// 启动加载前备份系统配置 XML。备份位于程序目录的“配置备份”下，用于现场追溯和人工恢复。
+        /// </summary>
+        public void BackupConfigXmlsBeforeLoad()
+        {
+            ConfigXmlSaveHelper.BackupXmlFiles(
+                Path.Combine(Environment.CurrentDirectory, "配置"),
+                Path.Combine(Environment.CurrentDirectory, "配置备份"),
+                "系统配置",
+                WriteDetailLog);
+        }
+
+        /// <summary>
+        /// 主配置加载后、工程工具加载前备份当前工程 XML。该备份只保护工具配方，不改变工程选择和生产执行流程。
+        /// </summary>
+        public void BackupCurrentProjectXmlsBeforeLoad()
+        {
+            if (string.IsNullOrWhiteSpace(DataModel.Settingmodel.Prjdir)
+                || string.IsNullOrWhiteSpace(DataModel.Settingmodel.Name))
+            {
+                WriteDetailLog("[配置备份] 跳过工程备份：工程目录或工程名为空");
+                return;
+            }
+
+            string projectDir = Path.Combine(DataModel.Settingmodel.Prjdir, DataModel.Settingmodel.Name);
+            ConfigXmlSaveHelper.BackupXmlFiles(
+                projectDir,
+                Path.Combine(Environment.CurrentDirectory, "配置备份"),
+                $"工程_{DataModel.Settingmodel.Name}",
+                WriteDetailLog);
+        }
+
+        /// <summary>
+        /// 保存主配置。工位、工序、点检时间、PLC 参数和当前工程经临时文件校验后原子替换。
+        /// </summary>
         public void SaveSettingModel()
         {
-
             string filename = $"{Environment.CurrentDirectory}\\配置\\配置数据.xml";
-            string dir = Path.GetDirectoryName(filename);
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
-            using (var stream = File.Open(filename, FileMode.Create))
-            {
-                var serializer = new XmlSerializer(typeof(SettingModel));
-                serializer.Serialize(stream, DataModel.Settingmodel);
-            }
+            ConfigXmlSaveHelper.TrySave(
+                filename,
+                DataModel.Settingmodel,
+                _settingConfigLoadFailed,
+                WriteDetailLog);
         }
+
+        /// <summary>
+        /// 加载主配置。主文件不可用时按 <c>.bak</c>、<c>.lastgood</c> 恢复，全部失败时保留磁盘文件并禁止本轮回写。
+        /// </summary>
         public void LoadSettingModel()
         {
-            try
+            string filename = $"{Environment.CurrentDirectory}\\配置\\配置数据.xml";
+            ConfigLoadResult<SettingModel> result = ConfigXmlSaveHelper.TryLoad(
+                filename,
+                () => new SettingModel(),
+                WriteDetailLog);
+
+            DataModel.Settingmodel = result.Data;
+            _settingConfigLoadFailed = result.LoadFailed;
+
+            if (result.RestoredFromBackup)
             {
-                string filename = $"{Environment.CurrentDirectory}\\配置\\配置数据.xml";
-                string dir = Path.GetDirectoryName(filename);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                if (File.Exists(filename))
-                {
-                    using (var stream = File.OpenRead(filename))
-                    {
-                        var serializer = new XmlSerializer(typeof(SettingModel));
-                        DataModel.Settingmodel = serializer.Deserialize(stream) as SettingModel;
-                    }
-                }
-                else
-                {
-                    DataModel.Settingmodel = new SettingModel();
-                }
+                writeLog($"配置已从备份恢复：{Path.GetFileName(result.RestoredFrom)}", false);
             }
-            catch (Exception ex)
+            else if (result.LoadFailed)
             {
-                DataModel.Settingmodel = new SettingModel();
-
-                MessageBox.Show($"配置数据.xml加载失败,软件已重置配置，请进入配置文件按需求修改,再重新打开软件:\r\n{ex.Message}");
-
+                MessageBox.Show(
+                    "配置数据.xml 损坏且无法从 .bak / .lastgood 恢复。\r\n" +
+                    "软件本轮使用内存默认配置，关闭时会保留磁盘文件，请检查配置备份目录。");
             }
         }
         #endregion
 
         #region 日志数据
+
+        /// <summary>
+        /// 日志数据本轮启动的加载健康状态，用于保护已存在的现场记录文件。
+        /// </summary>
+        private bool _recordConfigLoadFailed;
+
         public void SaveRecordModel()
         {
             string filename = $"{Environment.CurrentDirectory}\\配置\\日志数据.xml";
-            string dir = Path.GetDirectoryName(filename);
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-            using (var stream = File.Open(filename, FileMode.Create))
-            {
-                var serializer = new XmlSerializer(typeof(RecordModel));
-                serializer.Serialize(stream, DataModel.Recordmodel);
-            }
+            ConfigXmlSaveHelper.TrySave(
+                filename,
+                DataModel.Recordmodel,
+                _recordConfigLoadFailed,
+                WriteDetailLog);
         }
+
         public void LoadRecordModel()
         {
-            try
-            {
-                string filename = $"{Environment.CurrentDirectory}\\配置\\日志数据.xml";
-                string dir = Path.GetDirectoryName(filename);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                if (File.Exists(filename))
-                {
-                    using (var stream = File.OpenRead(filename))
-                    {
-                        var serializer = new XmlSerializer(typeof(RecordModel));
-                        DataModel.Recordmodel = serializer.Deserialize(stream) as RecordModel;
-                    }
-                }
-                else
-                {
-                    DataModel.Recordmodel = new RecordModel();
-                }
-            }
-            catch (Exception ex)
-            {
-                DataModel.Recordmodel = new RecordModel();
-                //MessageBox.Show($"日志数据.xml加载失败,软件已重置配置，请进入配置文件按需求修改,再重新打开软件:\r\n{ex.Message}");
+            string filename = $"{Environment.CurrentDirectory}\\配置\\日志数据.xml";
+            ConfigLoadResult<RecordModel> result = ConfigXmlSaveHelper.TryLoad(
+                filename,
+                () => new RecordModel(),
+                WriteDetailLog);
 
-            }
+            DataModel.Recordmodel = result.Data;
+            _recordConfigLoadFailed = result.LoadFailed;
         }
         #endregion
         #region 配方保存加载
 
-        public void SavePrjXmls()
+        /// <summary>
+        /// 当前工程配方本轮加载的健康状态。任一工具 XML 无法恢复时，整套工程禁止回写，避免部分工具覆盖完整现场配方。
+        /// </summary>
+        private bool _projectConfigLoadFailed;
+
+        /// <summary>
+        /// 保存当前工程工具。全部工具成功安全落盘后，才会清理超出当前工具数量的旧配方及备份。
+        /// </summary>
+        /// <returns>整套工程配方完成落盘时返回 true。</returns>
+        public bool SavePrjXmls()
         {
             try
             {
-                #region 删除旧xml文件
-                foreach (string s in Directory.GetFiles($"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}"))
+                if (_projectConfigLoadFailed)
                 {
-                    if (s.ToUpper().EndsWith(".XML"))
-                    {
-                        try
-                        {
-                            File.Delete(s);
-                        }
-                        catch (Exception ex) { continue; }
-                    }
+                    WriteDetailLog("[配置保存] 跳过：当前工程存在无法恢复的工具配置，保留整套现场文件");
+                    return false;
                 }
-                #endregion
+
+                if (!ConfigXmlSaveHelper.HasValidTools(DataModel.Processmodel.Tools))
+                {
+                    WriteDetailLog("[配置保存] 跳过：当前工程仅包含空白占位工具，保留现有 Tool*.xml");
+                    return false;
+                }
+
                 for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 {
-                    SavePrjXml(DataModel.Processmodel.Tools[i], i + 1);
+                    if (!SavePrjXml(DataModel.Processmodel.Tools[i], i + 1))
+                    {
+                        WriteDetailLog("[配置保存] 工程配方未全部落盘，保留多余工具文件供恢复");
+                        return false;
+                    }
                 }
+
+                string projectDir = Path.Combine(DataModel.Settingmodel.Prjdir, DataModel.Settingmodel.Name);
+                CleanupExtraToolConfigFiles(projectDir, DataModel.Processmodel.Tools.Count);
+                return true;
             }
-            catch (Exception ex) {; }
+            catch (Exception ex)
+            {
+                WriteDetailLog($"[配置保存] 工程配方保存异常：{ex.Message}");
+                return false;
+            }
         }
 
-        private void SavePrjXml(ToolModel td, int index)
+        /// <summary>
+        /// 保存单个工具 XML。工具相机序列号、曝光参数、ROI 和检测阈值在同一个经校验的文件中更新。
+        /// </summary>
+        /// <param name="td">待保存的工具配置。</param>
+        /// <param name="index">工具文件序号。</param>
+        /// <returns>工具正式文件更新完成时返回 true。</returns>
+        private bool SavePrjXml(ToolModel td, int index)
         {
             string filename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index}.xml";
-            string dir = Path.GetDirectoryName(filename);
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
             WriteCameraDebugLog($"[保存工具配置] 工具下标={td?.Index ?? -1} 工具XML='{filename}' 相机序列号='{td?.CameraSerialNumber}' 触发指令='{td?.Command}' 曝光时间={td?.ExposureTime ?? -1}");
-            using (var stream = File.Open(filename, FileMode.Create))
-            {
-                try
-                {
-                    var serializer = new XmlSerializer(typeof(ToolModel));
-                    serializer.Serialize(stream, td);
-                    return;
-                }
-                catch {; }
-            }
+            return ConfigXmlSaveHelper.TrySave(filename, td, false, WriteDetailLog);
         }
 
+        /// <summary>
+        /// 加载当前工程的工具配方。配方索引同时从主文件和备份文件识别，支持主文件缺失时的备份恢复。
+        /// </summary>
         public void LoadPrjXmls()
         {
-
+            _projectConfigLoadFailed = false;
             DataModel.Processmodel.Tools.Clear();
             string dir = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}";
             WriteDetailLog($"[工具加载] 工程目录: {dir}");
@@ -2612,29 +2644,43 @@ namespace F7_L12_Position_Detect.ViewModel
             string[] toolfilenames = Directory.GetFiles(dir);
             WriteDetailLog($"[工具加载] 目录中文件数量: {toolfilenames.Length}");
 
-            int count = 0;
+            var toolFileIndexes = new SortedSet<int>();
             for (int i = 0; i < toolfilenames.Length; i++)
             {
                 FileInfo fi = new FileInfo(toolfilenames[i]);
                 WriteDetailLog($"[工具加载] 文件{i}: {fi.Name}, 扩展名: {fi.Extension}");
-                if (fi.Extension.ToUpper() == ".XML")
+                int toolFileIndex;
+                if (TryGetToolIndexFromConfigArtifact(fi.Name, out toolFileIndex))
                 {
-                    count++;
+                    toolFileIndexes.Add(toolFileIndex);
                 }
             }
 
-            WriteDetailLog($"[工具加载] 找到XML文件数量: {count}");
+            WriteDetailLog($"[工具加载] 找到工具配置数量: {toolFileIndexes.Count}");
+            if (toolFileIndexes.Count > 0)
+            {
+                int highestToolIndex = toolFileIndexes.Max;
+                for (int expectedIndex = 1; expectedIndex <= highestToolIndex; expectedIndex++)
+                {
+                    if (!toolFileIndexes.Contains(expectedIndex))
+                    {
+                        _projectConfigLoadFailed = true;
+                        WriteDetailLog($"[工具加载] 缺少 Tool{expectedIndex}.xml 及恢复副本，本轮禁止覆盖工程文件");
+                    }
+                }
+            }
+
             int index = 0;
-            for (int k = 0; k < count; k++)
+            foreach (int toolFileIndex in toolFileIndexes)
             {
                 try
                 {
-                    var tool = LoadPrjXml(k + 1);
+                    var tool = LoadPrjXml(toolFileIndex);
                     if (tool != null)
                     {
                         tool.Index = (index++) + 1;
                         DataModel.Processmodel.Tools.Add(tool);
-                        string jpgfilename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index}.jpg";
+                        string jpgfilename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{toolFileIndex}.jpg";
                         #region 加载模型图片
                         tool.Image?.Dispose();
                         HOperatorSet.GenEmptyObj(out tool.Image);
@@ -2724,25 +2770,94 @@ namespace F7_L12_Position_Detect.ViewModel
             }
         }
 
+        /// <summary>
+        /// 清理已超出当前工具数量的配方文件及恢复副本。该流程只在当前全部工具成功落盘后执行。
+        /// </summary>
+        /// <param name="projectDir">当前工程目录。</param>
+        /// <param name="toolCount">当前工具数量。</param>
+        private void CleanupExtraToolConfigFiles(string projectDir, int toolCount)
+        {
+            if (!Directory.Exists(projectDir))
+            {
+                return;
+            }
+
+            foreach (string filePath in Directory.GetFiles(projectDir))
+            {
+                int toolIndex;
+                if (!TryGetToolIndexFromConfigArtifact(Path.GetFileName(filePath), out toolIndex) || toolIndex <= toolCount)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    File.Delete(filePath);
+                    WriteDetailLog($"[配置保存] 删除多余配方文件：{Path.GetFileName(filePath)}");
+                }
+                catch (Exception ex)
+                {
+                    WriteDetailLog($"[配置保存] 删除多余配方失败：{Path.GetFileName(filePath)}，{ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 从 <c>ToolN.xml</c>、<c>ToolN.xml.bak</c> 或 <c>ToolN.xml.lastgood</c> 中解析工具序号。
+        /// </summary>
+        /// <param name="fileName">工程目录中的文件名。</param>
+        /// <param name="toolIndex">成功时返回工具文件序号。</param>
+        /// <returns>文件属于可加载的工具 XML 或恢复副本时返回 true。</returns>
+        private static bool TryGetToolIndexFromConfigArtifact(string fileName, out int toolIndex)
+        {
+            toolIndex = 0;
+            if (string.IsNullOrWhiteSpace(fileName) || !fileName.StartsWith("Tool", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int xmlPosition = fileName.IndexOf(".xml", StringComparison.OrdinalIgnoreCase);
+            if (xmlPosition <= 4)
+            {
+                return false;
+            }
+
+            string suffix = fileName.Substring(xmlPosition + 4);
+            bool supportedSuffix = suffix.Length == 0
+                || string.Equals(suffix, ".bak", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(suffix, ".lastgood", StringComparison.OrdinalIgnoreCase);
+
+            return supportedSuffix
+                && int.TryParse(fileName.Substring(4, xmlPosition - 4), out toolIndex)
+                && toolIndex > 0;
+        }
+
+        /// <summary>
+        /// 加载指定序号的工具配方。主文件不可用时按备份顺序恢复；全部失败时标记整套工程禁止回写。
+        /// </summary>
+        /// <param name="index">工具文件序号。</param>
+        /// <returns>成功加载或恢复的工具配置；无可用文件时返回 null。</returns>
         private ToolModel LoadPrjXml(int index)
         {
             string dir = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}";
             string filename = $"{dir}\\Tool{index}.xml";
 
-            if (File.Exists(filename))
+            ConfigLoadResult<ToolModel> result = ConfigXmlSaveHelper.TryLoad<ToolModel>(
+                filename,
+                () => null,
+                WriteDetailLog);
+
+            if (result.RestoredFromBackup)
             {
-                using (var stream = File.OpenRead(filename))
-                {
-                    try
-                    {
-                        var serializer = new XmlSerializer(typeof(ToolModel));
-                        var r = serializer.Deserialize(stream) as ToolModel;
-                        return (ToolModel)r;
-                    }
-                    catch {; }
-                }
+                writeLog($"配方 Tool{index} 已从备份恢复：{Path.GetFileName(result.RestoredFrom)}", false);
             }
-            return null;
+            else if (result.LoadFailed)
+            {
+                _projectConfigLoadFailed = true;
+                writeLog($"配方 Tool{index}.xml 损坏且无法从备份恢复，本轮禁止覆盖工程文件", true);
+            }
+
+            return result.Data;
         }
         #endregion
         #endregion

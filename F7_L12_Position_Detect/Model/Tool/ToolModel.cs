@@ -31,8 +31,18 @@ namespace F7_L12_Position_Detect.Model.Tool
         [XmlIgnore]
         public ObservableCollection<string> AvailableCameras { set; get; } = new ObservableCollection<string>();
 
+        private int _selectedCameraIndex = -1;
+
+        /// <summary>
+        /// 工具编辑界面当前选中的相机下标。下标只服务界面显示，实际落盘使用 <see cref="CameraSerialNumber"/>。
+        /// </summary>
+        [PropertyChanged.DoNotNotify]
         [XmlIgnore]
-        public int SelectedCameraIndex { set; get; } = -1; // -1表示使用全局默认相机
+        public int SelectedCameraIndex
+        {
+            get { return _selectedCameraIndex; }
+            set { Set(ref _selectedCameraIndex, value); }
+        }
 
         [XmlIgnore]
         public QRCode.Reg Reg = new QRCode.Reg();

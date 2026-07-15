@@ -61,6 +61,7 @@
       <DependentUpon>CameraControl.xaml</DependentUpon>
     </Compile>
     <Compile Include="CameraModel.cs" />
+    <Compile Include="ConfigXmlSaveHelper.cs" />
     <Compile Include="DATA.cs" />
     <Compile Include="Hikvision.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

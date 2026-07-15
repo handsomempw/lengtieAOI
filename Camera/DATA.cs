@@ -15,41 +15,31 @@ namespace Camera
     {
         public CameraModel CameraModel { get; set; } = new CameraModel();
 
+        /// <summary>
+        /// 相机配置本轮启动的加载健康状态。无法从主文件和备份恢复时，该状态会阻止关闭流程用默认参数覆盖现场文件。
+        /// </summary>
+        private bool ConfigLoadFailed { get; set; }
+
         #region 保存设置
+
+        /// <summary>
+        /// 保存相机配置。序列号和曝光参数经临时文件校验后替换正式文件。
+        /// </summary>
+        /// <param name="filename">相机配置 XML 完整路径。</param>
         public void save_setting(string filename)
         {
-            try
-            {
-                string dir = Path.GetDirectoryName(filename);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                using (var stream = new FileStream(filename, FileMode.Create))
-                {
-                    XmlSerializer sz = new XmlSerializer(typeof(CameraModel));
-                    sz.Serialize(stream, CameraModel);
-                }
-            }
-            catch {; }
+            ConfigXmlSaveHelper.TrySave(filename, CameraModel, ConfigLoadFailed);
         }
+
+        /// <summary>
+        /// 加载相机配置。主文件损坏时自动使用可读备份，恢复失败时保留原文件供维护人员处理。
+        /// </summary>
+        /// <param name="filename">相机配置 XML 完整路径。</param>
         public void load_setting(string filename)
         {
-            try
-            {
-                if (File.Exists(filename))
-                {
-                    using (var stream = new StreamReader(filename))
-                    {
-                        XmlSerializer sz = new XmlSerializer(typeof(CameraModel));
-                        CameraModel = sz.Deserialize(stream) as CameraModel;
-                    }
-                    return;
-                }
-            }
-            catch
-            {; }
-            CameraModel = new CameraModel();
+            ConfigLoadResult<CameraModel> result = ConfigXmlSaveHelper.TryLoad(filename);
+            CameraModel = result.Data;
+            ConfigLoadFailed = result.LoadFailed;
         }
         #endregion
 
