@@ -38,12 +38,13 @@ namespace F7_L12_Position_Detect.Config
 
     /// <summary>
     /// 现场配置和工程工具 XML 的安全读写入口。
-    /// <para>主文件优先生效，<c>.bak</c> 保留替换前版本，<c>.lastgood</c> 保留最近一次可反序列化版本。</para>
+    /// <para>配置 XML 的恢复文件集中保存在“配置\备份”；工程文件通过时间戳快照保留完整配方、图片和模型。</para>
     /// </summary>
     internal static class ConfigXmlSaveHelper
     {
         private const string BackupExtension = ".bak";
         private const string LastGoodExtension = ".lastgood";
+        private const string RecoveryDirectoryName = "备份";
         private const int MaxTimestampBackupDirectories = 30;
         private const string RecoveryReadmeFileName = "readme.txt";
 
@@ -67,6 +68,8 @@ namespace F7_L12_Position_Detect.Config
         /// <returns>配置对象及加载健康状态。</returns>
         public static ConfigLoadResult<T> TryLoad<T>(string filename, Func<T> createDefault, Action<string> log = null) where T : class
         {
+            MigrateLegacyRecoveryFiles(filename, log);
+
             foreach (string sourceFile in GetLoadCandidates(filename))
             {
                 T data;
@@ -111,7 +114,7 @@ namespace F7_L12_Position_Detect.Config
         /// <param name="data">准备落盘的配置对象。</param>
         /// <param name="loadFailed">本轮加载是否发生无法恢复的失败。</param>
         /// <param name="log">现场诊断日志入口。</param>
-        /// <returns>正式文件完成更新时返回 true。</returns>
+        /// <returns>正式文件完成更新或内容保持一致时返回 true。</returns>
         public static bool TrySave<T>(string filename, T data, bool loadFailed, Action<string> log = null) where T : class
         {
             if (data == null)
@@ -128,7 +131,43 @@ namespace F7_L12_Position_Detect.Config
 
             try
             {
-                SaveValidatedXml(filename, data, log);
+                SaveValidatedXml(filename, data, true, log);
+                log?.Invoke($"[配置保存] 成功：{Path.GetFileName(filename)}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[配置保存] 失败：{Path.GetFileName(filename)}，{ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 安全保存工程工具 XML。正式文件仍经过临时文件校验和原子替换，恢复能力由加载前的完整工程时间戳快照提供。
+        /// </summary>
+        /// <typeparam name="T">工程工具 XML 对应的数据类型。</typeparam>
+        /// <param name="filename">工程目录中的正式 XML 路径。</param>
+        /// <param name="data">准备落盘的工具配置。</param>
+        /// <param name="loadFailed">本轮工程加载是否发生无法恢复的失败。</param>
+        /// <param name="log">现场诊断日志入口。</param>
+        /// <returns>正式工程文件完成更新或内容保持一致时返回 true。</returns>
+        public static bool TrySaveProjectFile<T>(string filename, T data, bool loadFailed, Action<string> log = null) where T : class
+        {
+            if (data == null)
+            {
+                log?.Invoke($"[配置保存] 跳过：{Path.GetFileName(filename)} 数据为空");
+                return false;
+            }
+
+            if (loadFailed)
+            {
+                log?.Invoke($"[配置保存] 跳过：{Path.GetFileName(filename)} 本次加载失败，保留现场文件");
+                return false;
+            }
+
+            try
+            {
+                SaveValidatedXml(filename, data, false, log);
                 log?.Invoke($"[配置保存] 成功：{Path.GetFileName(filename)}");
                 return true;
             }
@@ -148,6 +187,30 @@ namespace F7_L12_Position_Detect.Config
         /// <param name="log">现场诊断日志入口。</param>
         public static void BackupXmlFiles(string sourceDir, string backupRoot, string categoryName, Action<string> log = null)
         {
+            BackupFiles(sourceDir, backupRoot, categoryName, "*.xml", SearchOption.TopDirectoryOnly, false, log);
+        }
+
+        /// <summary>
+        /// 启动加载前递归备份工程目录，保留工具 XML、示教图片、视觉模型及其子目录结构。
+        /// </summary>
+        /// <param name="sourceDir">当前工程目录。</param>
+        /// <param name="backupRoot">时间戳备份根目录。</param>
+        /// <param name="categoryName">包含工程名称的备份分类。</param>
+        /// <param name="log">现场诊断日志入口。</param>
+        public static void BackupProjectFiles(string sourceDir, string backupRoot, string categoryName, Action<string> log = null)
+        {
+            BackupFiles(sourceDir, backupRoot, categoryName, "*", SearchOption.AllDirectories, true, log);
+        }
+
+        private static void BackupFiles(
+            string sourceDir,
+            string backupRoot,
+            string categoryName,
+            string searchPattern,
+            SearchOption searchOption,
+            bool preserveRelativePath,
+            Action<string> log)
+        {
             try
             {
                 PrepareBackupRoot(backupRoot, log);
@@ -157,8 +220,8 @@ namespace F7_L12_Position_Detect.Config
                     return;
                 }
 
-                string[] xmlFiles = Directory.GetFiles(sourceDir, "*.xml", SearchOption.TopDirectoryOnly);
-                if (xmlFiles.Length == 0)
+                string[] sourceFiles = Directory.GetFiles(sourceDir, searchPattern, searchOption);
+                if (sourceFiles.Length == 0)
                 {
                     return;
                 }
@@ -170,11 +233,16 @@ namespace F7_L12_Position_Detect.Config
                 Directory.CreateDirectory(targetDir);
 
                 int copiedCount = 0;
-                foreach (string sourceFile in xmlFiles)
+                foreach (string sourceFile in sourceFiles)
                 {
                     try
                     {
-                        File.Copy(sourceFile, Path.Combine(targetDir, Path.GetFileName(sourceFile)), true);
+                        string relativePath = preserveRelativePath
+                            ? GetRelativePath(sourceDir, sourceFile)
+                            : Path.GetFileName(sourceFile);
+                        string targetFile = Path.Combine(targetDir, relativePath);
+                        EnsureDirectory(targetFile);
+                        File.Copy(sourceFile, targetFile, true);
                         copiedCount++;
                     }
                     catch (Exception ex)
@@ -185,7 +253,8 @@ namespace F7_L12_Position_Detect.Config
 
                 if (copiedCount > 0)
                 {
-                    log?.Invoke($"[配置备份] 已备份{copiedCount}个XML到：{targetDir}");
+                    string fileType = searchOption == SearchOption.AllDirectories ? "个工程文件" : "个XML";
+                    log?.Invoke($"[配置备份] 已备份{copiedCount}{fileType}到：{targetDir}");
                 }
 
                 PruneTimestampBackupDirectories(backupRoot, log);
@@ -224,10 +293,10 @@ namespace F7_L12_Position_Detect.Config
                 "配置备份与恢复说明\r\n" +
                 "\r\n" +
                 "1. 本目录由软件自动管理，保留最近30个 yyyyMMdd_HHmmss 时间戳目录。\r\n" +
-                "2. 系统配置位于时间戳目录的“系统配置”中；工程工具位于“工程_工程名”中。\r\n" +
+                "2. 系统配置位于时间戳目录的“系统配置”中；完整工程文件位于“工程_工程名”中，并保留图片、模型和子目录。\r\n" +
                 "3. 正常运行时无需手工修改、移动或删除这些文件。\r\n" +
-                "4. 需要人工恢复时：先关闭软件，备份当前故障文件，再把选定时间戳中的 XML 复制回原“配置”或工程目录。\r\n" +
-                "5. 正式 XML 旁的 .bak 是上一次保存版本，.lastgood 是最近一次校验通过版本，由软件自动恢复。\r\n" +
+                "4. 需要人工恢复时：先关闭软件，备份当前故障文件，再把选定时间戳中的文件复制回原“配置”或工程目录。\r\n" +
+                "5. 配置 XML 的 .bak 和 .lastgood 集中位于“配置\\备份”目录，由软件自动恢复；工程文件由时间戳目录恢复。\r\n" +
                 "6. 恢复后请核对当前工程、相机序列号、PLC参数和点检配置后再投入生产。\r\n";
 
             try
@@ -317,16 +386,83 @@ namespace F7_L12_Position_Detect.Config
 
         private static bool HasAnyPersistedFile(string filename)
         {
-            return File.Exists(filename)
-                || File.Exists(filename + BackupExtension)
-                || File.Exists(filename + LastGoodExtension);
+            return GetLoadCandidates(filename).Any(File.Exists);
         }
 
         private static IEnumerable<string> GetLoadCandidates(string filename)
         {
             yield return filename;
+
+            if (IsConfigurationFile(filename))
+            {
+                yield return GetRecoveryFilePath(filename, BackupExtension);
+                yield return GetRecoveryFilePath(filename, LastGoodExtension);
+            }
+
+            // 兼容旧版本：现场升级后仍可从原先紧邻正式文件的恢复副本加载。
             yield return filename + BackupExtension;
             yield return filename + LastGoodExtension;
+        }
+
+        private static bool IsConfigurationFile(string filename)
+        {
+            string directory = Path.GetDirectoryName(filename);
+            return !string.IsNullOrWhiteSpace(directory)
+                && string.Equals(
+                    new DirectoryInfo(directory).Name,
+                    "配置",
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetRecoveryFilePath(string filename, string extension)
+        {
+            string directory = Path.GetDirectoryName(filename) ?? string.Empty;
+            return Path.Combine(directory, RecoveryDirectoryName, Path.GetFileName(filename) + extension);
+        }
+
+        private static void MigrateLegacyRecoveryFiles(string filename, Action<string> log)
+        {
+            if (!IsConfigurationFile(filename))
+            {
+                return;
+            }
+
+            MigrateLegacyRecoveryFile(filename, BackupExtension, log);
+            MigrateLegacyRecoveryFile(filename, LastGoodExtension, log);
+        }
+
+        private static void MigrateLegacyRecoveryFile(string filename, string extension, Action<string> log)
+        {
+            string legacyFile = filename + extension;
+            if (!File.Exists(legacyFile))
+            {
+                return;
+            }
+
+            string recoveryFile = GetRecoveryFilePath(filename, extension);
+            try
+            {
+                EnsureDirectory(recoveryFile);
+                if (!File.Exists(recoveryFile))
+                {
+                    File.Move(legacyFile, recoveryFile);
+                }
+                else if (FilesHaveSameContent(legacyFile, recoveryFile))
+                {
+                    File.Delete(legacyFile);
+                }
+                else
+                {
+                    string retainedLegacyFile = recoveryFile + ".legacy_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfff");
+                    File.Move(legacyFile, retainedLegacyFile);
+                }
+
+                log?.Invoke($"[配置备份] 已整理旧恢复文件：{Path.GetFileName(legacyFile)}");
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[配置备份] 旧恢复文件整理失败：{Path.GetFileName(legacyFile)}，{ex.Message}");
+            }
         }
 
         private static bool TryDeserialize<T>(string filename, out T data) where T : class
@@ -354,13 +490,13 @@ namespace F7_L12_Position_Detect.Config
             }
         }
 
-        private static void SaveValidatedXml<T>(string filename, T data, Action<string> log) where T : class
+        private static void SaveValidatedXml<T>(string filename, T data, bool maintainRecoveryCopies, Action<string> log) where T : class
         {
             EnsureDirectory(filename);
 
             string tempFile = filename + ".tmp";
-            string backupFile = filename + BackupExtension;
-            string lastGoodFile = filename + LastGoodExtension;
+            string backupFile = maintainRecoveryCopies ? GetRecoveryFilePath(filename, BackupExtension) : null;
+            string lastGoodFile = maintainRecoveryCopies ? GetRecoveryFilePath(filename, LastGoodExtension) : null;
 
             try
             {
@@ -377,9 +513,23 @@ namespace F7_L12_Position_Detect.Config
                     throw new InvalidOperationException("临时文件校验失败");
                 }
 
+                if (File.Exists(filename) && FilesHaveSameContent(tempFile, filename))
+                {
+                    if (maintainRecoveryCopies)
+                    {
+                        TryCopyFile(filename, lastGoodFile, log);
+                    }
+
+                    log?.Invoke($"[配置保存] 内容未变化，跳过替换：{Path.GetFileName(filename)}");
+                    return;
+                }
+
                 if (File.Exists(filename))
                 {
-                    TryCopyFile(filename, backupFile, log);
+                    if (maintainRecoveryCopies)
+                    {
+                        TryCopyFile(filename, backupFile, log);
+                    }
                     ReplaceExistingFile(tempFile, filename);
                 }
                 else
@@ -387,7 +537,10 @@ namespace F7_L12_Position_Detect.Config
                     File.Move(tempFile, filename);
                 }
 
-                TryCopyFile(filename, lastGoodFile, log);
+                if (maintainRecoveryCopies)
+                {
+                    TryCopyFile(filename, lastGoodFile, log);
+                }
             }
             finally
             {
@@ -399,6 +552,11 @@ namespace F7_L12_Position_Detect.Config
         {
             try
             {
+                if (File.Exists(destinationFile) && FilesHaveSameContent(sourceFile, destinationFile))
+                {
+                    return;
+                }
+
                 EnsureDirectory(destinationFile);
                 string tempCopy = destinationFile + ".copytmp";
                 File.Copy(sourceFile, tempCopy, true);
@@ -420,6 +578,57 @@ namespace F7_L12_Position_Detect.Config
             {
                 TryDeleteFile(destinationFile + ".copytmp");
             }
+        }
+
+        private static bool FilesHaveSameContent(string firstFile, string secondFile)
+        {
+            var firstInfo = new FileInfo(firstFile);
+            var secondInfo = new FileInfo(secondFile);
+            if (!firstInfo.Exists || !secondInfo.Exists || firstInfo.Length != secondInfo.Length)
+            {
+                return false;
+            }
+
+            const int bufferSize = 81920;
+            byte[] firstBuffer = new byte[bufferSize];
+            byte[] secondBuffer = new byte[bufferSize];
+            using (var firstStream = new FileStream(firstFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            using (var secondStream = new FileStream(secondFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            {
+                int firstRead;
+                while ((firstRead = firstStream.Read(firstBuffer, 0, firstBuffer.Length)) > 0)
+                {
+                    int secondRead = secondStream.Read(secondBuffer, 0, secondBuffer.Length);
+                    if (firstRead != secondRead)
+                    {
+                        return false;
+                    }
+
+                    for (int i = 0; i < firstRead; i++)
+                    {
+                        if (firstBuffer[i] != secondBuffer[i])
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                return secondStream.ReadByte() == -1;
+            }
+        }
+
+        private static string GetRelativePath(string rootDirectory, string filename)
+        {
+            string normalizedRoot = Path.GetFullPath(rootDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            string normalizedFile = Path.GetFullPath(filename);
+            if (normalizedFile.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return normalizedFile.Substring(normalizedRoot.Length);
+            }
+
+            return Path.GetFileName(filename);
         }
 
         private static void EnsureDirectory(string filename)

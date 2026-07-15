@@ -28,12 +28,13 @@ namespace Camera
     }
 
     /// <summary>
-    /// 相机配置 XML 的安全读写入口。该入口保护相机序列号和曝光参数，并通过 <c>.bak</c> 与 <c>.lastgood</c> 提供恢复副本。
+    /// 相机配置 XML 的安全读写入口。该入口保护相机序列号和曝光参数，恢复副本集中保存在“配置\备份”目录。
     /// </summary>
     internal static class ConfigXmlSaveHelper
     {
         private const string BackupExtension = ".bak";
         private const string LastGoodExtension = ".lastgood";
+        private const string RecoveryDirectoryName = "备份";
 
         /// <summary>
         /// 加载相机配置，主文件损坏时按备份顺序自动恢复。
@@ -42,6 +43,8 @@ namespace Camera
         /// <returns>相机配置及加载健康状态。</returns>
         public static ConfigLoadResult<CameraModel> TryLoad(string filename)
         {
+            MigrateLegacyRecoveryFiles(filename);
+
             foreach (string sourceFile in GetLoadCandidates(filename))
             {
                 CameraModel data;
@@ -77,7 +80,7 @@ namespace Camera
         /// <param name="filename">相机配置 XML 完整路径。</param>
         /// <param name="data">准备落盘的相机配置。</param>
         /// <param name="loadFailed">本轮启动是否发生无法恢复的加载失败。</param>
-        /// <returns>正式文件完成更新时返回 true。</returns>
+        /// <returns>正式文件完成更新或内容保持一致时返回 true。</returns>
         public static bool TrySave(string filename, CameraModel data, bool loadFailed)
         {
             if (data == null || loadFailed)
@@ -98,16 +101,70 @@ namespace Camera
 
         private static bool HasAnyPersistedFile(string filename)
         {
-            return File.Exists(filename)
-                || File.Exists(filename + BackupExtension)
-                || File.Exists(filename + LastGoodExtension);
+            foreach (string candidate in GetLoadCandidates(filename))
+            {
+                if (File.Exists(candidate))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static IEnumerable<string> GetLoadCandidates(string filename)
         {
             yield return filename;
+            yield return GetRecoveryFilePath(filename, BackupExtension);
+            yield return GetRecoveryFilePath(filename, LastGoodExtension);
+
+            // 兼容旧版本：升级后仍可读取原先紧邻正式文件的恢复副本。
             yield return filename + BackupExtension;
             yield return filename + LastGoodExtension;
+        }
+
+        private static string GetRecoveryFilePath(string filename, string extension)
+        {
+            string directory = Path.GetDirectoryName(filename) ?? string.Empty;
+            return Path.Combine(directory, RecoveryDirectoryName, Path.GetFileName(filename) + extension);
+        }
+
+        private static void MigrateLegacyRecoveryFiles(string filename)
+        {
+            MigrateLegacyRecoveryFile(filename, BackupExtension);
+            MigrateLegacyRecoveryFile(filename, LastGoodExtension);
+        }
+
+        private static void MigrateLegacyRecoveryFile(string filename, string extension)
+        {
+            string legacyFile = filename + extension;
+            if (!File.Exists(legacyFile))
+            {
+                return;
+            }
+
+            string recoveryFile = GetRecoveryFilePath(filename, extension);
+            try
+            {
+                EnsureDirectory(recoveryFile);
+                if (!File.Exists(recoveryFile))
+                {
+                    File.Move(legacyFile, recoveryFile);
+                }
+                else if (FilesHaveSameContent(legacyFile, recoveryFile))
+                {
+                    File.Delete(legacyFile);
+                }
+                else
+                {
+                    string retainedLegacyFile = recoveryFile + ".legacy_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfff");
+                    File.Move(legacyFile, retainedLegacyFile);
+                }
+            }
+            catch
+            {
+                // 整理失败时保留原文件，后续加载候选仍包含旧路径。
+            }
         }
 
         private static bool TryDeserialize(string filename, out CameraModel data)
@@ -139,8 +196,8 @@ namespace Camera
         {
             EnsureDirectory(filename);
             string tempFile = filename + ".tmp";
-            string backupFile = filename + BackupExtension;
-            string lastGoodFile = filename + LastGoodExtension;
+            string backupFile = GetRecoveryFilePath(filename, BackupExtension);
+            string lastGoodFile = GetRecoveryFilePath(filename, LastGoodExtension);
 
             try
             {
@@ -155,6 +212,12 @@ namespace Camera
                 if (!TryDeserialize(tempFile, out verified))
                 {
                     throw new InvalidOperationException("相机配置临时文件校验失败");
+                }
+
+                if (File.Exists(filename) && FilesHaveSameContent(tempFile, filename))
+                {
+                    TryCopyFile(filename, lastGoodFile);
+                    return;
                 }
 
                 if (File.Exists(filename))
@@ -180,6 +243,11 @@ namespace Camera
             string tempCopy = destinationFile + ".copytmp";
             try
             {
+                if (File.Exists(destinationFile) && FilesHaveSameContent(sourceFile, destinationFile))
+                {
+                    return;
+                }
+
                 EnsureDirectory(destinationFile);
                 File.Copy(sourceFile, tempCopy, true);
                 if (File.Exists(destinationFile))
@@ -197,6 +265,43 @@ namespace Camera
             finally
             {
                 TryDeleteFile(tempCopy);
+            }
+        }
+
+        private static bool FilesHaveSameContent(string firstFile, string secondFile)
+        {
+            var firstInfo = new FileInfo(firstFile);
+            var secondInfo = new FileInfo(secondFile);
+            if (!firstInfo.Exists || !secondInfo.Exists || firstInfo.Length != secondInfo.Length)
+            {
+                return false;
+            }
+
+            const int bufferSize = 81920;
+            byte[] firstBuffer = new byte[bufferSize];
+            byte[] secondBuffer = new byte[bufferSize];
+            using (var firstStream = new FileStream(firstFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            using (var secondStream = new FileStream(secondFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            {
+                int firstRead;
+                while ((firstRead = firstStream.Read(firstBuffer, 0, firstBuffer.Length)) > 0)
+                {
+                    int secondRead = secondStream.Read(secondBuffer, 0, secondBuffer.Length);
+                    if (firstRead != secondRead)
+                    {
+                        return false;
+                    }
+
+                    for (int i = 0; i < firstRead; i++)
+                    {
+                        if (firstBuffer[i] != secondBuffer[i])
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                return secondStream.ReadByte() == -1;
             }
         }
 
