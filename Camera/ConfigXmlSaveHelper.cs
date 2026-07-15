@@ -30,10 +30,14 @@ namespace Camera
 
     /// <summary>
     /// 相机配置 XML 的安全读写入口。相机初始化和软件关闭保存共用该入口，统一处理主文件、备份恢复、临时文件校验和原子替换。
-    /// <para>该组件保护现场相机序列号、曝光时间等调试参数，避免配置损坏后由默认参数覆盖磁盘文件，同时支持首装自动生成配置。</para>
+    /// <para>相机序列号、曝光时间等调试参数的恢复副本集中保存在“配置\备份”，同时支持首装自动生成配置。</para>
     /// </summary>
     internal static class ConfigXmlSaveHelper
     {
+        private const string BackupExtension = ".bak";
+        private const string LastGoodExtension = ".lastgood";
+        private const string RecoveryDirectoryName = "备份";
+
         /// <summary>
         /// 加载相机配置。主文件损坏时按备份顺序恢复，首装无文件时返回默认相机参数并允许后续保存。
         /// </summary>
@@ -54,6 +58,8 @@ namespace Camera
         /// <returns>返回配置对象以及是否从备份恢复、是否加载失败。</returns>
         public static ConfigLoadResult<T> TryLoad<T>(string filename, Func<T> createDefault, Action<string> log = null) where T : class
         {
+            MigrateLegacyRecoveryFiles(filename);
+
             foreach (string sourceFile in GetLoadCandidates(filename))
             {
                 T data = TryDeserialize<T>(sourceFile);
@@ -95,7 +101,7 @@ namespace Camera
         /// <param name="filename">相机配置 XML 完整路径。</param>
         /// <param name="data">准备保存的相机配置。</param>
         /// <param name="loadFailed">本轮启动时相机配置是否发生无法恢复的加载失败。</param>
-        /// <returns>返回 true 表示配置已成功落盘。</returns>
+        /// <returns>配置完成更新或内容保持一致时返回 true。</returns>
         public static bool TrySave(string filename, CameraModel data, bool loadFailed)
         {
             return TrySave<CameraModel>(filename, data, loadFailed);
@@ -108,7 +114,7 @@ namespace Camera
         /// <param name="filename">主配置文件完整路径。</param>
         /// <param name="data">准备保存的内存配置对象。</param>
         /// <param name="loadFailed">本轮启动时该配置是否发生无法恢复的加载失败。</param>
-        /// <returns>返回 true 表示配置已成功落盘。</returns>
+        /// <returns>配置完成更新或内容保持一致时返回 true。</returns>
         public static bool TrySave<T>(string filename, T data, bool loadFailed) where T : class
         {
             if (data == null || loadFailed)
@@ -134,9 +140,15 @@ namespace Camera
         /// <returns>返回 true 表示存在主文件、<c>.bak</c> 或 <c>.lastgood</c> 中的任一文件。</returns>
         private static bool HasAnyPersistedFile(string filename)
         {
-            return File.Exists(filename)
-                || File.Exists(filename + ".bak")
-                || File.Exists(filename + ".lastgood");
+            foreach (string candidate in GetLoadCandidates(filename))
+            {
+                if (File.Exists(candidate))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -147,8 +159,56 @@ namespace Camera
         private static IEnumerable<string> GetLoadCandidates(string filename)
         {
             yield return filename;
-            yield return filename + ".bak";
-            yield return filename + ".lastgood";
+            yield return GetRecoveryFilePath(filename, BackupExtension);
+            yield return GetRecoveryFilePath(filename, LastGoodExtension);
+
+            // 兼容升级前紧邻正式文件的恢复副本。
+            yield return filename + BackupExtension;
+            yield return filename + LastGoodExtension;
+        }
+
+        private static string GetRecoveryFilePath(string filename, string extension)
+        {
+            string directory = Path.GetDirectoryName(filename) ?? string.Empty;
+            return Path.Combine(directory, RecoveryDirectoryName, Path.GetFileName(filename) + extension);
+        }
+
+        private static void MigrateLegacyRecoveryFiles(string filename)
+        {
+            MigrateLegacyRecoveryFile(filename, BackupExtension);
+            MigrateLegacyRecoveryFile(filename, LastGoodExtension);
+        }
+
+        private static void MigrateLegacyRecoveryFile(string filename, string extension)
+        {
+            string legacyFile = filename + extension;
+            if (!File.Exists(legacyFile))
+            {
+                return;
+            }
+
+            string recoveryFile = GetRecoveryFilePath(filename, extension);
+            try
+            {
+                EnsureDirectory(recoveryFile);
+                if (!File.Exists(recoveryFile))
+                {
+                    File.Move(legacyFile, recoveryFile);
+                }
+                else if (FilesHaveSameContent(legacyFile, recoveryFile))
+                {
+                    File.Delete(legacyFile);
+                }
+                else
+                {
+                    string retainedLegacyFile = recoveryFile + ".legacy_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfff");
+                    File.Move(legacyFile, retainedLegacyFile);
+                }
+            }
+            catch
+            {
+                // 整理失败时保留原文件，加载候选继续包含旧路径。
+            }
         }
 
         /// <summary>
@@ -185,18 +245,31 @@ namespace Camera
         /// <param name="destinationFile">主配置文件路径。</param>
         private static void TryCopyFile(string sourceFile, string destinationFile)
         {
+            string tempCopy = destinationFile + ".copytmp";
             try
             {
-                string dir = Path.GetDirectoryName(destinationFile);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                if (File.Exists(destinationFile) && FilesHaveSameContent(sourceFile, destinationFile))
                 {
-                    Directory.CreateDirectory(dir);
+                    return;
                 }
 
-                File.Copy(sourceFile, destinationFile, true);
+                EnsureDirectory(destinationFile);
+                File.Copy(sourceFile, tempCopy, true);
+                if (File.Exists(destinationFile))
+                {
+                    ReplaceExistingFile(tempCopy, destinationFile);
+                }
+                else
+                {
+                    File.Move(tempCopy, destinationFile);
+                }
             }
             catch
             {
+            }
+            finally
+            {
+                TryDeleteFile(tempCopy);
             }
         }
 
@@ -208,14 +281,10 @@ namespace Camera
         /// <param name="data">准备写入的配置对象。</param>
         private static void AtomicSerialize<T>(string filename, T data) where T : class
         {
-            string dir = Path.GetDirectoryName(filename);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
+            EnsureDirectory(filename);
 
-            string backupFile = filename + ".bak";
-            string lastGoodFile = filename + ".lastgood";
+            string backupFile = GetRecoveryFilePath(filename, BackupExtension);
+            string lastGoodFile = GetRecoveryFilePath(filename, LastGoodExtension);
             string tempFile = filename + ".tmp";
 
             try
@@ -231,8 +300,15 @@ namespace Camera
                     throw new InvalidOperationException("临时文件校验失败");
                 }
 
+                if (File.Exists(filename) && FilesHaveSameContent(tempFile, filename))
+                {
+                    TryCopyFile(filename, lastGoodFile);
+                    return;
+                }
+
                 if (File.Exists(filename))
                 {
+                    EnsureDirectory(backupFile);
                     File.Replace(tempFile, filename, backupFile);
                 }
                 else
@@ -244,16 +320,75 @@ namespace Camera
             }
             finally
             {
-                if (File.Exists(tempFile))
+                TryDeleteFile(tempFile);
+            }
+        }
+
+        private static bool FilesHaveSameContent(string firstFile, string secondFile)
+        {
+            var firstInfo = new FileInfo(firstFile);
+            var secondInfo = new FileInfo(secondFile);
+            if (!firstInfo.Exists || !secondInfo.Exists || firstInfo.Length != secondInfo.Length)
+            {
+                return false;
+            }
+
+            const int bufferSize = 81920;
+            byte[] firstBuffer = new byte[bufferSize];
+            byte[] secondBuffer = new byte[bufferSize];
+            using (var firstStream = new FileStream(firstFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            using (var secondStream = new FileStream(secondFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            {
+                int firstRead;
+                while ((firstRead = firstStream.Read(firstBuffer, 0, firstBuffer.Length)) > 0)
                 {
-                    try
+                    int secondRead = secondStream.Read(secondBuffer, 0, secondBuffer.Length);
+                    if (firstRead != secondRead)
                     {
-                        File.Delete(tempFile);
+                        return false;
                     }
-                    catch
+
+                    for (int i = 0; i < firstRead; i++)
                     {
+                        if (firstBuffer[i] != secondBuffer[i])
+                        {
+                            return false;
+                        }
                     }
                 }
+
+                return secondStream.ReadByte() == -1;
+            }
+        }
+
+        private static void EnsureDirectory(string filename)
+        {
+            string directory = Path.GetDirectoryName(filename);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+        }
+
+        private static void ReplaceExistingFile(string sourceFile, string destinationFile)
+        {
+            string replaceBackupFile = destinationFile + ".replacebak";
+            TryDeleteFile(replaceBackupFile);
+            File.Replace(sourceFile, destinationFile, replaceBackupFile);
+            TryDeleteFile(replaceBackupFile);
+        }
+
+        private static void TryDeleteFile(string filename)
+        {
+            try
+            {
+                if (File.Exists(filename))
+                {
+                    File.Delete(filename);
+                }
+            }
+            catch
+            {
             }
         }
     }

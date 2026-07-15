@@ -2162,7 +2162,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
         public void Load_Prj()
         {
-            BackupCurrentProjectXmlsBeforeLoad();
+            BackupCurrentProjectFilesBeforeLoad();
             LoadPrjXmls();
             CheckPrj();
             Prjs_selectedindex();
@@ -2287,9 +2287,9 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 主配置加载后、工程工具加载前备份当前工程 XML。该备份只保护工具配方，不改变工程选择和生产执行流程。
+        /// 主配置加载后、工程工具加载前备份当前工程。快照覆盖工具 XML、示教图片、视觉模型和子目录，工程选择与生产执行流程保持原有行为。
         /// </summary>
-        public void BackupCurrentProjectXmlsBeforeLoad()
+        public void BackupCurrentProjectFilesBeforeLoad()
         {
             if (string.IsNullOrWhiteSpace(DataModel.Settingmodel.Prjdir)
                 || string.IsNullOrWhiteSpace(DataModel.Settingmodel.Name))
@@ -2299,7 +2299,7 @@ namespace F7_L12_Position_Detect.ViewModel
             }
 
             string projectDir = Path.Combine(DataModel.Settingmodel.Prjdir, DataModel.Settingmodel.Name);
-            ConfigXmlSaveHelper.BackupXmlFiles(
+            ConfigXmlSaveHelper.BackupProjectFiles(
                 projectDir,
                 Path.Combine(Environment.CurrentDirectory, "配置备份"),
                 $"工程_{DataModel.Settingmodel.Name}",
@@ -2438,7 +2438,7 @@ namespace F7_L12_Position_Detect.ViewModel
         private bool SavePrjXml(ToolModel td, int index)
         {
             string filename = $"{DataModel.Settingmodel.Prjdir}\\{DataModel.Settingmodel.Name}\\Tool{index}.xml";
-            return ConfigXmlSaveHelper.TrySave(
+            return ConfigXmlSaveHelper.TrySaveProjectFile(
                 filename,
                 td,
                 false,
