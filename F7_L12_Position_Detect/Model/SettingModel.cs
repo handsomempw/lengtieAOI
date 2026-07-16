@@ -15,12 +15,12 @@ namespace F7_L12_Position_Detect.Model
     public enum StageFailRetryStrategy
     {
         /// <summary>
-        /// 阶段失败（NG/NG2/超时）后，下次触发从第一个阶段（通常为A1）重跑。
+        /// 普通生产阶段失败（NG/NG2/超时）后，下次触发从第一个阶段（通常为A1）重跑。点检样件始终保留当前阶段，供调参后重复触发。
         /// </summary>
         从头开始重跑 = 0,
 
         /// <summary>
-        /// 阶段失败后，不清理已完成阶段与其它阶段工具结果，仅在下一次触发时重试当前失败阶段。
+        /// 普通生产阶段失败后，不清理已完成阶段与其它阶段工具结果，仅在下一次触发时重试当前失败阶段。点检样件使用相同的当前阶段重试口径。
         /// </summary>
         仅重试失败阶段_保留已有结果 = 1,
     }
@@ -128,6 +128,9 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("报工配置")]
         public ReportWorkConfig ReportWorkConfig { set; get; } = new ReportWorkConfig();
 
+        /// <summary>
+        /// 普通生产阶段失败后的重试策略，保存于主配置XML。点检模式使用独立规则：当前失败阶段重复触发，XML全局策略不改变点检的重试方式。
+        /// </summary>
         [XmlElement("阶段失败重试策略")]
         public StageFailRetryStrategy StageFailRetryStrategy { get; set; } = StageFailRetryStrategy.从头开始重跑;
 
@@ -144,6 +147,31 @@ namespace F7_L12_Position_Detect.Model
     /// </summary>
     public class ReportWorkConfig : ObservableObject
     {
+        /// <summary>
+        /// 点检周期的默认值，单位为小时。配置缺失或超出允许范围时沿用该值，保证升级后仍按既有12小时门禁运行。
+        /// </summary>
+        public const int DefaultInspectionIntervalHours = 12;
+
+        /// <summary>
+        /// 点检周期允许的最小值，单位为小时。1小时是普通产品到期门禁和倒计时的最小业务粒度。
+        /// </summary>
+        public const int MinInspectionIntervalHours = 1;
+
+        /// <summary>
+        /// 点检周期允许的最大值，单位为小时。48小时限制现场最长免点检窗口，避免异常配置造成长期放行。
+        /// </summary>
+        public const int MaxInspectionIntervalHours = 48;
+
+        /// <summary>
+        /// NG点检的“任一NG”条件标识，供XML配置和运行时判定共用。
+        /// </summary>
+        public const string InspectionNgConditionAny = "任一NG";
+
+        /// <summary>
+        /// NG点检的“全部NG”条件标识，供XML配置和运行时判定共用。
+        /// </summary>
+        public const string InspectionNgConditionAll = "全部NG";
+
         private string _stationCode = "ST001";
         [XmlElement("工位号")]
         public string StationCode
@@ -205,8 +233,40 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
-        // 点检：弹窗按钮只选择待点检类型；必须扫描对应点检SN后才进入点检模式
+        private int _inspectionIntervalHours = DefaultInspectionIntervalHours;
+        /// <summary>
+        /// 两轮强制点检之间的有效时长，单位为小时。有效范围为1至48小时；配置节点缺失、填写小于1或大于48的值时，运行时按12小时处理。
+        /// </summary>
+        [XmlElement("点检周期小时")]
+        public int InspectionIntervalHours
+        {
+            get { return _inspectionIntervalHours; }
+            set
+            {
+                _inspectionIntervalHours = value;
+                RaisePropertyChanged(() => InspectionIntervalHours);
+            }
+        }
+
+        private string _inspectionNgPassCondition = InspectionNgConditionAny;
+        /// <summary>
+        /// NG点检的判定口径。“任一NG”接受至少一个判定框NG，“全部NG”要求本次参与检测的判定框全部NG；NG2始终表示点检异常。
+        /// </summary>
+        [XmlElement("NG点检合格条件")]
+        public string InspectionNgPassCondition
+        {
+            get { return _inspectionNgPassCondition; }
+            set
+            {
+                _inspectionNgPassCondition = value;
+                RaisePropertyChanged(() => InspectionNgPassCondition);
+            }
+        }
+
         private string _okInspectionSN = "OK_INSPECTION";
+        /// <summary>
+        /// OK点检样件在MES中的最终绑定产品SN。扫码经MES实时解析并确认该SN后进入OK点检，点检链路跳过工序校验和正常报工。
+        /// </summary>
         [XmlElement("OK点检SN码")]
         public string OKInspectionSN
         {
@@ -219,6 +279,9 @@ namespace F7_L12_Position_Detect.Model
         }
 
         private string _ngInspectionSN = "NG_INSPECTION";
+        /// <summary>
+        /// NG点检样件在MES中的最终绑定产品SN。扫码经MES实时解析并确认该SN后进入NG点检，点检链路跳过工序校验和正常报工。
+        /// </summary>
         [XmlElement("NG点检SN码")]
         public string NGInspectionSN
         {
@@ -231,6 +294,9 @@ namespace F7_L12_Position_Detect.Model
         }
 
         private DateTime _lastInspectionTime = DateTime.MinValue;
+        /// <summary>
+        /// 最近一轮OK和NG点检全部完成的时间。倒计时和普通产品到期门禁共同使用该时间，首次部署或无效时间按已经到期处理。
+        /// </summary>
         [XmlElement("上次点检时间")]
         public DateTime LastInspectionTime
         {

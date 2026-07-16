@@ -189,7 +189,7 @@ namespace F7_L12_Position_Detect
             vml.Main.PLC_Start();
             _ = Task.Run(async () => await vml.Main.RefreshWorkerInfoAsync());
 
-            // 启动点检功能（24小时倒计时 + 到期强制弹窗）
+            // 启动XML配置周期的点检倒计时、弹窗和普通产品作业门禁
             vml.Main.InitializeInspection();
 
             // 相机初始化与HWindow绑定：必须在UI线程执行，使用定时器避免UI线程死循环，10秒超时

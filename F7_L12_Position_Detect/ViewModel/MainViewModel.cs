@@ -7,6 +7,7 @@ using System.IO;
 using System.Windows.Markup;
 using System;
 using System.Xml.Serialization;
+using System.Xml.Linq;
 using Microsoft.Win32;
 using System.Windows;
 using GalaSoft.MvvmLight.Command;
@@ -133,7 +134,7 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <remarks>
         /// 业务意图：
         /// - 报工成功后，只需要清 SN + 扫码状态 + 阶段进度，保留界面上工具 OK/NG 以便人员确认上一件结果。
-        /// - NG 后下一次从头开始时，会在 ResetDetectionCycle 内同时清工具运行态。
+        /// - 普通生产阶段NG后按配置策略决定从头开始或保留失败阶段；点检阶段由点检状态机保留当前阶段，调参后继续同一SN。
         /// - 不在此处清空 <see cref="Processmodel.ReportWorkStatus"/>：否则报工成功后在 <see cref="ResetProductContext"/> 中会立刻抹掉
         ///   「报工成功」提示。报工文案由 <see cref="ExecuteReportWorkAsync"/>、新扫码入口、<see cref="ClearCurrentProductContext"/> 分别管理。
         /// </remarks>
@@ -945,10 +946,14 @@ namespace F7_L12_Position_Detect.ViewModel
                     string timeoutCmd = DataModel.Processmodel.RCMD;
                     writeError($"执行超时({ExecutionTimeoutMs}ms): {timeoutCmd}指令强制释放");
                     WriteDetailLog($"[超时看门狗] 指令{timeoutCmd}执行超过{ExecutionTimeoutMs}ms，强制EndExecution并标记NG");
-                    // 超时视为该阶段失败，下次触发必须从头开始（防止阶段卡死或状态污染）
-                    DataModel.Processmodel.NeedRestart = true;
+                    // 普通生产沿用从头开始的失败策略；点检保留当前阶段，技术人员调参后可直接重复触发该阶段。
+                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
                     DataModel.Processmodel.Status = ToolStatus.NG;
                     DataModel.Processmodel.CameraStatus = "读图超时";
+                    if (DataModel.Processmodel.IsInspectionMode)
+                    {
+                        UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{DataModel.Processmodel.RCMD}执行超时，请调参后重复触发当前阶段。 ");
+                    }
                     EndExecution();
                 }
 
@@ -1097,107 +1102,112 @@ namespace F7_L12_Position_Detect.ViewModel
                 DataModel.Processmodel.ReportWorkStatus = string.Empty;
                 DataModel.Processmodel.ScanCodeStatus = "正在处理...";
 
-                // 点检扫码：不走MES；按钮选择类型后，只有扫描到对应点检SN才进入点检模式
+                // 所有扫码先由MES解析最终产品SN；点检在工序校验前按固定最终SN分流。
                 string okInspectionSN = DataModel?.Settingmodel?.ReportWorkConfig?.OKInspectionSN;
                 string ngInspectionSN = DataModel?.Settingmodel?.ReportWorkConfig?.NGInspectionSN;
                 string normalizedScan = (scanCode ?? string.Empty).Trim();
+                var scanResult = await _mesService.ProcessScanCodeAsync(normalizedScan);
+                if (!scanResult.Success)
+                {
+                    _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                        writeLog($"扫码处理失败: {scanResult.ErrorMessage}");
+                        StopScanAutoExecution();
+                    }));
+                    return;
+                }
+
+                string resolvedSN = (scanResult.SN ?? string.Empty).Trim();
                 string pendingInspectionType = DataModel?.Processmodel?.PendingInspectionType;
                 if (!string.IsNullOrEmpty(pendingInspectionType))
                 {
                     string expectedSN = pendingInspectionType == "OK" ? okInspectionSN : ngInspectionSN;
-                    if (!string.IsNullOrEmpty(normalizedScan) && normalizedScan == expectedSN)
-                    {
-                        BeginInspectionMode(pendingInspectionType, normalizedScan);
-                    }
-                    else
-                    {
-                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            DataModel.Processmodel.CurrentProductSN = string.Empty;
-                            DataModel.Processmodel.IsInspectionMode = false;
-                            DataModel.Processmodel.InspectionType = null;
-                            DataModel.Processmodel.ScanCodeStatus = $"点检码不匹配，请扫描{pendingInspectionType}点检样件码";
-                            writeLog($"点检扫码不匹配: type={pendingInspectionType}, scan={normalizedScan}", false);
-                        }));
-                    }
-
+                    await TryBeginInspectionFromMesAsync(pendingInspectionType, resolvedSN, expectedSN, normalizedScan);
                     return;
                 }
-                if (!string.IsNullOrEmpty(normalizedScan) &&
-                    ((!string.IsNullOrEmpty(okInspectionSN) && normalizedScan == okInspectionSN) ||
-                     (!string.IsNullOrEmpty(ngInspectionSN) && normalizedScan == ngInspectionSN)))
+
+                bool matchesOKInspection = InspectionSNEquals(resolvedSN, okInspectionSN);
+                bool matchesNGInspection = InspectionSNEquals(resolvedSN, ngInspectionSN);
+                if (matchesOKInspection && matchesNGInspection)
                 {
-                    string type = normalizedScan == okInspectionSN ? "OK" : "NG";
-                    BeginInspectionMode(type, normalizedScan);
+                    RejectInspectionScan(
+                        "点检配置无效：OK点检SN和NG点检SN不能相同",
+                        null,
+                        normalizedScan,
+                        resolvedSN);
+                    return;
+                }
+
+                // 点检选择窗口允许关闭，操作员仍可直接扫描配置的点检最终产品SN进入对应模式；该路径继续经过MES实时确认。
+                if (matchesOKInspection || matchesNGInspection)
+                {
+                    string type = matchesOKInspection ? "OK" : "NG";
+                    string expectedSN = matchesOKInspection ? okInspectionSN : ngInspectionSN;
+                    await TryBeginInspectionFromMesAsync(type, resolvedSN, expectedSN, normalizedScan);
+                    return;
+                }
+
+                if (RejectNormalScanDuringInspection())
+                {
                     return;
                 }
 
                 // 获取工序名称
                 string procedureName = DataModel.Settingmodel.ReportWorkConfig.ProcedureName;
 
-                // 调用MES服务进行完整处理
-                var (scanResult, validationResult) = await _mesService.ProcessScanCodeWithValidationAsync(scanCode, procedureName);
-
-                // 处理扫码结果
-                if (scanResult.Success)
+                ResetForNewProduct(resolvedSN);
+                _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    // SN获取成功，更新到界面
-                    ResetForNewProduct(scanResult.SN);
-                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        DataModel.Processmodel.CurrentProductSN = scanResult.SN;
-                        DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
-                        writeLog($"扫码处理成功: SN={scanResult.SN}");
-                    }));
+                    DataModel.Processmodel.CurrentProductSN = resolvedSN;
+                    DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                    writeLog($"扫码处理成功: SN={resolvedSN}");
+                }));
 
-                    // 处理工序校验结果
-                    if (validationResult != null)
-                    {
-                        App.Current.Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            if (validationResult.Success)
-                            {
-                                DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
-                                writeLog($"工序校验通过: SN={scanResult.SN}, 工序={procedureName}");
-
-                                // 扫码触发模式：扫码校验成功后，自动依次执行后续阶段
-                                if (DataModel.Settingmodel.EnableScanAutoTriggerStages)
-                                {
-                                    writeLog($"扫码自动执行: 工序校验通过，准备启动阶段循环 SN={scanResult.SN}", false);
-                                    WriteDetailLog($"[扫码自动] 工序校验通过，调用 StartScanAutoExecution SN={scanResult.SN}");
-                                    StartScanAutoExecution(scanResult.SN);
-                                }
-                                else
-                                {
-                                    WriteDetailLog("[扫码自动] EnableScanAutoTriggerStages=false，不启动阶段循环");
-                                    StopScanAutoExecution();
-                                }
-                            }
-                            else
-                            {
-                                DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
-                                writeLog($"工序校验失败: {validationResult.ErrorMessage}");
-
-                                StopScanAutoExecution();
-                            }
-                        }));
-                    }
-                }
-                else
+                string inspectionGateError = ValidateInspectionGateForProduction(resolvedSN);
+                if (!string.IsNullOrEmpty(inspectionGateError))
                 {
-                    // SN获取失败
-                    App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
-                        writeLog($"扫码处理失败: {scanResult.ErrorMessage}");
-
+                        DataModel.Processmodel.ScanCodeStatus = "点检到期";
+                        writeLog(inspectionGateError, true);
+                        ShowInspectionWindow();
                         StopScanAutoExecution();
                     }));
+                    return;
                 }
+
+                var validationResult = await _mesService.ValidateProcessAsync(resolvedSN, procedureName);
+                _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (validationResult.Success)
+                    {
+                        DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
+                        writeLog($"工序校验通过: SN={resolvedSN}, 工序={procedureName}");
+
+                        if (DataModel.Settingmodel.EnableScanAutoTriggerStages)
+                        {
+                            writeLog($"扫码自动执行: 工序校验通过，准备启动阶段循环 SN={resolvedSN}", false);
+                            WriteDetailLog($"[扫码自动] 工序校验通过，调用 StartScanAutoExecution SN={resolvedSN}");
+                            StartScanAutoExecution(resolvedSN);
+                        }
+                        else
+                        {
+                            WriteDetailLog("[扫码自动] EnableScanAutoTriggerStages=false，不启动阶段循环");
+                            StopScanAutoExecution();
+                        }
+                    }
+                    else
+                    {
+                        DataModel.Processmodel.ScanCodeStatus = validationResult.StatusMessage;
+                        writeLog($"工序校验失败: {validationResult.ErrorMessage}");
+                        StopScanAutoExecution();
+                    }
+                }));
             }
             catch (Exception ex)
             {
-                App.Current.Dispatcher.BeginInvoke(new Action(() =>
+                _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     DataModel.Processmodel.ScanCodeStatus = "处理异常";
                     writeLog($"扫码处理异常: {ex.Message}");
@@ -1418,7 +1428,13 @@ namespace F7_L12_Position_Detect.ViewModel
                     return false;
                 }
 
-                if (DataModel.Processmodel.NeedRestart)
+                if (DataModel.Processmodel.NeedRestart && DataModel.Processmodel.IsInspectionMode)
+                {
+                    // 点检模式使用独立规则：当前失败阶段重复触发；XML中的StageFailRetryStrategy只影响普通生产。
+                    DataModel.Processmodel.NeedRestart = false;
+                    writeLog($"点检阶段{DataModel.Processmodel.RCMD}上次执行失败，保留当前阶段，等待调参后重复触发", false);
+                }
+                else if (DataModel.Processmodel.NeedRestart)
                 {
                     if (DataModel.Settingmodel.StageFailRetryStrategy == StageFailRetryStrategy.从头开始重跑)
                     {
@@ -1519,11 +1535,14 @@ namespace F7_L12_Position_Detect.ViewModel
                     return;
                 }
 
-                if (DataModel.Processmodel.NeedRestart)
+                if (DataModel.Processmodel.NeedRestart && DataModel.Processmodel.IsInspectionMode)
                 {
-                    // 上一轮出现 NG/NG2/超时等失败：
-                    // - 默认：清空检测周期并从第 0 阶段重跑（最保守，避免状态污染）
-                    // - 可配置：不清理已有结果，仅重试当前失败阶段（保留CompletedStages与其它阶段工具显示）
+                    DataModel.Processmodel.NeedRestart = false;
+                    writeLog($"点检阶段{DataModel.Processmodel.RCMD}上次执行失败，保留当前阶段，等待调参后重复触发", false);
+                }
+                else if (DataModel.Processmodel.NeedRestart)
+                {
+                    // 普通生产阶段失败沿用配置的重试策略，点检阶段的重试已在上方按当前阶段处理。
                     if (DataModel.Settingmodel.StageFailRetryStrategy == StageFailRetryStrategy.从头开始重跑)
                     {
                         ResetDetectionCycle();
@@ -1598,13 +1617,13 @@ namespace F7_L12_Position_Detect.ViewModel
                     WriteDetailLog($"[工具执行] 开始执行指令{command}，总工具数={DataModel.Processmodel.Tools.Count}");
                 }
 
-                // 检查是否可以开始检测（只检查是否在报工中）
-                if (!CanStartDetection())
+                string detectionBlockReason = GetDetectionBlockReason();
+                if (!string.IsNullOrEmpty(detectionBlockReason))
                 {
-                    writeLog($"检测被阻止: 报工正在进行中");
+                    writeLog($"检测被阻止: {detectionBlockReason}");
                     if (detailOnNgOrTimeout)
                     {
-                        WriteDetailLog($"[工具执行] 检测被阻止，原因：报工正在进行中");
+                        WriteDetailLog($"[工具执行] 检测被阻止，原因：{detectionBlockReason}");
                     }
                     return false;
                 }
@@ -1645,7 +1664,8 @@ namespace F7_L12_Position_Detect.ViewModel
                     else
                     {
                         // 按Command字段匹配
-                        isMatch = DataModel.Processmodel.Tools[i].Command == command;
+                        isMatch = NormalizeStageCommand(DataModel.Processmodel.Tools[i].Command)
+                            == NormalizeStageCommand(command);
                         if (detailOnNgOrTimeout)
                         {
                             WriteDetailLog($"[工具匹配] 工具{i}({DataModel.Processmodel.Tools[i].Name}): Command={DataModel.Processmodel.Tools[i].Command}, 匹配={isMatch}");
@@ -2505,7 +2525,53 @@ namespace F7_L12_Position_Detect.ViewModel
                 filename,
                 DataModel.Settingmodel,
                 _settingConfigLoadFailed,
-                WriteDetailLog);
+                WriteDetailLog,
+                DecorateSettingConfigXml);
+        }
+
+        /// <summary>
+        /// 在主配置中写入长期保留的中文操作说明。安全保存每次重新序列化XML后都会调用该入口，操作员修改点检参数时始终能看到取值范围、单位和生效方式。
+        /// </summary>
+        /// <param name="filename">已经完成序列化、等待校验和原子替换的临时主配置文件。</param>
+        private static void DecorateSettingConfigXml(string filename)
+        {
+            XDocument document = XDocument.Load(filename);
+            XElement reportWorkConfig = document.Root?.Element("报工配置");
+            if (reportWorkConfig == null)
+            {
+                throw new InvalidOperationException("主配置缺少报工配置节点，无法写入点检操作说明");
+            }
+
+            XElement intervalElement = reportWorkConfig.Element("点检周期小时");
+            XElement ngConditionElement = reportWorkConfig.Element("NG点检合格条件");
+            XElement okSnElement = reportWorkConfig.Element("OK点检SN码");
+            XElement ngSnElement = reportWorkConfig.Element("NG点检SN码");
+            XElement lastTimeElement = reportWorkConfig.Element("上次点检时间");
+            XElement stageRetryElement = document.Root?.Element("阶段失败重试策略");
+            if (intervalElement == null || ngConditionElement == null || okSnElement == null || ngSnElement == null || lastTimeElement == null)
+            {
+                throw new InvalidOperationException("主配置缺少点检配置节点，无法写入点检操作说明");
+            }
+
+            intervalElement.AddBeforeSelf(new XComment(
+                " 点检配置修改说明：请先退出软件再编辑本文件，保存后重新启动；OK和NG点检SN必须填写MES中的最终绑定产品SN，并且两个SN不能相同。 "));
+            intervalElement.AddBeforeSelf(new XComment(
+                " 点检周期有效范围为1-48小时，单位为小时；建议填写12，配置节点缺失、填写小于1或大于48的值时按12小时处理。 "));
+            ngConditionElement.AddBeforeSelf(new XComment(
+                " NG点检合格条件只支持“任一NG”或“全部NG”；任一NG要求至少一个参与判定框为NG，全部NG要求所有参与判定框均为NG，NG2始终表示点检异常。 "));
+            okSnElement.AddBeforeSelf(new XComment(
+                " OK点检样件在MES中的最终绑定产品SN；软件通过MES实时确认后进入OK点检。 "));
+            ngSnElement.AddBeforeSelf(new XComment(
+                " NG点检样件在MES中的最终绑定产品SN；软件通过MES实时确认后进入NG点检。 "));
+            lastTimeElement.AddBeforeSelf(new XComment(
+                " 软件在OK和NG点检全部完成后自动更新该时间；该值用于倒计时和普通产品到期门禁。 "));
+            if (stageRetryElement != null)
+            {
+                stageRetryElement.AddBeforeSelf(new XComment(
+                    " 普通生产阶段失败重试策略：从头开始重跑会从A1重新执行；仅重试失败阶段会保留已完成阶段。点检模式使用独立规则，当前失败阶段重复触发，XML全局策略不改变点检重试方式。 "));
+            }
+
+            document.Save(filename);
         }
 
         /// <summary>
@@ -2932,7 +2998,7 @@ namespace F7_L12_Position_Detect.ViewModel
         /// 多相机阶段：在 finally 中若仍有 <see cref="_pendingCameraGroups"/>，会调用 <see cref="TriggerNextCameraGroupCapture"/>；
         /// 若返回 false 或抛异常，则立即 NG、NeedRestart、<see cref="EndExecution"/>，不等待超时看门狗。
         /// 阶段结算：按当前 <see cref="Processmodel.RCMD"/> 与工具 <see cref="ToolModel.Command"/> 做 <see cref="NormalizeStageCommand"/> 后筛选本阶段工具，
-        /// 再聚合 OK/NG/NG2 决定阶段是否完成、是否推进 <see cref="Processmodel.CurrentStageIndex"/> 以及是否触发自动报工。
+        /// 再聚合 OK/NG/NG2 决定阶段是否完成、是否推进 <see cref="Processmodel.CurrentStageIndex"/> 以及是否触发自动报工；点检样件由独立结算方法累计全部配置阶段后判定。
         /// </remarks>
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
@@ -2969,7 +3035,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 hwindow.DispObj(Image);
                 for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 {
-                    bool isMatch = DataModel.Processmodel.Tools[i].Command == DataModel.Processmodel.RCMD;
+                    bool isMatch = NormalizeStageCommand(DataModel.Processmodel.Tools[i].Command)
+                        == NormalizeStageCommand(DataModel.Processmodel.RCMD);
                     if (isMatch && _activeCameraSerial != null)
                     {
                         isMatch = NormalizeCameraSerial(DataModel.Processmodel.Tools[i].CameraSerialNumber) == _activeCameraSerial;
@@ -3245,7 +3312,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             int status = -1;
 
                             var r = (from ToolModel in DataModel.Processmodel.Tools
-                                     where (ToolModel.Command == DataModel.Processmodel.RCMD)
+                                     where (NormalizeStageCommand(ToolModel.Command) == NormalizeStageCommand(DataModel.Processmodel.RCMD))
                                      select ToolModel);
                             var wait = (from ToolModel in r
                                         where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
@@ -3416,10 +3483,8 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (waitTools.Count() == 0)
                     {
-                        // 阶段结算规则：
-                        // - 当前阶段内：所有工具 OK => 阶段 OK；存在 NG2 => 阶段 NG2；否则阶段 NG
-                        // - 阶段 OK：推进到下一阶段（CurrentStageIndex++）并记录 CompletedStages
-                        // - 阶段 NG/NG2：不推进，标记 NeedRestart=true，下一次 PLC 触发从第 0 阶段重跑
+                        // 普通生产阶段结算：所有工具OK推进阶段；NG/NG2按配置重试策略处理。
+                        // 点检阶段结算：OK样件要求当前阶段全OK；NG样件允许当前阶段出现普通NG并继续后续阶段，最终再汇总全部阶段工具。
                         int stageStatus;
                         if (okTools.Count() == toolCount)
                         {
@@ -3434,34 +3499,10 @@ namespace F7_L12_Position_Detect.ViewModel
                             stageStatus = 1;
                         }
 
-                        // 点检模式不推进正常阶段、不触发报工；只判定当前点检项是否通过
+                        // 点检阶段边界：当前点检按本次PLC触发的RCMD阶段执行，阶段通过推进点检内部索引，样件最终结果不触发普通报工。
                         if (DataModel.Processmodel.IsInspectionMode)
                         {
-                            DataModel.Processmodel.Status = stageStatus == 0 ? ToolStatus.OK : (stageStatus == 2 ? ToolStatus.NG2 : ToolStatus.NG);
-
-                            string type = DataModel.Processmodel.InspectionType;
-                            bool pass = false;
-                            if (type == "OK")
-                            {
-                                pass = stageStatus == 0;
-                            }
-                            else if (type == "NG")
-                            {
-                                pass = stageStatus == 1; // NG点检只接受明确NG；NG2按工具/流程异常处理
-                            }
-
-                            if (pass)
-                            {
-                                CompleteInspection(type);
-                            }
-                            else if (stageStatus == 2)
-                            {
-                                UpdateInspectionStatusMessage($"点检异常：类型={type}，当前结果=NG2，请检查工具/流程后重试");
-                            }
-                            else
-                            {
-                                UpdateInspectionStatusMessage($"点检未通过：类型={type}，当前结果={DataModel.Processmodel.Status}");
-                            }
+                            HandleInspectionStageResult(currentCommand, currentCommandTools, stageStatus);
                         }
                         else if (stageStatus == 0)
                         {
@@ -3549,8 +3590,12 @@ namespace F7_L12_Position_Detect.ViewModel
                             if (!triggered)
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG;
-                                DataModel.Processmodel.NeedRestart = true;
+                                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
                                 DataModel.Processmodel.CameraStatus = "相机异常";
+                                if (DataModel.Processmodel.IsInspectionMode)
+                                {
+                                    UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{DataModel.Processmodel.RCMD}相机触发失败，请调参后重复触发当前阶段。 ");
+                                }
                                 writeError("下一相机组触发失败，已按失败立即收口");
                                 EndExecution();
                             }
@@ -3558,8 +3603,12 @@ namespace F7_L12_Position_Detect.ViewModel
                         catch (Exception ex)
                         {
                             DataModel.Processmodel.Status = ToolStatus.NG;
-                            DataModel.Processmodel.NeedRestart = true;
+                            DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
                             DataModel.Processmodel.CameraStatus = "相机异常";
+                            if (DataModel.Processmodel.IsInspectionMode)
+                            {
+                                UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{DataModel.Processmodel.RCMD}相机触发异常，请调参后重复触发当前阶段。 ");
+                            }
                             writeError($"下一相机组触发异常，已按失败立即收口: {ex.Message}");
                             EndExecution();
                         }
@@ -3871,19 +3920,32 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <returns>true表示状态满足，可以进行PLC轮询和视觉检测</returns>
         private bool HasValidSNAndValidation()
         {
+            UpdateInspectionCountdown();
+
             bool hasSN = !string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN);
             bool isInspectionMode = DataModel.Processmodel.IsInspectionMode;
-            bool isInspectionReady = isInspectionMode &&
-                                     string.IsNullOrEmpty(DataModel.Processmodel.PendingInspectionType) &&
-                                     !string.IsNullOrEmpty(DataModel.Processmodel.InspectionType) &&
-                                     (DataModel.Processmodel.ScanCodeStatus ?? string.Empty).Contains("点检模式");
+            bool isInspectionReady = IsInspectionReadyForDetection();
             bool isValidated = DataModel.Processmodel.ScanCodeStatus == "工序校验通过" || isInspectionReady;
-            bool result = hasSN && isValidated;
+            bool isInspectionRequired = IsInspectionRequired();
+            RefreshInspectionProgressForDueCycle();
+            bool result = hasSN && (isInspectionRequired ? isInspectionReady : isValidated);
+
+            if (hasSN && isValidated && isInspectionRequired && !isInspectionReady
+                && DataModel.Processmodel.ScanCodeStatus != "点检到期")
+            {
+                _ = App.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+                {
+                    DataModel.Processmodel.ScanCodeStatus = "点检到期";
+                    writeLog(BuildInspectionGateMessage(DataModel.Processmodel.CurrentProductSN), true);
+                    ShowInspectionWindow();
+                }));
+            }
 
             // 详细调试日志：记录状态检查结果
             WriteDetailLog($"[报工状态] SN={DataModel.Processmodel.CurrentProductSN ?? "空"}, " +
                           $"校验状态={DataModel.Processmodel.ScanCodeStatus}, " +
                           $"点检模式={isInspectionMode}, " +
+                          $"点检到期={isInspectionRequired}, " +
                           $"待点检={DataModel.Processmodel.PendingInspectionType ?? "空"}, " +
                           $"有SN={hasSN}, 校验通过={isValidated}, 最终结果={result}");
 
@@ -3891,15 +3953,36 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 检查是否可以开始检测
+        /// 获取工具执行入口的轻量拦截原因。PLC主路径继续由HasValidSNAndValidation负责SN与工序资格，该入口负责空SN、报工中和点检到期保护。
         /// </summary>
-        private bool CanStartDetection()
+        /// <returns>空字符串表示工具可以启动；其它文本用于现场日志说明拦截原因。</returns>
+        private string GetDetectionBlockReason()
         {
-            // 修改：只要不在报工中就可以开始检测，不强制要求工序校验通过
-            return !DataModel.Processmodel.IsReportingWork;
+            UpdateInspectionCountdown();
+            if (DataModel.Processmodel.CanStartDetection)
+            {
+                return string.Empty;
+            }
+
+            if (string.IsNullOrEmpty(DataModel.Processmodel.CurrentProductSN))
+            {
+                return "SN为空";
+            }
+
+            if (DataModel.Processmodel.IsReportingWork)
+            {
+                return "报工正在进行中";
+            }
+
+            if (DataModel.Processmodel.IsInspectionOverdue && !IsInspectionReadyForDetection())
+            {
+                return $"{GetInspectionIntervalHours()}小时点检已到期，请先完成OK点检和NG点检";
+            }
+
+            return "作业状态不满足";
         }
 
-        #region 点检功能（24小时强制点检）
+        #region 点检功能（可配置周期强制点检）
 
         private System.Windows.Threading.DispatcherTimer _inspectionTimer;
         private Window _inspectionWindow = null;
@@ -3913,6 +3996,9 @@ namespace F7_L12_Position_Detect.ViewModel
             }));
         }
 
+        /// <summary>
+        /// 汇总当前点检周期中OK和NG两类样件的完成状态，供点检窗口、扫码状态和日志共用。
+        /// </summary>
         private string GetInspectionProgressSummary()
         {
             List<string> summary = new List<string>();
@@ -3921,8 +4007,205 @@ namespace F7_L12_Position_Detect.ViewModel
             return string.Join("，", summary);
         }
 
+        /// <summary>
+        /// 判断当前SN是否已完成点检样件身份确认并进入可执行的OK或NG点检阶段。
+        /// </summary>
+        /// <remarks>
+        /// 该判断服务于检测启动按钮和阶段启动保护。普通产品的到期门禁仍由生产扫码流程单独校验，点检样件身份只通过MES最终产品SN确认。
+        /// </remarks>
+        private bool IsInspectionReadyForDetection()
+        {
+            return DataModel.Processmodel.IsInspectionMode
+                && string.IsNullOrEmpty(DataModel.Processmodel.PendingInspectionType)
+                && (DataModel.Processmodel.InspectionType == "OK"
+                    || DataModel.Processmodel.InspectionType == "NG");
+        }
+
+        /// <summary>
+        /// 读取运行时生效的点检周期，单位为小时。加载遗漏或运行时被改写为超出1至48范围的值时回退12小时，确保倒计时和到期门禁使用同一口径。
+        /// </summary>
+        private int GetInspectionIntervalHours()
+        {
+            int configuredHours = DataModel?.Settingmodel?.ReportWorkConfig?.InspectionIntervalHours
+                ?? ReportWorkConfig.DefaultInspectionIntervalHours;
+            return configuredHours >= ReportWorkConfig.MinInspectionIntervalHours
+                && configuredHours <= ReportWorkConfig.MaxInspectionIntervalHours
+                ? configuredHours
+                : ReportWorkConfig.DefaultInspectionIntervalHours;
+        }
+
+        /// <summary>
+        /// 读取NG点检的合格条件标识。有效值限定为“任一NG”和“全部NG”，供阶段结算使用统一口径。
+        /// </summary>
+        private string GetInspectionNgPassCondition()
+        {
+            string configuredCondition = (DataModel?.Settingmodel?.ReportWorkConfig?.InspectionNgPassCondition ?? string.Empty).Trim();
+            return configuredCondition == ReportWorkConfig.InspectionNgConditionAll
+                ? ReportWorkConfig.InspectionNgConditionAll
+                : ReportWorkConfig.InspectionNgConditionAny;
+        }
+
+        /// <summary>
+        /// 规范点检XML中的人工可编辑参数。周期有效范围为1至48小时，非法周期回退12小时；未知NG条件回退“任一NG”，并保留日志供现场核对实际生效值。
+        /// </summary>
+        private void NormalizeInspectionConfiguration()
+        {
+            ReportWorkConfig cfg = DataModel?.Settingmodel?.ReportWorkConfig;
+            if (cfg == null)
+            {
+                return;
+            }
+
+            if (cfg.InspectionIntervalHours < ReportWorkConfig.MinInspectionIntervalHours
+                || cfg.InspectionIntervalHours > ReportWorkConfig.MaxInspectionIntervalHours)
+            {
+                writeLog($"点检周期配置无效：{cfg.InspectionIntervalHours}，有效范围为{ReportWorkConfig.MinInspectionIntervalHours}-{ReportWorkConfig.MaxInspectionIntervalHours}小时，已按{ReportWorkConfig.DefaultInspectionIntervalHours}小时处理", false);
+                cfg.InspectionIntervalHours = ReportWorkConfig.DefaultInspectionIntervalHours;
+            }
+
+            string configuredCondition = (cfg.InspectionNgPassCondition ?? string.Empty).Trim();
+            if (configuredCondition != ReportWorkConfig.InspectionNgConditionAny
+                && configuredCondition != ReportWorkConfig.InspectionNgConditionAll)
+            {
+                writeLog($"NG点检合格条件配置无效：{configuredCondition}，已按{ReportWorkConfig.InspectionNgConditionAny}处理", false);
+                cfg.InspectionNgPassCondition = ReportWorkConfig.InspectionNgConditionAny;
+            }
+            else
+            {
+                cfg.InspectionNgPassCondition = configuredCondition;
+            }
+
+            cfg.OKInspectionSN = (cfg.OKInspectionSN ?? string.Empty).Trim();
+            cfg.NGInspectionSN = (cfg.NGInspectionSN ?? string.Empty).Trim();
+        }
+
+        /// <summary>
+        /// 清理明显晚于设备当前时间的点检完成时间，防止人工修改XML或设备时钟异常延长点检有效期。
+        /// </summary>
+        private void SanitizeInspectionTimestamp()
+        {
+            ReportWorkConfig cfg = DataModel?.Settingmodel?.ReportWorkConfig;
+            if (cfg == null || cfg.LastInspectionTime == DateTime.MinValue)
+            {
+                return;
+            }
+
+            DateTime latestAcceptedTime = DateTime.Now.AddMinutes(5);
+            if (cfg.LastInspectionTime > latestAcceptedTime)
+            {
+                writeLog($"上次点检时间晚于设备当前时间，已按点检到期处理：配置={cfg.LastInspectionTime:yyyy-MM-dd HH:mm:ss}", true);
+                cfg.LastInspectionTime = DateTime.MinValue;
+            }
+        }
+
+        /// <summary>
+        /// 判断当前点检周期是否到期。没有有效完成时间时立即到期，完成时间达到配置周期后继续拦截普通产品。
+        /// </summary>
+        private bool IsInspectionRequired()
+        {
+            ReportWorkConfig cfg = DataModel?.Settingmodel?.ReportWorkConfig;
+            if (cfg == null || cfg.LastInspectionTime == DateTime.MinValue)
+            {
+                return true;
+            }
+
+            return DateTime.Now - cfg.LastInspectionTime >= TimeSpan.FromHours(GetInspectionIntervalHours());
+        }
+
+        /// <summary>
+        /// 在新点检周期到期时清除上一周期的OK和NG完成标记，保证两个样件都重新执行。
+        /// </summary>
+        private void RefreshInspectionProgressForDueCycle()
+        {
+            if (!IsInspectionRequired()
+                || !DataModel.Processmodel.OKInspectionCompleted
+                || !DataModel.Processmodel.NGInspectionCompleted)
+            {
+                return;
+            }
+
+            DataModel.Processmodel.OKInspectionCompleted = false;
+            DataModel.Processmodel.NGInspectionCompleted = false;
+        }
+
+        /// <summary>
+        /// 生成普通产品被点检门禁拦截时的现场提示，保留周期和产品SN用于操作员判断与日志追溯。
+        /// </summary>
+        private string BuildInspectionGateMessage(string sn)
+        {
+            return $"[点检到期拦截] {GetInspectionIntervalHours()}小时点检已到期，SN={sn}；请先完成OK点检和NG点检。";
+        }
+
+        /// <summary>
+        /// 校验普通生产SN是否满足点检周期门禁。该入口只影响普通产品流程，点检样件扫码走独立的MES身份确认路径。
+        /// </summary>
+        private string ValidateInspectionGateForProduction(string sn)
+        {
+            if (!IsInspectionRequired())
+            {
+                return string.Empty;
+            }
+
+            RefreshInspectionProgressForDueCycle();
+            return BuildInspectionGateMessage(sn);
+        }
+
+        /// <summary>
+        /// 在点检等待扫码或点检检测期间保留当前点检上下文，阻止普通SN进入工序校验和阶段执行。
+        /// </summary>
+        /// <returns>当前存在点检占用时返回true；普通生产可继续时返回false。</returns>
+        private bool RejectNormalScanDuringInspection()
+        {
+            if (!DataModel.Processmodel.IsInspectionActive)
+            {
+                return false;
+            }
+
+            string inspectionState = DataModel.Processmodel.IsInspectionMode
+                ? $"{DataModel.Processmodel.InspectionType}点检检测中"
+                : $"等待{DataModel.Processmodel.PendingInspectionType}点检样件扫码";
+            UpdateInspectionStatusMessage($"{inspectionState}，当前普通产品SN暂不进入工序校验，请先完成点检或切换点检SN。");
+            writeLog($"普通产品扫码已拦截：{inspectionState}，保留当前点检上下文", false);
+            StopScanAutoExecution();
+            return true;
+        }
+
+        /// <summary>
+        /// 检查点检样件最终产品SN配置是否具备进入点检流程的条件。
+        /// </summary>
+        private string GetInspectionConfigurationError()
+        {
+            ReportWorkConfig cfg = DataModel?.Settingmodel?.ReportWorkConfig;
+            if (cfg == null)
+            {
+                return "点检配置未加载";
+            }
+
+            if (string.IsNullOrWhiteSpace(cfg.OKInspectionSN) || string.IsNullOrWhiteSpace(cfg.NGInspectionSN))
+            {
+                return "OK点检SN和NG点检SN必须填写MES最终产品SN";
+            }
+
+            if (InspectionSNEquals(cfg.OKInspectionSN, cfg.NGInspectionSN))
+            {
+                return "OK点检SN和NG点检SN不能相同";
+            }
+
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// 初始化点检周期、时间清理、倒计时和到期窗口，并启动一分钟一次的状态刷新定时器。
+        /// </summary>
+        /// <remarks>
+        /// 初始化只建立点检门禁和提示，不替代普通产品的工序校验，也不自动完成任何点检样件判定。
+        /// </remarks>
         public void InitializeInspection()
         {
+            NormalizeInspectionConfiguration();
+            SanitizeInspectionTimestamp();
+            SaveSettingModel();
+            UpdateInspectionCountdown();
             CheckInspectionStatus();
 
             _inspectionTimer = new System.Windows.Threading.DispatcherTimer();
@@ -3933,25 +4216,19 @@ namespace F7_L12_Position_Detect.ViewModel
                 CheckInspectionStatus();
             };
             _inspectionTimer.Start();
-
-            UpdateInspectionCountdown();
+            writeLog($"点检功能已启动：周期={GetInspectionIntervalHours()}小时，NG合格条件={GetInspectionNgPassCondition()}", false);
         }
 
+        /// <summary>
+        /// 根据点检周期和两类样件完成状态维护点检窗口的显示状态。
+        /// </summary>
         private void CheckInspectionStatus()
         {
             var cfg = DataModel?.Settingmodel?.ReportWorkConfig;
             if (cfg == null) return;
 
-            var lastTime = cfg.LastInspectionTime;
-            if (lastTime == DateTime.MinValue)
-            {
-                lastTime = DateTime.Now;
-                cfg.LastInspectionTime = lastTime;
-                SaveSettingModel();
-            }
-
-            var timeElapsed = DateTime.Now - lastTime;
-            bool isOverdue = timeElapsed.TotalHours >= 24;
+            bool isOverdue = IsInspectionRequired();
+            RefreshInspectionProgressForDueCycle();
             bool needInspection = isOverdue &&
                                   (!DataModel.Processmodel.OKInspectionCompleted ||
                                    !DataModel.Processmodel.NGInspectionCompleted);
@@ -3966,23 +4243,28 @@ namespace F7_L12_Position_Detect.ViewModel
             }
         }
 
+        /// <summary>
+        /// 更新距离下一次强制点检的剩余时间，单位为系统本地时间的时间间隔。
+        /// </summary>
         private void UpdateInspectionCountdown()
         {
             var cfg = DataModel?.Settingmodel?.ReportWorkConfig;
             if (cfg == null) return;
 
-            var lastTime = cfg.LastInspectionTime;
-            if (lastTime == DateTime.MinValue)
+            if (cfg.LastInspectionTime == DateTime.MinValue)
             {
-                DataModel.Processmodel.TimeToNextInspection = TimeSpan.FromHours(24);
+                DataModel.Processmodel.TimeToNextInspection = TimeSpan.Zero;
                 return;
             }
 
-            var elapsed = DateTime.Now - lastTime;
-            var remaining = TimeSpan.FromHours(24) - elapsed;
+            var elapsed = DateTime.Now - cfg.LastInspectionTime;
+            var remaining = TimeSpan.FromHours(GetInspectionIntervalHours()) - elapsed;
             DataModel.Processmodel.TimeToNextInspection = remaining;
         }
 
+        /// <summary>
+        /// 显示点检选择窗口。窗口只负责选择OK或NG类型，窗口关闭后仍可通过配置的点检SN直接进入对应模式。
+        /// </summary>
         private void ShowInspectionWindow()
         {
             if (_inspectionWindow != null && _inspectionWindow.IsLoaded)
@@ -3990,8 +4272,16 @@ namespace F7_L12_Position_Detect.ViewModel
 
             try
             {
-                _inspectionWindow = new InspectionWindow();
-                _inspectionWindow.Show();
+                Window inspectionWindow = new InspectionWindow();
+                inspectionWindow.Closed += (sender, args) =>
+                {
+                    if (ReferenceEquals(_inspectionWindow, inspectionWindow))
+                    {
+                        _inspectionWindow = null;
+                    }
+                };
+                _inspectionWindow = inspectionWindow;
+                inspectionWindow.Show();
                 UpdateInspectionStatusMessage($"点检已到期：{GetInspectionProgressSummary()}");
                 writeLog("⚠️ 点检已到期，请完成OK点检和NG点检", false);
             }
@@ -4001,15 +4291,86 @@ namespace F7_L12_Position_Detect.ViewModel
             }
         }
 
+        /// <summary>
+        /// 关闭点检选择窗口并清理窗口引用，不改变已通过MES确认的点检模式和样件状态。
+        /// </summary>
         public void CloseInspectionWindow()
         {
-            if (_inspectionWindow != null)
+            if (App.Current?.Dispatcher != null && !App.Current.Dispatcher.CheckAccess())
             {
-                try { _inspectionWindow.Close(); } catch { }
-                _inspectionWindow = null;
+                _ = App.Current.Dispatcher.BeginInvoke(new Action(CloseInspectionWindow));
+                return;
             }
+
+            Window inspectionWindow = _inspectionWindow;
+            _inspectionWindow = null;
+            if (inspectionWindow == null)
+            {
+                return;
+            }
+
+            try { inspectionWindow.Close(); } catch { }
         }
 
+        /// <summary>
+        /// 按忽略大小写并去除首尾空白的规则比较点检最终产品SN，适配扫码文本和XML配置的常见格式差异。
+        /// </summary>
+        private static bool InspectionSNEquals(string left, string right)
+        {
+            return !string.IsNullOrWhiteSpace(left)
+                && !string.IsNullOrWhiteSpace(right)
+                && string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 使用MES实时确认最终产品SN后进入点检模式。该入口只确认点检样件身份，产品编码、工单和工序状态均不参与放行。
+        /// </summary>
+        private async Task TryBeginInspectionFromMesAsync(
+            string type,
+            string resolvedSN,
+            string expectedSN,
+            string rawScan)
+        {
+            string configurationError = GetInspectionConfigurationError();
+            if (!string.IsNullOrEmpty(configurationError))
+            {
+                RejectInspectionScan($"点检配置无效：{configurationError}", type, rawScan, resolvedSN);
+                return;
+            }
+
+            MESService.InspectionSnValidationResult validationResult =
+                await _mesService.ValidateInspectionSNAsync(resolvedSN, expectedSN);
+            if (validationResult.Success)
+            {
+                BeginInspectionMode(type, validationResult.SN);
+                return;
+            }
+
+            RejectInspectionScan(validationResult.ErrorMessage, type, rawScan, validationResult.SN ?? resolvedSN);
+        }
+
+        /// <summary>
+        /// 结束一次未通过的点检扫码尝试，清除当前SN并留下可定位MES、配置或扫码问题的状态和日志。
+        /// </summary>
+        private void RejectInspectionScan(string reason, string type, string rawScan, string resolvedSN)
+        {
+            string inspectionTypeText = string.IsNullOrWhiteSpace(type) ? "" : $"{type}点检";
+            _ = App.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+            {
+                DataModel.Processmodel.CurrentProductSN = string.Empty;
+                DataModel.Processmodel.IsInspectionMode = false;
+                DataModel.Processmodel.InspectionType = null;
+                DataModel.Processmodel.ScanCodeStatus = $"{inspectionTypeText}扫码未通过：{reason}";
+                writeLog($"点检扫码未通过: type={type ?? "未识别"}, raw={rawScan}, resolvedSN={resolvedSN}, reason={reason}", false);
+            }));
+        }
+
+        /// <summary>
+        /// 将MES确认成功的固定点检最终产品SN绑定到当前点检模式，并重置检测工具运行态。
+        /// </summary>
+        /// <remarks>
+        /// 该入口可由选择窗口后的扫码触发，也可由窗口关闭后直接扫码匹配SN触发；点检样件不进入普通工序校验和报工链路。
+        /// </remarks>
         private void BeginInspectionMode(string type, string inspectionSN)
         {
             if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(inspectionSN))
@@ -4028,8 +4389,19 @@ namespace F7_L12_Position_Detect.ViewModel
             }));
         }
 
+        /// <summary>
+        /// 选择OK点检并进入等待扫码状态。完成标记清除后，操作员需扫描配置的OK点检样件SN。
+        /// </summary>
         public void StartOKInspection()
         {
+            string configurationError = GetInspectionConfigurationError();
+            if (!string.IsNullOrEmpty(configurationError))
+            {
+                UpdateInspectionStatusMessage($"点检配置无效：{configurationError}");
+                writeLog($"无法启动OK点检：{configurationError}", true);
+                return;
+            }
+
             StopScanAutoExecution();
             ResetDetectionCycle();
             ResetProductContext();
@@ -4045,8 +4417,19 @@ namespace F7_L12_Position_Detect.ViewModel
             writeLog("已选择OK点检，请扫描OK点检样件码", false);
         }
 
+        /// <summary>
+        /// 选择NG点检并进入等待扫码状态。完成标记清除后，操作员需扫描配置的NG点检样件SN。
+        /// </summary>
         public void StartNGInspection()
         {
+            string configurationError = GetInspectionConfigurationError();
+            if (!string.IsNullOrEmpty(configurationError))
+            {
+                UpdateInspectionStatusMessage($"点检配置无效：{configurationError}");
+                writeLog($"无法启动NG点检：{configurationError}", true);
+                return;
+            }
+
             StopScanAutoExecution();
             ResetDetectionCycle();
             ResetProductContext();
@@ -4062,6 +4445,177 @@ namespace F7_L12_Position_Detect.ViewModel
             writeLog("已选择NG点检，请扫描NG点检样件码", false);
         }
 
+        /// <summary>
+        /// 汇总当前点检阶段并推进多阶段点检样件。阶段通过只推进样件内部阶段索引，最后一个配置阶段完成后才按全部判定框结算OK或NG。
+        /// </summary>
+        /// <param name="currentCommand">本次PLC触发并完成结算的阶段指令，例如A1或A2。</param>
+        /// <param name="currentCommandTools">当前阶段参与判定的工具集合；该集合用于当前阶段状态和诊断日志。</param>
+        /// <param name="stageStatus">当前阶段状态，0表示全OK，1表示存在普通NG，2表示存在NG2。</param>
+        /// <remarks>
+        /// 点检模式使用独立重试规则：OK点检或NG-全部NG点检的当前阶段未满足阶段条件时停留当前阶段；NG-任一NG点检只要当前阶段工具全部完成判定即可进入下一阶段，整件样件结果在最后阶段统一汇总。
+        /// XML中的StageFailRetryStrategy只影响普通生产，点检失败不会按该配置跳转到其它阶段。
+        /// </remarks>
+        private void HandleInspectionStageResult(string currentCommand, List<ToolModel> currentCommandTools, int stageStatus)
+        {
+            string type = DataModel.Processmodel.InspectionType;
+            string toolSummary = string.Join(", ", currentCommandTools.Select(t => $"{t.Name}:{t.ToolStatus}"));
+            if (type != "OK" && type != "NG")
+            {
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                UpdateInspectionStatusMessage($"点检类型无效，当前阶段{currentCommand}未结算，请重新选择OK或NG点检。");
+                writeLog($"点检阶段结算失败：InspectionType={type ?? "空"}，阶段={currentCommand}，工具明细={toolSummary}", true);
+                return;
+            }
+
+            DataModel.Processmodel.NeedRestart = false;
+            if (stageStatus == 2)
+            {
+                DataModel.Processmodel.Status = ToolStatus.NG2;
+                UpdateInspectionStatusMessage($"{type}点检阶段{currentCommand}存在NG2，请调参后重复触发当前阶段。工具明细：{toolSummary}");
+                writeLog($"{type}点检阶段失败：阶段={currentCommand}存在NG2，保留当前阶段等待重试，工具明细={toolSummary}", false);
+                return;
+            }
+
+            if (type == "OK" && stageStatus != 0)
+            {
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                UpdateInspectionStatusMessage($"OK点检阶段{currentCommand}未通过，请调参后重复触发当前阶段。工具明细：{toolSummary}");
+                writeLog($"OK点检阶段失败：阶段={currentCommand}存在NG，保留当前阶段等待重试，工具明细={toolSummary}", false);
+                return;
+            }
+
+            if (type == "NG"
+                && GetInspectionNgPassCondition() == ReportWorkConfig.InspectionNgConditionAll
+                && !currentCommandTools.All(t => t.ToolStatus == ToolStatus.NG))
+            {
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                UpdateInspectionStatusMessage($"NG点检阶段{currentCommand}未满足全部NG条件，请调参后重复触发当前阶段。工具明细：{toolSummary}");
+                writeLog($"NG点检阶段失败：阶段={currentCommand}未达到全部NG条件，保留当前阶段等待重试，工具明细={toolSummary}", false);
+                return;
+            }
+
+            if (!TryAdvanceInspectionStage(currentCommand, out bool isFinalStage))
+            {
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                UpdateInspectionStatusMessage($"点检阶段{currentCommand}不在当前阶段配置中，无法继续点检。");
+                writeLog($"点检阶段结算失败：阶段={currentCommand}未在ConfiguredStages中找到，工具明细={toolSummary}", true);
+                return;
+            }
+
+            if (!isFinalStage)
+            {
+                DataModel.Processmodel.Status = stageStatus == 0 ? ToolStatus.OK : ToolStatus.NG;
+                string nextStage = DataModel.Processmodel.ConfiguredStages[DataModel.Processmodel.CurrentStageIndex];
+                UpdateInspectionStatusMessage($"{type}点检阶段{currentCommand}完成，请触发下一阶段{nextStage}。工具明细：{toolSummary}");
+                writeLog($"{type}点检阶段完成：{currentCommand}，下一阶段={nextStage}，工具明细={toolSummary}", false);
+                return;
+            }
+
+            List<ToolModel> inspectionTools = GetInspectionToolsForConfiguredStages();
+            string allToolSummary = string.Join(", ", inspectionTools.Select(t => $"{t.Name}:{t.ToolStatus}"));
+            bool allToolsSettled = inspectionTools.Count > 0
+                && inspectionTools.All(t => t.ToolStatus != ToolStatus.等待中 && t.ToolStatus != ToolStatus.识别中);
+            bool hasNG2 = inspectionTools.Any(t => t.ToolStatus == ToolStatus.NG2);
+            bool allOK = allToolsSettled && inspectionTools.All(t => t.ToolStatus == ToolStatus.OK);
+            bool anyNG = allToolsSettled && inspectionTools.Any(t => t.ToolStatus == ToolStatus.NG);
+            bool allNG = allToolsSettled && inspectionTools.All(t => t.ToolStatus == ToolStatus.NG);
+            bool passed = type == "OK"
+                ? allOK && !hasNG2
+                : !hasNG2
+                    && (GetInspectionNgPassCondition() == ReportWorkConfig.InspectionNgConditionAll ? allNG : anyNG);
+
+            if (passed)
+            {
+                DataModel.Processmodel.Status = type == "OK" ? ToolStatus.OK : ToolStatus.NG;
+                string successConditionText = type == "NG" ? $"，NG规则={GetInspectionNgPassCondition()}" : string.Empty;
+                writeLog($"{type}点检样件通过{successConditionText}，全部阶段工具明细={allToolSummary}", false);
+                CompleteInspection(type);
+                return;
+            }
+
+            string failureReason = !allToolsSettled
+                ? "存在工具未完成判定"
+                : hasNG2
+                    ? "存在NG2"
+                    : type == "OK"
+                        ? "全部阶段工具未全部OK"
+                        : $"未满足NG规则{GetInspectionNgPassCondition()}";
+            ResetInspectionAttemptForRetry(type, failureReason, allToolSummary);
+        }
+
+        /// <summary>
+        /// 将已完成的点检阶段写入阶段状态，并把下一次PLC触发位置移动到下一个配置阶段。
+        /// </summary>
+        /// <param name="currentCommand">本次完成的阶段指令。</param>
+        /// <param name="isFinalStage">输出值；当前阶段是ConfiguredStages最后一项时为true。</param>
+        /// <returns>阶段指令存在于当前配置中并完成推进时返回true。</returns>
+        private bool TryAdvanceInspectionStage(string currentCommand, out bool isFinalStage)
+        {
+            isFinalStage = false;
+            List<string> stages = DataModel.Processmodel.ConfiguredStages;
+            if (stages == null || stages.Count == 0)
+            {
+                return false;
+            }
+
+            string normalizedCommand = NormalizeStageCommand(currentCommand);
+            int stageIndex = stages.FindIndex(s => NormalizeStageCommand(s) == normalizedCommand);
+            if (stageIndex < 0)
+            {
+                return false;
+            }
+
+            DataModel.Processmodel.CompletedStages.Add(normalizedCommand);
+            if (DataModel.Processmodel.CurrentStageIndex <= stageIndex)
+            {
+                DataModel.Processmodel.CurrentStageIndex = stageIndex + 1;
+            }
+
+            isFinalStage = DataModel.Processmodel.CurrentStageIndex >= stages.Count;
+            return true;
+        }
+
+        /// <summary>
+        /// 获取当前点检样件在全部配置阶段中的工具集合，供最后一个阶段完成后的整件样件判定使用。
+        /// </summary>
+        /// <returns>属于ConfiguredStages的工具集合；配置包含ALL时返回全部已配置工具。</returns>
+        private List<ToolModel> GetInspectionToolsForConfiguredStages()
+        {
+            List<string> stages = DataModel.Processmodel.ConfiguredStages ?? new List<string>();
+            HashSet<string> normalizedStages = new HashSet<string>(stages.Select(NormalizeStageCommand));
+            if (normalizedStages.Contains("ALL"))
+            {
+                return DataModel.Processmodel.Tools.ToList();
+            }
+
+            return DataModel.Processmodel.Tools
+                .Where(t => normalizedStages.Contains(NormalizeStageCommand(t.Command)))
+                .ToList();
+        }
+
+        /// <summary>
+        /// 清理本次点检样件的阶段结果并回到第一个配置阶段，保留已确认的点检SN、点检类型和周期进度。
+        /// </summary>
+        /// <param name="type">当前点检类型，取值为OK或NG。</param>
+        /// <param name="failureReason">整件样件未通过的业务原因。</param>
+        /// <param name="toolSummary">全部参与工具的结果摘要，用于现场日志定位调参范围。</param>
+        private void ResetInspectionAttemptForRetry(string type, string failureReason, string toolSummary)
+        {
+            ResetDetectionCycle();
+            string firstStage = DataModel.Processmodel.ConfiguredStages != null
+                && DataModel.Processmodel.ConfiguredStages.Count > 0
+                ? DataModel.Processmodel.ConfiguredStages[0]
+                : "首阶段";
+            UpdateInspectionStatusMessage($"{type}点检样件未通过：{failureReason}。请调参后从{firstStage}重新触发，当前点检SN继续有效。");
+            writeLog($"{type}点检样件未通过：{failureReason}，已清理阶段结果并回到{firstStage}，工具明细={toolSummary}", false);
+        }
+
+        /// <summary>
+        /// 结算当前点检类型并在OK、NG两类样件均完成后更新周期时间和普通生产门禁。
+        /// </summary>
+        /// <remarks>
+        /// 点检类型的完成标记只在全部配置阶段汇总通过后更新；单个阶段完成只推进点检样件内部阶段，不更新周期时间。
+        /// </remarks>
         private void CompleteInspection(string type)
         {
             if (type == "OK")

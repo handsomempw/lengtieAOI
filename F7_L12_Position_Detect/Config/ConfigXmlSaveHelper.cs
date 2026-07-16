@@ -114,8 +114,14 @@ namespace F7_L12_Position_Detect.Config
         /// <param name="data">准备落盘的配置对象。</param>
         /// <param name="loadFailed">本轮加载是否发生无法恢复的失败。</param>
         /// <param name="log">现场诊断日志入口。</param>
+        /// <param name="decorateSerializedXml">临时XML完成序列化后执行的业务装饰入口，用于写入需要随每次保存稳定生成的操作说明。</param>
         /// <returns>正式文件完成更新或内容保持一致时返回 true。</returns>
-        public static bool TrySave<T>(string filename, T data, bool loadFailed, Action<string> log = null) where T : class
+        public static bool TrySave<T>(
+            string filename,
+            T data,
+            bool loadFailed,
+            Action<string> log = null,
+            Action<string> decorateSerializedXml = null) where T : class
         {
             if (data == null)
             {
@@ -131,7 +137,7 @@ namespace F7_L12_Position_Detect.Config
 
             try
             {
-                SaveValidatedXml(filename, data, true, log);
+                SaveValidatedXml(filename, data, true, log, decorateSerializedXml);
                 log?.Invoke($"[配置保存] 成功：{Path.GetFileName(filename)}");
                 return true;
             }
@@ -167,7 +173,7 @@ namespace F7_L12_Position_Detect.Config
 
             try
             {
-                SaveValidatedXml(filename, data, false, log);
+                SaveValidatedXml(filename, data, false, log, null);
                 log?.Invoke($"[配置保存] 成功：{Path.GetFileName(filename)}");
                 return true;
             }
@@ -490,7 +496,12 @@ namespace F7_L12_Position_Detect.Config
             }
         }
 
-        private static void SaveValidatedXml<T>(string filename, T data, bool maintainRecoveryCopies, Action<string> log) where T : class
+        private static void SaveValidatedXml<T>(
+            string filename,
+            T data,
+            bool maintainRecoveryCopies,
+            Action<string> log,
+            Action<string> decorateSerializedXml) where T : class
         {
             EnsureDirectory(filename);
 
@@ -506,6 +517,8 @@ namespace F7_L12_Position_Detect.Config
                     serializer.Serialize(stream, data);
                     stream.Flush();
                 }
+
+                decorateSerializedXml?.Invoke(tempFile);
 
                 T verified;
                 if (!TryDeserialize(tempFile, out verified))

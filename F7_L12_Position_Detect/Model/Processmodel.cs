@@ -199,13 +199,29 @@ namespace F7_L12_Position_Detect.Model
             {
                 _isReportingWork = value;
                 RaisePropertyChanged(() => IsReportingWork);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
+        /// <summary>
+        /// 判断当前检测按钮是否可以启动工具检测。该属性只提供界面和工具启动层保护，普通产品的SN、工序和点检到期门禁仍由对应业务流程分别校验。
+        /// </summary>
+        /// <remarks>
+        /// 点检样件在MES确认身份并进入OK或NG模式后允许检测；未完成点检身份确认的等待扫码状态不会被该属性放行。
+        /// </remarks>
         [XmlIgnore]
         public bool CanStartDetection
         {
-            get { return !string.IsNullOrEmpty(CurrentProductSN) && !IsReportingWork; }
+            get
+            {
+                bool isInspectionReady = IsInspectionMode
+                    && string.IsNullOrEmpty(PendingInspectionType)
+                    && (InspectionType == "OK" || InspectionType == "NG");
+
+                return !string.IsNullOrEmpty(CurrentProductSN)
+                    && !IsReportingWork
+                    && (!IsInspectionOverdue || isInspectionReady);
+            }
         }
 
         // 扫码状态相关属性
@@ -219,6 +235,7 @@ namespace F7_L12_Position_Detect.Model
                 _scanCodeStatus = value;
                 RaisePropertyChanged(() => ScanCodeStatus);
                 RaisePropertyChanged(() => ScanCodeStatusColor);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
@@ -255,7 +272,8 @@ namespace F7_L12_Position_Detect.Model
         /// 业务背景：
         /// - 工具通过 <see cref="ToolModel.Command"/> 绑定到某个阶段指令（如 A1/A2/A3...）。同一阶段可包含多个工具。
         /// - PLC 侧只提供“单地址触发”，阶段推进由视觉端内部状态机（CurrentStageIndex/CompletedStages）控制。
-        /// - 任一阶段出现 NG/NG2/超时，将 <see cref="NeedRestart"/> 置为 true；下一次触发必须清空工具运行态并从第 0 阶段重跑。
+        /// - 普通生产阶段出现 NG/NG2/超时后，<see cref="NeedRestart"/> 配合 XML 重试策略决定下一次触发位置。
+        /// - 点检模式使用独立规则：当前阶段失败时保留 <see cref="CurrentStageIndex"/>，下一次相同PLC触发重复当前阶段，XML全局策略不改变点检重试方式。
         /// </remarks>
 
         [XmlIgnore]
@@ -361,7 +379,7 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
-        #region 点检状态（24小时强制点检：待扫码 / 执行中 / 完成状态）
+        #region 点检状态（可配置周期强制点检：待扫码 / 执行中 / 完成状态）
 
         private string _pendingInspectionType = null; // "OK" / "NG" / null
         /// <summary>
@@ -377,10 +395,14 @@ namespace F7_L12_Position_Detect.Model
                 RaisePropertyChanged(() => PendingInspectionType);
                 RaisePropertyChanged(() => InspectionStatusText);
                 RaisePropertyChanged(() => IsInspectionActive);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
         private bool _isInspectionMode = false;
+        /// <summary>
+        /// 当前已通过MES确认点检最终产品SN并允许检测。该状态只属于本次运行中的点检样件，不代表普通产品已完成工序校验或报工。
+        /// </summary>
         [XmlIgnore]
         public bool IsInspectionMode
         {
@@ -391,10 +413,14 @@ namespace F7_L12_Position_Detect.Model
                 RaisePropertyChanged(() => IsInspectionMode);
                 RaisePropertyChanged(() => InspectionStatusText);
                 RaisePropertyChanged(() => IsInspectionActive);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
         private string _inspectionType = null; // "OK" / "NG" / null
+        /// <summary>
+        /// 当前已确认样件的点检类型，仅接受OK或NG；窗口选择后的等待扫码状态由 PendingInspectionType 表示。
+        /// </summary>
         [XmlIgnore]
         public string InspectionType
         {
@@ -404,10 +430,14 @@ namespace F7_L12_Position_Detect.Model
                 _inspectionType = value;
                 RaisePropertyChanged(() => InspectionType);
                 RaisePropertyChanged(() => InspectionStatusText);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
         private bool _okInspectionCompleted = false;
+        /// <summary>
+        /// 当前点检周期的OK样件是否已完成。该标记属于运行态，软件重启后按未完成处理，直到OK和NG都完成才更新周期时间。
+        /// </summary>
         [XmlIgnore]
         public bool OKInspectionCompleted
         {
@@ -421,6 +451,9 @@ namespace F7_L12_Position_Detect.Model
         }
 
         private bool _ngInspectionCompleted = false;
+        /// <summary>
+        /// 当前点检周期的NG样件是否已完成。该标记属于运行态，软件重启后按未完成处理，直到OK和NG都完成才更新周期时间。
+        /// </summary>
         [XmlIgnore]
         public bool NGInspectionCompleted
         {
@@ -433,6 +466,9 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        /// <summary>
+        /// 面向界面的点检状态文案，区分已进入样件检测和已选择类型等待扫码两种操作状态。
+        /// </summary>
         [XmlIgnore]
         public string InspectionStatusText
         {
@@ -446,6 +482,9 @@ namespace F7_L12_Position_Detect.Model
             }
         }
 
+        /// <summary>
+        /// 判断点检流程是否占用当前检测入口，包括等待扫码和已进入样件模式两个阶段。
+        /// </summary>
         [XmlIgnore]
         public bool IsInspectionActive
         {
@@ -464,6 +503,7 @@ namespace F7_L12_Position_Detect.Model
                 RaisePropertyChanged(() => TimeToNextInspectionText);
                 RaisePropertyChanged(() => InspectionCountdownColor);
                 RaisePropertyChanged(() => IsInspectionOverdue);
+                RaisePropertyChanged(() => CanStartDetection);
             }
         }
 
@@ -472,7 +512,7 @@ namespace F7_L12_Position_Detect.Model
         {
             get
             {
-                if (_timeToNextInspection.TotalHours < 0)
+                if (_timeToNextInspection <= TimeSpan.Zero)
                     return "已到期";
                 int hours = (int)_timeToNextInspection.TotalHours;
                 int minutes = _timeToNextInspection.Minutes;
@@ -497,7 +537,7 @@ namespace F7_L12_Position_Detect.Model
         [XmlIgnore]
         public bool IsInspectionOverdue
         {
-            get { return _timeToNextInspection.TotalHours < 0; }
+            get { return _timeToNextInspection <= TimeSpan.Zero; }
         }
 
         #endregion
