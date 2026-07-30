@@ -320,6 +320,16 @@ namespace F7_L12_Position_Detect
             }
         }
 
+        /// <summary>
+        /// 倒计时栏「开始点检」：打开点检选择窗口，走完整OK/NG流程后由业务层重置倒计时。
+        /// </summary>
+        /// <param name="sender">触发按钮的界面元素。</param>
+        /// <param name="e">WPF 点击事件参数。</param>
+        private void StartManualInspection_Click(object sender, RoutedEventArgs e)
+        {
+            vml?.Main?.RequestManualInspection();
+        }
+
         private void SettingBtn_Click(object sender, RoutedEventArgs e)
         {
 

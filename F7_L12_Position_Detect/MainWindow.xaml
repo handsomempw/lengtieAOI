@@ -165,6 +165,20 @@
                     <TextBlock Grid.Column="2" Text="{Binding DataModel.Processmodel.InspectionStatusText}"
                                FontSize="12" VerticalAlignment="Center" Foreground="White"
                                Visibility="{Binding DataModel.Processmodel.IsInspectionActive, Converter={StaticResource Bool2Visible_Converter}}"/>
+                    <Button Grid.Column="3"
+                            Content="开始点检"
+                            FontSize="13"
+                            Padding="12,2"
+                            Margin="10,0,0,0"
+                            MinWidth="88"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Background="#101010"
+                            Foreground="WhiteSmoke"
+                            p:ButtonHelper.CornerRadius="4"
+                            ToolTip="手动开始点检。行为由配置数据.xml中“手动点检模式”控制：提前点检 / 强制到期；检测、报工或扫码处理中等待当前流程完成。"
+                            IsEnabled="{Binding DataModel.Processmodel.IsInspectionActive, Converter={StaticResource BoolINV_Converter}}"
+                            Click="StartManualInspection_Click"/>
                 </Grid>
             </Border>
 

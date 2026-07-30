@@ -173,6 +173,16 @@ namespace F7_L12_Position_Detect.Model
         public const string InspectionNgConditionAll = "全部NG";
 
         /// <summary>
+        /// 手动“开始点检”的提前点检模式：打开选择窗口跑完整流程，未到期时不回拨上次点检时间，也不开启普通生产门禁。
+        /// </summary>
+        public const string ManualInspectionModeEarly = "提前点检";
+
+        /// <summary>
+        /// 手动“开始点检”的强制到期模式：将周期视为已到期并清空上次点检时间，开启普通生产门禁，完成OK和NG后才恢复。
+        /// </summary>
+        public const string ManualInspectionModeForceDue = "强制到期";
+
+        /// <summary>
         /// 扫码后用 MES DecodeSN 从码内容解析产品SN。
         /// </summary>
         public const string SnDecodeModeDecodeSN = "DecodeSN";
@@ -315,6 +325,21 @@ namespace F7_L12_Position_Detect.Model
             {
                 _lastInspectionTime = value;
                 RaisePropertyChanged(() => LastInspectionTime);
+            }
+        }
+
+        private string _manualInspectionMode = ManualInspectionModeEarly;
+        /// <summary>
+        /// 倒计时栏“开始点检”按钮的行为模式。“提前点检”只打开窗口不强制门禁；“强制到期”会清空上次点检时间并拦截普通生产直至OK和NG完成。配置缺失或非法值按提前点检处理。
+        /// </summary>
+        [XmlElement("手动点检模式")]
+        public string ManualInspectionMode
+        {
+            get { return _manualInspectionMode; }
+            set
+            {
+                _manualInspectionMode = value;
+                RaisePropertyChanged(() => ManualInspectionMode);
             }
         }
 
