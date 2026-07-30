@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using MESAutoLineClient;
 using MES_ORACLE_DATABASE;
+using F7_L12_Position_Detect.Model;
 
 namespace F7_L12_Position_Detect.Service
 {
@@ -55,11 +56,17 @@ namespace F7_L12_Position_Detect.Service
         }
 
         /// <summary>
-        /// 处理扫码并获取最终产品SN。优先通过MES查询条码最终绑定的产品SN，查询失败时保留DecodeSN兼容普通生产扫码。
+        /// 处理扫码并获取产品SN。解码策略由配置 <see cref="ReportWorkConfig.SnDecodeMode"/> 决定。
         /// </summary>
         /// <param name="scanCode">扫码获取的原始编码</param>
+        /// <param name="snDecodeMode">
+        /// DecodeSN：仅 DecodeSN；最终绑定：先查MES最终绑定产品SN，失败再回退 DecodeSN。
+        /// 空或非法值按 DecodeSN 处理。
+        /// </param>
         /// <returns>处理结果</returns>
-        public async Task<ScanCodeResult> ProcessScanCodeAsync(string scanCode)
+        public async Task<ScanCodeResult> ProcessScanCodeAsync(
+            string scanCode,
+            string snDecodeMode = ReportWorkConfig.SnDecodeModeDecodeSN)
         {
             return await Task.Run(() =>
             {
@@ -75,9 +82,22 @@ namespace F7_L12_Position_Detect.Service
                         };
                     }
 
-                    string resolvedSN = TryGetLastBindingProductSN(scanCode, out string finalSnError);
-                    if (string.IsNullOrWhiteSpace(resolvedSN))
+                    string mode = NormalizeSnDecodeMode(snDecodeMode);
+                    string resolvedSN;
+                    string finalSnError = string.Empty;
+
+                    if (mode == ReportWorkConfig.SnDecodeModeLastBinding)
                     {
+                        // 最终绑定：优先 MES 零件码最终绑定产品SN，查不到再 DecodeSN
+                        resolvedSN = TryGetLastBindingProductSN(scanCode, out finalSnError);
+                        if (string.IsNullOrWhiteSpace(resolvedSN))
+                        {
+                            resolvedSN = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.DecodeSN(scanCode);
+                        }
+                    }
+                    else
+                    {
+                        // DecodeSN：仅按码内容解析
                         resolvedSN = MES_ORACLE_DATABASE.MES_ORACLE_DATABASE.DecodeSN(scanCode);
                     }
 
@@ -94,9 +114,10 @@ namespace F7_L12_Position_Detect.Service
                     return new ScanCodeResult
                     {
                         Success = false,
-                        ErrorMessage = string.IsNullOrWhiteSpace(finalSnError)
-                            ? "无法解析扫码内容获取最终产品SN"
-                            : $"无法解析扫码内容获取最终产品SN；MES最终绑定查询：{finalSnError}",
+                        ErrorMessage = mode == ReportWorkConfig.SnDecodeModeLastBinding
+                            && !string.IsNullOrWhiteSpace(finalSnError)
+                            ? $"无法解析扫码内容获取最终产品SN；MES最终绑定查询：{finalSnError}"
+                            : "无法解析扫码内容获取SN",
                         StatusMessage = "SN获取失败"
                     };
                 }
@@ -110,6 +131,22 @@ namespace F7_L12_Position_Detect.Service
                     };
                 }
             });
+        }
+
+        /// <summary>
+        /// 将配置中的SN解码方式规范为受支持取值；非法或空值回退 DecodeSN。
+        /// </summary>
+        public static string NormalizeSnDecodeMode(string snDecodeMode)
+        {
+            string normalized = (snDecodeMode ?? string.Empty).Trim();
+            if (string.Equals(normalized, ReportWorkConfig.SnDecodeModeLastBinding, StringComparison.OrdinalIgnoreCase)
+                || normalized == "LastBinding"
+                || normalized == "MES最终绑定")
+            {
+                return ReportWorkConfig.SnDecodeModeLastBinding;
+            }
+
+            return ReportWorkConfig.SnDecodeModeDecodeSN;
         }
 
         /// <summary>
@@ -195,7 +232,7 @@ namespace F7_L12_Position_Detect.Service
         }
 
         /// <summary>
-        /// 查询条码在MES中的最终绑定产品SN。普通生产保留DecodeSN兼容路径，点检还会通过产品查询接口进行第二次实时确认。
+        /// 查询条码在MES中的最终绑定产品SN，供「最终绑定」解码方式使用。
         /// </summary>
         private static string TryGetLastBindingProductSN(string barcode, out string errorMessage)
         {
@@ -225,7 +262,7 @@ namespace F7_L12_Position_Detect.Service
         }
 
         /// <summary>
-        /// 复用MES数据库组件已经初始化的客户端，保证最终SN查询与现有工位连接配置一致。
+        /// 复用MES数据库组件已初始化的客户端，供最终绑定查询与点检样件身份二次确认使用。
         /// </summary>
         private static AutoLineClient TryGetAutoLineClient(out string errorMessage)
         {
@@ -251,7 +288,7 @@ namespace F7_L12_Position_Detect.Service
         /// <summary>
         /// 执行工序校验
         /// </summary>
-        /// <param name="sn">产品SN码</param>
+        /// <param name="sn">产品SN</param>
         /// <param name="procedureName">工序名称</param>
         /// <returns>校验结果</returns>
         public async Task<ProcessValidationResult> ValidateProcessAsync(string sn, string procedureName)
@@ -319,11 +356,15 @@ namespace F7_L12_Position_Detect.Service
         /// </summary>
         /// <param name="scanCode">扫码内容</param>
         /// <param name="procedureName">工序名称</param>
+        /// <param name="snDecodeMode">SN解码方式，见 <see cref="ReportWorkConfig.SnDecodeMode"/></param>
         /// <returns>完整处理结果</returns>
-        public async Task<(ScanCodeResult scanResult, ProcessValidationResult validationResult)> ProcessScanCodeWithValidationAsync(string scanCode, string procedureName)
+        public async Task<(ScanCodeResult scanResult, ProcessValidationResult validationResult)> ProcessScanCodeWithValidationAsync(
+            string scanCode,
+            string procedureName,
+            string snDecodeMode = ReportWorkConfig.SnDecodeModeDecodeSN)
         {
             // 第一步：处理扫码获取SN
-            var scanResult = await ProcessScanCodeAsync(scanCode);
+            var scanResult = await ProcessScanCodeAsync(scanCode, snDecodeMode);
             
             ProcessValidationResult validationResult = null;
             
@@ -334,7 +375,6 @@ namespace F7_L12_Position_Detect.Service
             }
             else
             {
-                // SN获取失败，跳过工序校验
                 validationResult = new ProcessValidationResult
                 {
                     Success = false,
@@ -342,7 +382,7 @@ namespace F7_L12_Position_Detect.Service
                     StatusMessage = "工序校验跳过"
                 };
             }
-            
+
             return (scanResult, validationResult);
         }
     }

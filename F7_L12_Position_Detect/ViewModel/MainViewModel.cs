@@ -1102,11 +1102,14 @@ namespace F7_L12_Position_Detect.ViewModel
                 DataModel.Processmodel.ReportWorkStatus = string.Empty;
                 DataModel.Processmodel.ScanCodeStatus = "正在处理...";
 
-                // 所有扫码先由MES解析最终产品SN；点检在工序校验前按固定最终SN分流。
+                // 所有扫码先按配置的SN解码方式解析产品SN；点检在工序校验前按配置的点检SN分流。
                 string okInspectionSN = DataModel?.Settingmodel?.ReportWorkConfig?.OKInspectionSN;
                 string ngInspectionSN = DataModel?.Settingmodel?.ReportWorkConfig?.NGInspectionSN;
                 string normalizedScan = (scanCode ?? string.Empty).Trim();
-                var scanResult = await _mesService.ProcessScanCodeAsync(normalizedScan);
+                string snDecodeMode = DataModel?.Settingmodel?.ReportWorkConfig?.SnDecodeMode;
+                string normalizedSnDecodeMode = MESService.NormalizeSnDecodeMode(snDecodeMode);
+                WriteDetailLog($"[扫码解析] SN解码方式={normalizedSnDecodeMode} raw={normalizedScan}");
+                var scanResult = await _mesService.ProcessScanCodeAsync(normalizedScan, normalizedSnDecodeMode);
                 if (!scanResult.Success)
                 {
                     _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
@@ -2547,6 +2550,7 @@ namespace F7_L12_Position_Detect.ViewModel
             XElement okSnElement = reportWorkConfig.Element("OK点检SN码");
             XElement ngSnElement = reportWorkConfig.Element("NG点检SN码");
             XElement lastTimeElement = reportWorkConfig.Element("上次点检时间");
+            XElement snDecodeModeElement = reportWorkConfig.Element("SN解码方式");
             XElement stageRetryElement = document.Root?.Element("阶段失败重试策略");
             if (intervalElement == null || ngConditionElement == null || okSnElement == null || ngSnElement == null || lastTimeElement == null)
             {
@@ -2565,6 +2569,11 @@ namespace F7_L12_Position_Detect.ViewModel
                 " NG点检样件在MES中的最终绑定产品SN；软件通过MES实时确认后进入NG点检。 "));
             lastTimeElement.AddBeforeSelf(new XComment(
                 " 软件在OK和NG点检全部完成后自动更新该时间；该值用于倒计时和普通产品到期门禁。 "));
+            if (snDecodeModeElement != null)
+            {
+                snDecodeModeElement.AddBeforeSelf(new XComment(
+                    " SN解码方式只支持“DecodeSN”或“最终绑定”。DecodeSN：按扫码内容用MES DecodeSN解析产品SN（与3月可用版本一致，现场默认推荐）。最终绑定：先查MES零件码最终绑定的产品SN，查不到再回退DecodeSN。配置缺失或非法值按DecodeSN处理；请先退出软件再改，保存后重启生效。 "));
+            }
             if (stageRetryElement != null)
             {
                 stageRetryElement.AddBeforeSelf(new XComment(
@@ -4046,7 +4055,7 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 规范点检XML中的人工可编辑参数。周期有效范围为1至48小时，非法周期回退12小时；未知NG条件回退“任一NG”，并保留日志供现场核对实际生效值。
+        /// 规范点检与扫码相关XML中的人工可编辑参数。周期有效范围为1至48小时，非法周期回退12小时；未知NG条件回退“任一NG”；非法SN解码方式回退DecodeSN，并保留日志供现场核对实际生效值。
         /// </summary>
         private void NormalizeInspectionConfiguration()
         {
@@ -4077,6 +4086,15 @@ namespace F7_L12_Position_Detect.ViewModel
 
             cfg.OKInspectionSN = (cfg.OKInspectionSN ?? string.Empty).Trim();
             cfg.NGInspectionSN = (cfg.NGInspectionSN ?? string.Empty).Trim();
+
+            string configuredSnDecodeMode = (cfg.SnDecodeMode ?? string.Empty).Trim();
+            string normalizedSnDecodeMode = MESService.NormalizeSnDecodeMode(configuredSnDecodeMode);
+            if (!string.Equals(configuredSnDecodeMode, normalizedSnDecodeMode, StringComparison.Ordinal)
+                && !(string.IsNullOrEmpty(configuredSnDecodeMode) && normalizedSnDecodeMode == ReportWorkConfig.SnDecodeModeDecodeSN))
+            {
+                writeLog($"SN解码方式配置无效：{configuredSnDecodeMode}，仅支持“{ReportWorkConfig.SnDecodeModeDecodeSN}”或“{ReportWorkConfig.SnDecodeModeLastBinding}”，已按{normalizedSnDecodeMode}处理", false);
+            }
+            cfg.SnDecodeMode = normalizedSnDecodeMode;
         }
 
         /// <summary>

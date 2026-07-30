@@ -172,6 +172,16 @@ namespace F7_L12_Position_Detect.Model
         /// </summary>
         public const string InspectionNgConditionAll = "全部NG";
 
+        /// <summary>
+        /// 扫码后用 MES DecodeSN 从码内容解析产品SN。
+        /// </summary>
+        public const string SnDecodeModeDecodeSN = "DecodeSN";
+
+        /// <summary>
+        /// 扫码后优先向MES查询零件码最终绑定的产品SN；查不到时再回退 DecodeSN。
+        /// </summary>
+        public const string SnDecodeModeLastBinding = "最终绑定";
+
         private string _stationCode = "ST001";
         [XmlElement("工位号")]
         public string StationCode
@@ -305,6 +315,22 @@ namespace F7_L12_Position_Detect.Model
             {
                 _lastInspectionTime = value;
                 RaisePropertyChanged(() => LastInspectionTime);
+            }
+        }
+
+        private string _snDecodeMode = SnDecodeModeDecodeSN;
+        /// <summary>
+        /// 普通扫码解析产品SN的方式。DecodeSN：按码内容本地/规则解码；最终绑定：先查MES零件码最终绑定产品SN，失败再回退DecodeSN。
+        /// 配置缺失或填写非法值时按 DecodeSN 处理。修改后需重启软件生效。
+        /// </summary>
+        [XmlElement("SN解码方式")]
+        public string SnDecodeMode
+        {
+            get { return _snDecodeMode; }
+            set
+            {
+                _snDecodeMode = value;
+                RaisePropertyChanged(() => SnDecodeMode);
             }
         }
     }
