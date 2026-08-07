@@ -62,6 +62,22 @@ namespace F7_L12_Position_Detect
                    && !IsKeyboardWedgeScannerMode(mode);
         }
 
+        private void CompleteScannerReadFailure(
+            string mode,
+            DateTime scanTriggeredAtUtc,
+            Status? hf800Status = null)
+        {
+            DateTime completedAtUtc = DateTime.UtcNow;
+            int scannerTimeoutMs = vml.Main.DataModel.Settingmodel.HF800.receivetimeout;
+            bool scannerTimedOut = string.Equals(mode, "HF800", StringComparison.Ordinal)
+                && (hf800Status == Status.NULL
+                    || (scannerTimeoutMs > 0
+                        && (completedAtUtc - scanTriggeredAtUtc).TotalMilliseconds >= scannerTimeoutMs));
+            string scannerStatus = scannerTimedOut ? "扫码器超时" : "扫码失败";
+            vml.Main.DataModel.Processmodel.ScanCodeStatus = scannerStatus;
+            vml.Main.RecordScannerReadFailure(scanTriggeredAtUtc, scannerStatus);
+        }
+
         private void StartSerialScannerListener()
         {
             if (_serialScanListenerTask != null && !_serialScanListenerTask.IsCompleted)
@@ -85,6 +101,7 @@ namespace F7_L12_Position_Detect
                             continue;
                         }
 
+                        DateTime scanTriggeredAtUtc = DateTime.UtcNow;
                         string scanCode = string.Empty;
                         bool isSuccess = false;
 
@@ -101,7 +118,8 @@ namespace F7_L12_Position_Detect
                             continue;
                         }
 
-                        var nowUtc = DateTime.UtcNow;
+                        DateTime barcodeReceivedAtUtc = DateTime.UtcNow;
+                        var nowUtc = barcodeReceivedAtUtc;
                         // 刚启动监听时，丢弃预热窗口内的历史缓存码/噪声，避免“启动即自动扫一枪”。
                         if (nowUtc < _serialScanWarmupUntilUtc)
                         {
@@ -123,7 +141,10 @@ namespace F7_L12_Position_Detect
                             vml.Main.DataModel.Processmodel.Scannerstr = scanCode;
                             vml.Main.DataModel.Processmodel.SNList.Clear();
                             vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
-                            await vml.Main.ProcessScanCodeWithMESAsync(scanCode);
+                            await vml.Main.ProcessScanCodeWithMESAsync(
+                                scanCode,
+                                scanTriggeredAtUtc,
+                                barcodeReceivedAtUtc);
                         }).Task.Unwrap();
                     }
                     catch (OperationCanceledException)
@@ -601,8 +622,11 @@ namespace F7_L12_Position_Detect
                 return;
             }
 
+            DateTime scanTriggeredAtUtc = DateTime.UtcNow;
+            vml.Main.DataModel.Processmodel.ScanCodeStatus = "正在读取扫码器";
             string scanCode = string.Empty;
             bool scanSuccess = false;
+            Status? hf800Status = null;
 
             try
             {
@@ -613,6 +637,7 @@ namespace F7_L12_Position_Detect
                     {
                         var r = vml.Main.DataModel.Settingmodel.HF800.Scanner();
                         scanCode = (r.value ?? string.Empty).Replace("\r", "").Replace("\n", "");
+                        hf800Status = r.Status;
                         scanSuccess = (r.Status == Status.OK);
                     }
                     else
@@ -631,14 +656,24 @@ namespace F7_L12_Position_Detect
             }
             catch (Exception ex)
             {
+                CompleteScannerReadFailure(mode, scanTriggeredAtUtc);
                 vml.Main.writeLog($"扫码测试取码异常: {ex.Message}", true);
                 return;
             }
 
+            DateTime barcodeReceivedAtUtc = DateTime.UtcNow;
             if (scanSuccess && !string.IsNullOrEmpty(scanCode))
-                await vml.Main.ProcessScanCodeWithMESAsync(scanCode);
-            else if (!scanSuccess)
-                vml.Main.DataModel.Processmodel.ScanCodeStatus = "扫码失败";
+            {
+                vml.Main.DataModel.Processmodel.ScanCodeStatus = "条码已接收，正在解析SN";
+                await vml.Main.ProcessScanCodeWithMESAsync(
+                    scanCode,
+                    scanTriggeredAtUtc,
+                    barcodeReceivedAtUtc);
+            }
+            else
+            {
+                CompleteScannerReadFailure(mode, scanTriggeredAtUtc, hf800Status);
+            }
         }
 
         private void ClearBarcodes_Click(object sender, RoutedEventArgs e)

@@ -254,8 +254,14 @@ namespace F7_L12_Position_Detect.Model
                     case "SN获取失败":
                     case "工序校验失败":
                         return Brushes.Red;
-                    case "正在处理...":
+                    case "正在读取扫码器":
+                    case "条码已接收，正在解析SN":
+                    case "SN已确认，正在校验工序":
                         return Brushes.Orange;
+                    case "扫码器超时":
+                    case "MES超时":
+                    case "工序不通过":
+                        return Brushes.Red;
                     default:
                         return Brushes.Gray;
                 }

@@ -957,7 +957,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (!SwitchCameraForTool(firstTool))
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
-                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.NeedRestart = true;
                 WriteDetailLog($"[阶段触发下一相机组] 指定相机不可用 工具下标={firstToolIndex} 序列号='{firstTool.CameraSerialNumber}'");
                 return false;
             }
@@ -968,7 +968,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (!camera.TrySetExposure(group.ExposureTime, out int exposureErrorCode))
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
-                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.NeedRestart = true;
                 DataModel.Processmodel.CameraStatus = "相机曝光设置失败";
                 _cameraRecoveryRequired = true;
                 WriteCameraDebugLog(
@@ -988,7 +988,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (captureSessionId <= 0)
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
-                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.NeedRestart = true;
                 DataModel.Processmodel.CameraStatus = "相机会话无效";
                 _cameraRecoveryRequired = true;
                 WriteCameraDebugLog($"[阶段软触发] 相机会话无效 指令='{command}' 请求={captureRequestId}");
@@ -1024,7 +1024,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 _cameraRecoveryRequired = true;
                 DataModel.Processmodel.Status = ToolStatus.NG;
-                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.NeedRestart = true;
                 DataModel.Processmodel.CameraStatus = "相机软触发失败";
                 WriteCameraDebugLog(
                     $"[阶段软触发] 失败 指令='{command}' 会话={captureSessionId} 请求={captureRequestId} " +
@@ -1208,7 +1208,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 executionId = _activeExecutionId;
                 command = DataModel.Processmodel.RCMD;
-                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.NeedRestart = true;
                 DataModel.Processmodel.Status = ToolStatus.NG;
                 DataModel.Processmodel.CameraStatus = "读图超时";
                 _cameraRecoveryRequired = true;
@@ -1445,6 +1445,55 @@ namespace F7_L12_Position_Detect.ViewModel
             catch { return false; }
         }
 
+        private static string FormatScanTimestamp(DateTime? utcTime)
+        {
+            return utcTime.HasValue
+                ? utcTime.Value.ToLocalTime().ToString("HH:mm:ss.fff")
+                : "-";
+        }
+
+        private static string FormatScanElapsedMilliseconds(DateTime? startUtc, DateTime? endUtc)
+        {
+            if (!startUtc.HasValue || !endUtc.HasValue)
+            {
+                return "-";
+            }
+
+            return Math.Max(0, (endUtc.Value - startUtc.Value).TotalMilliseconds).ToString("F0");
+        }
+
+        private void WriteScanTimingLog(
+            DateTime scanTriggeredAtUtc,
+            DateTime? barcodeReceivedAtUtc,
+            DateTime? snResolvedAtUtc,
+            DateTime? processValidatedAtUtc,
+            string result)
+        {
+            DateTime endAtUtc = processValidatedAtUtc
+                ?? snResolvedAtUtc
+                ?? barcodeReceivedAtUtc
+                ?? DateTime.UtcNow;
+
+            WriteDetailLog(
+                $"[扫码耗时] 结果={result ?? "未知"} " +
+                $"T0触发={FormatScanTimestamp(scanTriggeredAtUtc)} " +
+                $"T1收到条码={FormatScanTimestamp(barcodeReceivedAtUtc)} " +
+                $"T2解析SN完成={FormatScanTimestamp(snResolvedAtUtc)} " +
+                $"T3工序校验完成={FormatScanTimestamp(processValidatedAtUtc)} " +
+                $"取码耗时={FormatScanElapsedMilliseconds(scanTriggeredAtUtc, barcodeReceivedAtUtc)}ms " +
+                $"SN解析耗时={FormatScanElapsedMilliseconds(barcodeReceivedAtUtc, snResolvedAtUtc)}ms " +
+                $"工序校验耗时={FormatScanElapsedMilliseconds(snResolvedAtUtc, processValidatedAtUtc)}ms " +
+                $"流程耗时={FormatScanElapsedMilliseconds(scanTriggeredAtUtc, endAtUtc)}ms");
+        }
+
+        /// <summary>
+        /// 记录扫码器阶段未取得有效条码的收口时间，供现场区分设备读取超时与后续MES耗时。
+        /// </summary>
+        public void RecordScannerReadFailure(DateTime scanTriggeredAtUtc, string status)
+        {
+            WriteScanTimingLog(scanTriggeredAtUtc, null, null, null, status);
+        }
+
         /// <summary>
         /// 处理扫码并集成MES服务
         /// 包括SN解析和工序校验
@@ -1459,6 +1508,8 @@ namespace F7_L12_Position_Detect.ViewModel
         /// 处理扫码并集成 MES：解码 SN、更新界面、工序校验；可选启动扫码自动阶段循环。
         /// </summary>
         /// <param name="scanCode">扫码原始内容。</param>
+        /// <param name="scanTriggeredAtUtc">扫码器读取或输入处理开始时刻；缺失时以本方法进入时刻记录T0。</param>
+        /// <param name="barcodeReceivedAtUtc">上位机收到完整条码的时刻；缺失时以本方法进入时刻记录T1。</param>
         /// <remarks>
         /// 业务意图：
         /// - 任意入口（扫码测试、串口监听、SN 框换行）最终汇聚到此方法，统一走 MES 与状态更新。
@@ -1466,8 +1517,22 @@ namespace F7_L12_Position_Detect.ViewModel
         /// - 清空 <see cref="Processmodel.ReportWorkStatus"/>：表示「新一件扫码开始」，避免仍显示上一枪的报工提示。
         /// - 使用 <see cref="_mesScanProcessLock"/> 保证同一时刻只有一条扫码/MES 链路，并与生产执行、照片测试共用产品上下文互斥。
         /// </remarks>
-        public async Task ProcessScanCodeWithMESAsync(string scanCode)
+        public async Task ProcessScanCodeWithMESAsync(
+            string scanCode,
+            DateTime? scanTriggeredAtUtc = null,
+            DateTime? barcodeReceivedAtUtc = null)
         {
+            DateTime scanStartUtc = scanTriggeredAtUtc ?? DateTime.UtcNow;
+            DateTime barcodeReceivedUtc = barcodeReceivedAtUtc ?? DateTime.UtcNow;
+            if (barcodeReceivedUtc < scanStartUtc)
+            {
+                barcodeReceivedUtc = scanStartUtc;
+            }
+
+            DateTime? snResolvedUtc = null;
+            DateTime? processValidatedUtc = null;
+            string timingResult = "扫码流程异常";
+
             bool scanBlocked;
             bool executing;
             bool processingImage;
@@ -1524,9 +1589,9 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 新一轮扫码开始时，先停止可能存在的“扫码自动触发执行循环”
                 StopScanAutoExecution();
 
-                // 更新扫码状态为处理中；新一件扫码时清掉上一枪的报工提示，避免与本次混淆
+                // 条码已进入上位机，后续状态按SN解析和工序校验阶段向操作员展示。
                 DataModel.Processmodel.ReportWorkStatus = string.Empty;
-                DataModel.Processmodel.ScanCodeStatus = "正在处理...";
+                DataModel.Processmodel.ScanCodeStatus = "条码已接收，正在解析SN";
 
                 // 所有扫码先按配置的SN解码方式解析产品SN；点检在工序校验前按配置的点检SN分流。
                 string okInspectionSN = DataModel?.Settingmodel?.ReportWorkConfig?.OKInspectionSN;
@@ -1536,8 +1601,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 string normalizedSnDecodeMode = MESService.NormalizeSnDecodeMode(snDecodeMode);
                 WriteDetailLog($"[扫码解析] SN解码方式={normalizedSnDecodeMode} raw={normalizedScan}");
                 var scanResult = await _mesService.ProcessScanCodeAsync(normalizedScan, normalizedSnDecodeMode);
+                snResolvedUtc = DateTime.UtcNow;
                 if (!scanResult.Success)
                 {
+                    timingResult = scanResult.StatusMessage;
                     _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
@@ -1553,6 +1620,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     string expectedSN = pendingInspectionType == "OK" ? okInspectionSN : ngInspectionSN;
                     await TryBeginInspectionFromMesAsync(pendingInspectionType, resolvedSN, expectedSN, normalizedScan);
+                    processValidatedUtc = DateTime.UtcNow;
+                    timingResult = "点检身份确认完成";
                     return;
                 }
 
@@ -1560,6 +1629,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 bool matchesNGInspection = InspectionSNEquals(resolvedSN, ngInspectionSN);
                 if (matchesOKInspection && matchesNGInspection)
                 {
+                    timingResult = "点检配置无效";
                     RejectInspectionScan(
                         "点检配置无效：OK点检SN和NG点检SN不能相同",
                         null,
@@ -1574,11 +1644,14 @@ namespace F7_L12_Position_Detect.ViewModel
                     string type = matchesOKInspection ? "OK" : "NG";
                     string expectedSN = matchesOKInspection ? okInspectionSN : ngInspectionSN;
                     await TryBeginInspectionFromMesAsync(type, resolvedSN, expectedSN, normalizedScan);
+                    processValidatedUtc = DateTime.UtcNow;
+                    timingResult = "点检身份确认完成";
                     return;
                 }
 
                 if (RejectNormalScanDuringInspection())
                 {
+                    timingResult = "点检模式中拒绝普通产品扫码";
                     return;
                 }
 
@@ -1589,13 +1662,14 @@ namespace F7_L12_Position_Detect.ViewModel
                 _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     DataModel.Processmodel.CurrentProductSN = resolvedSN;
-                    DataModel.Processmodel.ScanCodeStatus = scanResult.StatusMessage;
+                    DataModel.Processmodel.ScanCodeStatus = "SN已确认，正在校验工序";
                     writeLog($"扫码处理成功: SN={resolvedSN}");
                 }));
 
                 string inspectionGateError = ValidateInspectionGateForProduction(resolvedSN);
                 if (!string.IsNullOrEmpty(inspectionGateError))
                 {
+                    timingResult = "点检到期";
                     _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         DataModel.Processmodel.ScanCodeStatus = "点检到期";
@@ -1607,6 +1681,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
 
                 var validationResult = await _mesService.ValidateProcessAsync(resolvedSN, procedureName);
+                processValidatedUtc = DateTime.UtcNow;
+                timingResult = validationResult.StatusMessage;
                 _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     if (validationResult.Success)
@@ -1636,6 +1712,7 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex)
             {
+                timingResult = "处理异常";
                 _ = App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     DataModel.Processmodel.ScanCodeStatus = "处理异常";
@@ -1644,6 +1721,12 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             finally
             {
+                WriteScanTimingLog(
+                    scanStartUtc,
+                    barcodeReceivedUtc,
+                    snResolvedUtc,
+                    processValidatedUtc,
+                    timingResult);
                 lock (_executionLock)
                 {
                     _isScanProcessing = false;
@@ -1660,10 +1743,9 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <param name="sn">本循环绑定的产品 SN；若运行中 SN 被替换则退出。</param>
         /// <remarks>
         /// 业务意图：
-        /// - 仅当 <see cref="SettingModel.EnableScanAutoTriggerStages"/> 为 true 且工序校验通过后，由 <see cref="ProcessScanCodeWithMESAsync"/> 调用。
+        /// - 仅当 <see cref="SettingModel.EnableScanAutoTriggerStages"/> 为 true 且扫码身份确认完成后调用：普通产品要求工序校验通过，点检样件要求MES确认固定点检SN并进入OK或NG模式。
         /// - 复用视觉端阶段状态机：<see cref="Processmodel.CurrentStageIndex"/> / <see cref="Processmodel.CompletedStages"/> / <see cref="Processmodel.NeedRestart"/>。
-        /// - 每一轮阶段在相机回调收口后，若 <see cref="Processmodel.NeedRestart"/> 为 true（本阶段 NG/NG2/超时等），必须结束循环，
-        ///   等待现场重扫或人工处理，避免同一 SN 上无限重跑。
+        /// - 每一轮阶段在相机回调收口后，若 <see cref="Processmodel.NeedRestart"/> 为 true（本阶段NG、NG2、超时或相机异常等），结束自动循环并等待现场处理；点检保留业务规则指定的重试阶段。
         /// </remarks>
         private void StartScanAutoExecution(string sn)
         {
@@ -1735,11 +1817,11 @@ namespace F7_L12_Position_Detect.ViewModel
                             break;
                         }
 
-                        // 未满足“SN + 工序校验通过”，停止（避免误触发）
+                        // 未满足“SN + 当前业务资格”，停止（普通产品看工序校验，点检样件看MES确认后的点检模式）。
                         if (!HasValidSNAndValidation())
                         {
-                            exitReason = $"报工前置不满足 SN={DataModel.Processmodel.CurrentProductSN ?? "空"} ScanCodeStatus={DataModel.Processmodel.ScanCodeStatus ?? "空"}";
-                            writeLog($"扫码自动执行: 中断-工序/SN 状态不满足 (详见详细调试日志 [报工状态])", false);
+                            exitReason = $"检测前置不满足 SN={DataModel.Processmodel.CurrentProductSN ?? "空"} ScanCodeStatus={DataModel.Processmodel.ScanCodeStatus ?? "空"}";
+                            writeLog($"扫码自动执行: 中断-SN/业务状态不满足 (详见详细调试日志 [报工状态])", false);
                             WriteDetailLog($"[扫码自动] 循环退出 HasValidSNAndValidation=false {exitReason}");
                             break;
                         }
@@ -1793,11 +1875,10 @@ namespace F7_L12_Position_Detect.ViewModel
 
                         WriteDetailLog($"[扫码自动] 本轮阶段执行窗口已释放 CurrentStageIndex={DataModel.Processmodel.CurrentStageIndex} NeedRestart={DataModel.Processmodel.NeedRestart}");
 
-                        // 当前一轮检测已判定 NG/NG2/超时（NeedRestart=true）时，扫码自动循环应当收口，
-                        // 等待人工处理/重新扫码，而不是在同一 SN 上无穷重跑。
+                        // 当前一轮检测已判定NG、NG2、超时或设备异常时，扫码自动循环收口并保留业务重试位置。
                         if (DataModel.Processmodel.NeedRestart)
                         {
-                            exitReason = "阶段判定失败(NeedRestart=true)，停止当前SN的扫码自动循环，等待重扫";
+                            exitReason = "当前阶段需要处理(NeedRestart=true)，停止当前SN的扫码自动循环并保留重试位置";
                             writeLog($"扫码自动执行: 中断-{exitReason}", false);
                             WriteDetailLog($"[扫码自动] 循环退出 {exitReason}");
                             break;
@@ -2073,7 +2154,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (!triggered)
                 {
                     DataModel.Processmodel.Status = ToolStatus.NG;
-                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                    DataModel.Processmodel.NeedRestart = true;
                     if (string.IsNullOrWhiteSpace(DataModel.Processmodel.CameraStatus))
                     {
                         DataModel.Processmodel.CameraStatus = "相机准备失败";
@@ -2087,7 +2168,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (!TryAcknowledgePlcTrigger(address, triggerValue, modbusTcp))
                 {
                     DataModel.Processmodel.Status = ToolStatus.NG;
-                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                    DataModel.Processmodel.NeedRestart = true;
                     DataModel.Processmodel.CameraStatus = "PLC触发复位失败";
                     _cameraRecoveryRequired = true;
                     WriteDetailLog($"[PLC触发] 相机已触发但地址{address}复位失败，结束本轮并等待恢复后重试");
@@ -3565,7 +3646,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (acceptedContext != null)
                 {
                     DataModel.Processmodel.Status = ToolStatus.NG2;
-                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                    DataModel.Processmodel.NeedRestart = true;
                     EndExecution(acceptedContext.ExecutionId);
                 }
             }
@@ -4269,7 +4350,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
 
                     DataModel.Processmodel.Status = ToolStatus.NG2;
-                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                    DataModel.Processmodel.NeedRestart = true;
                     DataModel.Processmodel.CameraStatus = "图像处理异常";
                     if (DataModel.Processmodel.IsInspectionMode)
                     {
@@ -4315,7 +4396,7 @@ namespace F7_L12_Position_Detect.ViewModel
                             if (!triggered)
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG;
-                                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                                DataModel.Processmodel.NeedRestart = true;
                                 DataModel.Processmodel.CameraStatus = "相机异常";
                                 if (DataModel.Processmodel.IsInspectionMode)
                                 {
@@ -4328,7 +4409,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         catch (Exception ex)
                         {
                             DataModel.Processmodel.Status = ToolStatus.NG;
-                            DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                            DataModel.Processmodel.NeedRestart = true;
                             DataModel.Processmodel.CameraStatus = "相机异常";
                             if (DataModel.Processmodel.IsInspectionMode)
                             {
@@ -5420,6 +5501,7 @@ namespace F7_L12_Position_Detect.ViewModel
         /// </summary>
         /// <remarks>
         /// 该入口可由选择窗口后的扫码触发，也可由窗口关闭后直接扫码匹配SN触发；点检样件不进入普通工序校验和报工链路。
+        /// 开启扫码自动执行时，在点检状态和SN绑定完成后启动阶段循环；循环等待当前扫码/MES互斥释放后再发送首个相机软触发。关闭开关时继续等待PLC触发。
         /// </remarks>
         private void BeginInspectionMode(string type, string inspectionSN)
         {
@@ -5436,6 +5518,18 @@ namespace F7_L12_Position_Detect.ViewModel
                 DataModel.Processmodel.CurrentProductSN = inspectionSN;
                 DataModel.Processmodel.ScanCodeStatus = $"点检模式({type})";
                 writeLog($"进入点检模式: type={type}, SN={inspectionSN}", false);
+
+                if (DataModel.Settingmodel.EnableScanAutoTriggerStages)
+                {
+                    writeLog($"点检扫码自动执行: MES确认通过，准备启动阶段循环 type={type}, SN={inspectionSN}", false);
+                    WriteDetailLog($"[点检扫码自动] 状态绑定完成，调用 StartScanAutoExecution type={type} SN={inspectionSN}");
+                    StartScanAutoExecution(inspectionSN);
+                }
+                else
+                {
+                    writeLog($"点检扫码确认通过: 自动执行开关关闭，等待PLC触发 type={type}, SN={inspectionSN}", false);
+                    WriteDetailLog($"[点检扫码自动] EnableScanAutoTriggerStages=false，保留PLC触发流程 type={type} SN={inspectionSN}");
+                }
             }));
         }
 
@@ -5512,7 +5606,7 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <summary>
         /// 汇总当前点检阶段并推进多阶段点检样件。阶段通过只推进样件内部阶段索引，最后一个配置阶段完成后才按全部判定框结算OK或NG。
         /// </summary>
-        /// <param name="currentCommand">本次PLC触发并完成结算的阶段指令，例如A1或A2。</param>
+        /// <param name="currentCommand">本次PLC或扫码自动触发并完成结算的阶段指令，例如A1或A2。</param>
         /// <param name="currentCommandTools">当前阶段参与判定的工具集合；该集合用于当前阶段状态和诊断日志。</param>
         /// <param name="stageStatus">当前阶段状态，0表示全OK，1表示存在普通NG，2表示存在NG2。</param>
         /// <remarks>
@@ -5526,6 +5620,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (type != "OK" && type != "NG")
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.NeedRestart = true;
                 UpdateInspectionStatusMessage($"点检类型无效，当前阶段{currentCommand}未结算，请重新选择OK或NG点检。");
                 writeLog($"点检阶段结算失败：InspectionType={type ?? "空"}，阶段={currentCommand}，工具明细={toolSummary}", true);
                 return;
@@ -5535,6 +5630,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (stageStatus == 2)
             {
                 DataModel.Processmodel.Status = ToolStatus.NG2;
+                DataModel.Processmodel.NeedRestart = true;
                 UpdateInspectionStatusMessage($"{type}点检阶段{currentCommand}存在NG2，请调参后重复触发当前阶段。工具明细：{toolSummary}");
                 writeLog($"{type}点检阶段失败：阶段={currentCommand}存在NG2，保留当前阶段等待重试，工具明细={toolSummary}", false);
                 return;
@@ -5543,6 +5639,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (type == "OK" && stageStatus != 0)
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.NeedRestart = true;
                 UpdateInspectionStatusMessage($"OK点检阶段{currentCommand}未通过，请调参后重复触发当前阶段。工具明细：{toolSummary}");
                 writeLog($"OK点检阶段失败：阶段={currentCommand}存在NG，保留当前阶段等待重试，工具明细={toolSummary}", false);
                 return;
@@ -5553,6 +5650,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 && !currentCommandTools.All(t => t.ToolStatus == ToolStatus.NG))
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.NeedRestart = true;
                 UpdateInspectionStatusMessage($"NG点检阶段{currentCommand}未满足全部NG条件，请调参后重复触发当前阶段。工具明细：{toolSummary}");
                 writeLog($"NG点检阶段失败：阶段={currentCommand}未达到全部NG条件，保留当前阶段等待重试，工具明细={toolSummary}", false);
                 return;
@@ -5561,6 +5659,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (!TryAdvanceInspectionStage(currentCommand, out bool isFinalStage))
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.NeedRestart = true;
                 UpdateInspectionStatusMessage($"点检阶段{currentCommand}不在当前阶段配置中，无法继续点检。");
                 writeLog($"点检阶段结算失败：阶段={currentCommand}未在ConfiguredStages中找到，工具明细={toolSummary}", true);
                 return;
@@ -5570,8 +5669,12 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 DataModel.Processmodel.Status = stageStatus == 0 ? ToolStatus.OK : ToolStatus.NG;
                 string nextStage = DataModel.Processmodel.ConfiguredStages[DataModel.Processmodel.CurrentStageIndex];
-                UpdateInspectionStatusMessage($"{type}点检阶段{currentCommand}完成，请触发下一阶段{nextStage}。工具明细：{toolSummary}");
-                writeLog($"{type}点检阶段完成：{currentCommand}，下一阶段={nextStage}，工具明细={toolSummary}", false);
+                bool autoExecutionEnabled = DataModel.Settingmodel.EnableScanAutoTriggerStages;
+                string nextAction = autoExecutionEnabled
+                    ? $"即将自动执行下一阶段{nextStage}"
+                    : $"请触发下一阶段{nextStage}";
+                UpdateInspectionStatusMessage($"{type}点检阶段{currentCommand}完成，{nextAction}。工具明细：{toolSummary}");
+                writeLog($"{type}点检阶段完成：{currentCommand}，下一阶段={nextStage}，自动执行={autoExecutionEnabled}，工具明细={toolSummary}", false);
                 return;
             }
 
@@ -5608,7 +5711,7 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 将已完成的点检阶段写入阶段状态，并把下一次PLC触发位置移动到下一个配置阶段。
+        /// 将已完成的点检阶段写入阶段状态，并把下一次PLC或扫码自动触发位置移动到下一个配置阶段。
         /// </summary>
         /// <param name="currentCommand">本次完成的阶段指令。</param>
         /// <param name="isFinalStage">输出值；当前阶段是ConfiguredStages最后一项时为true。</param>
@@ -5681,6 +5784,7 @@ namespace F7_L12_Position_Detect.ViewModel
         private void ResetInspectionAttemptForRetry(string type, string failureReason, string toolSummary)
         {
             ResetDetectionCycle();
+            DataModel.Processmodel.NeedRestart = true;
             string firstStage = DataModel.Processmodel.ConfiguredStages != null
                 && DataModel.Processmodel.ConfiguredStages.Count > 0
                 ? DataModel.Processmodel.ConfiguredStages[0]

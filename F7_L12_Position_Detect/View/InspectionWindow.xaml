@@ -62,7 +62,7 @@
         </StackPanel>
 
         <TextBlock Grid.Row="2"
-                   Text="提示：选择点检类型后扫描对应样件码，再触发PLC检测"
+                   Text="提示：开启“扫码触发自动执行”后，点检码确认成功即自动检测；关闭时由PLC触发检测"
                    FontSize="12" Foreground="Gray"
                    HorizontalAlignment="Center"
                    Margin="0,16,0,0" TextWrapping="Wrap"/>

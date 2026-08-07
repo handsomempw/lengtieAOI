@@ -55,6 +55,24 @@ namespace F7_L12_Position_Detect.Service
             public string ErrorMessage { get; set; }
         }
 
+        private static bool IsTimeoutException(Exception exception)
+        {
+            for (Exception current = exception; current != null; current = current.InnerException)
+            {
+                string typeName = current.GetType().Name;
+                string message = current.Message ?? string.Empty;
+                if (current is TimeoutException
+                    || typeName.IndexOf("Timeout", StringComparison.OrdinalIgnoreCase) >= 0
+                    || message.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0
+                    || message.IndexOf("超时", StringComparison.Ordinal) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// 处理扫码并获取产品SN。解码策略由配置 <see cref="ReportWorkConfig.SnDecodeMode"/> 决定。
         /// </summary>
@@ -127,7 +145,7 @@ namespace F7_L12_Position_Detect.Service
                     {
                         Success = false,
                         ErrorMessage = $"处理扫码时发生异常: {ex.Message}",
-                        StatusMessage = "SN获取失败"
+                        StatusMessage = IsTimeoutException(ex) ? "MES超时" : "SN获取失败"
                     };
                 }
             });
@@ -334,7 +352,7 @@ namespace F7_L12_Position_Detect.Service
                         {
                             Success = false,
                             ErrorMessage = $"产品 {sn} 不符合工序 {procedureName} 的要求",
-                            StatusMessage = "工序校验失败"
+                            StatusMessage = "工序不通过"
                         };
                     }
                 }
@@ -344,7 +362,7 @@ namespace F7_L12_Position_Detect.Service
                     {
                         Success = false,
                         ErrorMessage = $"工序校验时发生异常: {ex.Message}",
-                        StatusMessage = "工序校验失败"
+                        StatusMessage = IsTimeoutException(ex) ? "MES超时" : "工序校验失败"
                     };
                 }
             });
