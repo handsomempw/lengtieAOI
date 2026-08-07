@@ -20,9 +20,15 @@ namespace Camera
 {
     public class MyEventArgs : EventArgs
     {
+        /// <summary>
+        /// 本次回调转换后的 HALCON 图像。存在订阅方时，图像所有权随事件交给订阅方，由订阅方在显示或检测完成后释放。
+        /// </summary>
         public HObject Image { set; get; }
         public int Height { set; get; }
         public int Width { set; get; }
+        public long CaptureSessionId { set; get; }
+        public long CaptureRequestId { set; get; }
+        public uint FrameNumber { set; get; }
     }
 
     public class CamImageFormatConvert
@@ -212,7 +218,7 @@ namespace Camera
             bnContinuesMode_CheckedChanged_Command = new RelayCommand(bnContinuesMode_CheckedChanged);
             bnTriggerMode_CheckedChanged_Command = new RelayCommand(bnTriggerMode_CheckedChanged);
             SetCtrlWhenStartGrab_Command = new RelayCommand(SetCtrlWhenStartGrab);
-            bnStartGrab_Click_Command = new RelayCommand(SetCtrlWhenStartGrab);
+            bnStartGrab_Click_Command = new RelayCommand(bnStartGrab_Click);
             cbSoftTrigger_CheckedChanged_Command = new RelayCommand(cbSoftTrigger_CheckedChanged);
             bnTriggerExec_Click_Command = new RelayCommand(bnTriggerExec_Click);
             SetCtrlWhenStopGrab_Command = new RelayCommand(SetCtrlWhenStopGrab);
@@ -234,6 +240,12 @@ namespace Camera
         public MyCamera m_MyCamera = new MyCamera();
         MyCamera.cbOutputExdelegate cbImage;
         bool m_bGrabbing = false;
+        private readonly object _captureRequestLock = new object();
+        private readonly object _triggerLock = new object();
+        private readonly Dictionary<long, Queue<long>> _captureRequests = new Dictionary<long, Queue<long>>();
+        private long _captureSessionSequence;
+        private long _activeCaptureSessionId;
+        private int _captureCallbacksInProgress;
         //Thread m_hReceiveThread = null;
         MyCamera.MV_FRAME_OUT_INFO_EX m_stFrameInfo = new MyCamera.MV_FRAME_OUT_INFO_EX();
 
@@ -241,6 +253,39 @@ namespace Camera
         UInt32 m_nBufSizeForDriver = 0;
         IntPtr m_BufForDriver = IntPtr.Zero;
         public static Object BufForDriverLock = new Object();
+
+        private void ReleaseDriverBuffer()
+        {
+            lock (BufForDriverLock)
+            {
+                if (m_BufForDriver == IntPtr.Zero)
+                {
+                    return;
+                }
+
+                Marshal.FreeHGlobal(m_BufForDriver);
+                m_BufForDriver = IntPtr.Zero;
+                m_nBufSizeForDriver = 0;
+            }
+        }
+
+        [XmlIgnore]
+        public long ActiveCaptureSessionId
+        {
+            get
+            {
+                lock (_captureRequestLock)
+                {
+                    return _activeCaptureSessionId;
+                }
+            }
+        }
+
+        [XmlIgnore]
+        public bool IsOpen => bnCloseEnabled;
+
+        [XmlIgnore]
+        public bool IsGrabbing => m_bGrabbing && bnStopGrabEnabled;
 
 
         public ObservableCollection<string> cbDeviceList { set; get; } = new ObservableCollection<string>();
@@ -568,7 +613,30 @@ namespace Camera
             // ch:设置采集连续模式 | en:Set Continues Aquisition Mode
             int nret0 = m_MyCamera.MV_CC_SetEnumValue_NET("AcquisitionMode", (uint)MyCamera.MV_CAM_ACQUISITION_MODE.MV_ACQ_MODE_CONTINUOUS);
             //  int nret1 = m_MyCamera.MV_CC_SetEnumValue_NET("TriggerMode", (uint)MyCamera.MV_CAM_TRIGGER_MODE.MV_TRIGGER_MODE_OFF);
-            int nret2 = m_MyCamera.MV_CC_RegisterImageCallBackEx_NET(cbImage, (IntPtr)0);
+            long captureSessionId;
+            lock (_captureRequestLock)
+            {
+                captureSessionId = ++_captureSessionSequence;
+                _activeCaptureSessionId = captureSessionId;
+                _captureRequests.Clear();
+                _captureRequests[captureSessionId] = new Queue<long>();
+            }
+
+            int nret2 = m_MyCamera.MV_CC_RegisterImageCallBackEx_NET(
+                cbImage,
+                new IntPtr(captureSessionId));
+            if (MyCamera.MV_OK != nret2)
+            {
+                lock (_captureRequestLock)
+                {
+                    _activeCaptureSessionId = 0;
+                    _captureRequests.Clear();
+                }
+                m_MyCamera.MV_CC_CloseDevice_NET();
+                m_MyCamera.MV_CC_DestroyDevice_NET();
+                ShowErrorMsg("注册相机回调失败!", nret2);
+                return;
+            }
 
             bnGetParam_Click();// ch:获取参数 | en:Get parameters
 
@@ -601,21 +669,33 @@ namespace Camera
 
         public void bnClose_Click()
         {
-            // ch:取流标志位清零 | en:Reset flow flag bit
-            if (m_bGrabbing == true)
+            lock (_triggerLock)
             {
+                bool wasGrabbing = m_bGrabbing;
                 m_bGrabbing = false;
-                //m_hReceiveThread.Join();
-            }
-
-            if (m_BufForDriver != IntPtr.Zero)
+            lock (_captureRequestLock)
             {
-                Marshal.Release(m_BufForDriver);
+                _activeCaptureSessionId = 0;
+                _captureRequests.Clear();
             }
 
-            // ch:关闭设备 | en:Close Device
-            m_MyCamera.MV_CC_CloseDevice_NET();
-            m_MyCamera.MV_CC_DestroyDevice_NET();
+            // 先让 SDK 停止产生新回调，再等待正在转换的回调退出；停止动作不能持有转换锁，避免 SDK 等待回调而回调等待同一把锁。
+            if (wasGrabbing)
+            {
+                m_MyCamera.MV_CC_StopGrabbing_NET();
+            }
+
+            // 回调在同一把锁内使用转换缓冲区；关闭、销毁和释放缓冲区必须等待当前回调完成。
+            lock (BufForDriverLock)
+            {
+                // ch:关闭设备 | en:Close Device
+                    m_MyCamera.MV_CC_CloseDevice_NET();
+                    m_MyCamera.MV_CC_DestroyDevice_NET();
+                    ho_Image?.Dispose();
+                    ho_Image = null;
+                    ReleaseDriverBuffer();
+                }
+            }
 
             // ch:控件操作 | en:Control Operation
             SetCtrlWhenClose();
@@ -683,13 +763,27 @@ namespace Camera
         {
             try
             {
-                int nIndex = (int)pUser;
+                long captureSessionId = pUser.ToInt64();
                 // ch:抓取的帧数 | en:Aquired Frame Number
 
 
                 if (bnContinuesModeChecked)  //相机一实时状态显示
                 {
-                    ho_Image = CamImageConvert.ImageDataConvet(m_MyCamera, pFrameInfo, m_BufForDriver, pData);
+                    lock (BufForDriverLock)
+                    {
+                        if (!m_bGrabbing || m_BufForDriver == IntPtr.Zero)
+                        {
+                            return;
+                        }
+                        HObject previousImage = ho_Image;
+                        ho_Image = null;
+                        previousImage?.Dispose();
+                        ho_Image = CamImageConvert.ImageDataConvet(m_MyCamera, pFrameInfo, m_BufForDriver, pData);
+                        if (ho_Image == null)
+                        {
+                            Trace.WriteLine($"[Hikvision.ImageCallBack] 连续模式图像转换失败 session={captureSessionId} frame={pFrameInfo.nFrameNum}");
+                        }
+                    }
                     //HOperatorSet.GetImageSize(ho_Image, out w1, out h1);
                     //HOperatorSet.SetPart(ShowWindow.HalconWindow, 0, 0, h1 - 1, w1 - 1);
                     //HOperatorSet.DispObj(ho_Image, ShowWindow.HalconWindow);
@@ -698,28 +792,82 @@ namespace Camera
                 {
                     sw1.Reset();
                     sw1.Start();
-                    ho_Image = CamImageConvert.ImageDataConvet(m_MyCamera, pFrameInfo, m_BufForDriver, pData);
+                    lock (BufForDriverLock)
+                    {
+                        if (!m_bGrabbing || m_BufForDriver == IntPtr.Zero)
+                        {
+                            return;
+                        }
+                        HObject previousImage = ho_Image;
+                        ho_Image = null;
+                        previousImage?.Dispose();
+                        ho_Image = CamImageConvert.ImageDataConvet(m_MyCamera, pFrameInfo, m_BufForDriver, pData);
+                        m_stFrameInfo = pFrameInfo;
+                        if (ho_Image == null)
+                        {
+                            Trace.WriteLine($"[Hikvision.ImageCallBack] 触发模式图像转换失败 session={captureSessionId} frame={pFrameInfo.nFrameNum}");
+                            return;
+                        }
+                    }
                     //HOperatorSet.GetImageSize(ho_Image, out w1, out h1);
                     //HOperatorSet.SetPart(ShowWindow.HalconWindow, 0, 0, h1 - 1, w1 - 1);
                     //HOperatorSet.DispObj(ho_Image, ShowWindow.HalconWindow);
                     sw1.Stop();
                     ts1 = sw1.Elapsed;
                     string s1 = ts1.TotalMilliseconds.ToString("f2");
-                    m_stFrameInfo = pFrameInfo;
-                    //触发图片接收事件
-                    ImageReceived.Invoke(this, new MyEventArgs()
+                    long captureRequestId = DequeueCaptureRequest(captureSessionId);
+                    lock (_captureRequestLock)
                     {
-                        Image = ho_Image,
-                        Width = pFrameInfo.nWidth,
-                        Height = pFrameInfo.nHeight
-                    });
+                        _captureCallbacksInProgress++;
+                    }
+                    try
+                    {
+                        EventHandler imageReceived = ImageReceived;
+                        if (imageReceived == null)
+                        {
+                            ho_Image?.Dispose();
+                            ho_Image = null;
+                            return;
+                        }
 
-
+                        HObject callbackImage = ho_Image;
+                        ho_Image = null;
+                        // 事件订阅方接管图像，并负责在处理完成后释放。
+                        try
+                        {
+                            imageReceived.Invoke(this, new MyEventArgs()
+                            {
+                                Image = callbackImage,
+                                Width = pFrameInfo.nWidth,
+                                Height = pFrameInfo.nHeight,
+                                CaptureSessionId = captureSessionId,
+                                CaptureRequestId = captureRequestId,
+                                FrameNumber = pFrameInfo.nFrameNum
+                            });
+                        }
+                        catch
+                        {
+                            callbackImage?.Dispose();
+                            throw;
+                        }
+                    }
+                    finally
+                    {
+                        lock (_captureRequestLock)
+                        {
+                            _captureCallbacksInProgress--;
+                        }
+                    }
                 }
             }
             catch (Exception ex)
             {
-
+                lock (BufForDriverLock)
+                {
+                    ho_Image?.Dispose();
+                    ho_Image = null;
+                }
+                Trace.WriteLine($"[Hikvision.ImageCallBack] 图像回调异常: {ex}");
             }
         }
         #endregion
@@ -736,11 +884,30 @@ namespace Camera
 
             m_stFrameInfo.nFrameLen = 0;//取流之前先清除帧长度
             m_stFrameInfo.enPixelType = MyCamera.MvGvspPixelType.PixelType_Gvsp_Undefined;
-            // ch:开始采集 | en:Start Grabbing
-            int nRet = m_MyCamera.MV_CC_StartGrabbing_NET();
+
+            // 先准备转换缓冲区，避免取流启动后回调先于缓冲区初始化到达。
+            MyCamera.MVCC_INTVALUE stParam = new MyCamera.MVCC_INTVALUE();
+            int nRet = m_MyCamera.MV_CC_GetIntValue_NET("PayloadSize", ref stParam);
             if (MyCamera.MV_OK != nRet)
             {
                 m_bGrabbing = false;
+                ShowErrorMsg("获取相机图像负载大小失败", nRet);
+                return;
+            }
+
+            ReleaseDriverBuffer();
+            m_nBufSizeForDriver = stParam.nCurValue;
+            lock (BufForDriverLock)
+            {
+                m_BufForDriver = Marshal.AllocHGlobal(checked((int)m_nBufSizeForDriver * 3));
+            }
+
+            // ch:开始采集 | en:Start Grabbing
+            nRet = m_MyCamera.MV_CC_StartGrabbing_NET();
+            if (MyCamera.MV_OK != nRet)
+            {
+                m_bGrabbing = false;
+                ReleaseDriverBuffer();
                 //m_hReceiveThread.Join();
                 ShowErrorMsg("启动图像抓取失败!", nRet);
                 return;
@@ -752,18 +919,6 @@ namespace Camera
 
             // ch:标志位置位true | en:Set position bit true
             m_bGrabbing = true;
-
-            // ch:获取包大小 || en: Get Payload Size
-            MyCamera.MVCC_INTVALUE stParam = new MyCamera.MVCC_INTVALUE();
-            nRet = m_MyCamera.MV_CC_GetIntValue_NET("PayloadSize", ref stParam);
-            if (MyCamera.MV_OK != nRet)
-            {
-                ShowErrorMsg("相机二获取数据包大小失败", nRet);
-                return;
-            }
-            m_nBufSizeForDriver = stParam.nCurValue;
-            //在内存中开辟一个空间用来存图
-            m_BufForDriver = Marshal.AllocHGlobal((int)m_nBufSizeForDriver * 3);
 
         }
 
@@ -787,15 +942,134 @@ namespace Camera
 
         public void bnTriggerExec_Click()
         {
-            int nret = m_MyCamera.MV_CC_SetEnumValue_NET("TriggerMode", (uint)MyCamera.MV_CAM_TRIGGER_MODE.MV_TRIGGER_MODE_ON);
+            TryTriggerExec(0, out _);
+        }
 
-            m_MyCamera.MV_CC_SetEnumValue_NET("TriggerSource", (uint)MyCamera.MV_CAM_TRIGGER_SOURCE.MV_TRIGGER_SOURCE_SOFTWARE);
-
-            // ch:触发命令 | en:Trigger command
-            int nRet = m_MyCamera.MV_CC_SetCommandValue_NET("TriggerSoftware");
-            if (MyCamera.MV_OK != nRet)
+        /// <summary>
+        /// 发送一次带请求号的软件触发。回图事件会回传同一相机会话和请求号，供业务层排除超时后的晚到帧。
+        /// </summary>
+        /// <param name="captureRequestId">业务层生成的单次触发请求号；手动预览使用 0。</param>
+        /// <param name="errorCode">失败时返回海康 SDK 错误码。</param>
+        /// <returns>软触发命令已经被相机 SDK 受理时返回 true。</returns>
+        public bool TryTriggerExec(long captureRequestId, out int errorCode)
+        {
+            errorCode = MyCamera.MV_OK;
+            lock (_triggerLock)
             {
+                long captureSessionId;
+                lock (_captureRequestLock)
+                {
+                    captureSessionId = _activeCaptureSessionId;
+                    if (_captureCallbacksInProgress > 0
+                        || (captureSessionId > 0
+                        && _captureRequests.TryGetValue(captureSessionId, out Queue<long> pendingRequests)
+                        && pendingRequests.Count > 0))
+                    {
+                        errorCode = MyCamera.MV_E_HANDLE;
+                        Trace.WriteLine(
+                            $"[Hikvision.TryTriggerExec] 拒绝并发软触发 session={captureSessionId} " +
+                            $"request={captureRequestId} pending={(_captureRequests.TryGetValue(captureSessionId, out Queue<long> pending) ? pending.Count : 0)} " +
+                            $"callback={_captureCallbacksInProgress}");
+                        return false;
+                    }
+                }
+
+                if (!IsOpen || !IsGrabbing || captureSessionId <= 0)
+                {
+                    errorCode = MyCamera.MV_E_HANDLE;
+                    return false;
+                }
+
+                int nRet = m_MyCamera.MV_CC_SetEnumValue_NET(
+                    "TriggerMode",
+                    (uint)MyCamera.MV_CAM_TRIGGER_MODE.MV_TRIGGER_MODE_ON);
+                if (MyCamera.MV_OK != nRet)
+                {
+                    errorCode = nRet;
+                    ShowErrorMsg("设置触发模式失败!", nRet);
+                    return false;
+                }
+
+                nRet = m_MyCamera.MV_CC_SetEnumValue_NET(
+                    "TriggerSource",
+                    (uint)MyCamera.MV_CAM_TRIGGER_SOURCE.MV_TRIGGER_SOURCE_SOFTWARE);
+                if (MyCamera.MV_OK != nRet)
+                {
+                    errorCode = nRet;
+                    ShowErrorMsg("设置软触发源失败!", nRet);
+                    return false;
+                }
+
+                // SDK 和回调分支保持同一触发口径，避免操作员此前选择连续模式后回图不进入生产事件。
+                bnContinuesModeChecked = false;
+                bnTriggerModeChecked = true;
+                cbSoftTriggerChecked = true;
+                cbSoftTriggerEnabled = true;
+                bnTriggerExecEnabled = true;
+
+                EnqueueCaptureRequest(captureSessionId, captureRequestId);
+                nRet = m_MyCamera.MV_CC_SetCommandValue_NET("TriggerSoftware");
+                if (MyCamera.MV_OK == nRet)
+                {
+                    return true;
+                }
+
+                RemoveCaptureRequest(captureSessionId, captureRequestId);
+                errorCode = nRet;
                 ShowErrorMsg("设置软触发失败!", nRet);
+                return false;
+            }
+        }
+
+        private void EnqueueCaptureRequest(long captureSessionId, long captureRequestId)
+        {
+            lock (_captureRequestLock)
+            {
+                if (!_captureRequests.TryGetValue(captureSessionId, out Queue<long> requests))
+                {
+                    requests = new Queue<long>();
+                    _captureRequests[captureSessionId] = requests;
+                }
+                requests.Enqueue(captureRequestId);
+            }
+        }
+
+        private long DequeueCaptureRequest(long captureSessionId)
+        {
+            lock (_captureRequestLock)
+            {
+                if (_captureRequests.TryGetValue(captureSessionId, out Queue<long> requests)
+                    && requests.Count > 0)
+                {
+                    return requests.Dequeue();
+                }
+            }
+            return 0;
+        }
+
+        private void RemoveCaptureRequest(long captureSessionId, long captureRequestId)
+        {
+            lock (_captureRequestLock)
+            {
+                if (!_captureRequests.TryGetValue(captureSessionId, out Queue<long> requests)
+                    || requests.Count == 0)
+                {
+                    return;
+                }
+
+                Queue<long> retainedRequests = new Queue<long>();
+                bool removed = false;
+                while (requests.Count > 0)
+                {
+                    long requestId = requests.Dequeue();
+                    if (!removed && requestId == captureRequestId)
+                    {
+                        removed = true;
+                        continue;
+                    }
+                    retainedRequests.Enqueue(requestId);
+                }
+                _captureRequests[captureSessionId] = retainedRequests;
             }
         }
 
@@ -815,15 +1089,34 @@ namespace Camera
 
         public void bnStopGrab_Click()
         {
-            // ch:标志位设为false | en:Set flag bit false
-            m_bGrabbing = false;
-            //m_hReceiveThread.Join();
-
-            // ch:停止采集 | en:Stop Grabbing
-            int nRet = m_MyCamera.MV_CC_StopGrabbing_NET();
-            if (nRet != MyCamera.MV_OK)
+            lock (_triggerLock)
             {
-                ShowErrorMsg("停止图像抓取失败!", nRet);
+                bool wasGrabbing = m_bGrabbing;
+                m_bGrabbing = false;
+                lock (_captureRequestLock)
+                {
+                    if (_activeCaptureSessionId > 0
+                        && _captureRequests.TryGetValue(_activeCaptureSessionId, out Queue<long> requests))
+                    {
+                        requests.Clear();
+                    }
+                }
+
+                // 先停止 SDK 回调，再释放相机类持有的最后一帧；驱动转换缓冲区保留到恢复取流或关闭相机时复用/释放。
+                if (wasGrabbing)
+                {
+                    int nRet = m_MyCamera.MV_CC_StopGrabbing_NET();
+                    if (nRet != MyCamera.MV_OK)
+                    {
+                        ShowErrorMsg("停止图像抓取失败!", nRet);
+                    }
+                }
+
+                lock (BufForDriverLock)
+                {
+                    ho_Image?.Dispose();
+                    ho_Image = null;
+                }
             }
 
             // ch:控件操作 | en:Control Operation
@@ -1057,6 +1350,42 @@ namespace Camera
             //}
         }
 
+        /// <summary>
+        /// 关闭自动曝光并设置本拍照组的曝光时间。调用方仅在设置成功后发送软触发，避免工具使用错误曝光的回图。
+        /// </summary>
+        /// <param name="exposure">相机曝光时间，单位沿用海康 SDK 的 ExposureTime 节点。</param>
+        /// <param name="errorCode">失败时返回海康 SDK 错误码。</param>
+        /// <returns>自动曝光与曝光时间均设置成功时返回 true。</returns>
+        public bool TrySetExposure(float exposure, out int errorCode)
+        {
+            lock (_triggerLock)
+            {
+                errorCode = MyCamera.MV_OK;
+                if (!IsOpen)
+                {
+                    errorCode = MyCamera.MV_E_HANDLE;
+                    return false;
+                }
+
+                int nRet = m_MyCamera.MV_CC_SetEnumValue_NET("ExposureAuto", 0);
+                if (nRet != MyCamera.MV_OK)
+                {
+                    errorCode = nRet;
+                    return false;
+                }
+
+                Exposure = exposure;
+                nRet = m_MyCamera.MV_CC_SetFloatValue_NET("ExposureTime", Exposure);
+                if (nRet != MyCamera.MV_OK)
+                {
+                    errorCode = nRet;
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
         public void bnSetParam_Click()
         {
             //try
@@ -1071,11 +1400,9 @@ namespace Camera
             //    return;
             //}
 
-            m_MyCamera.MV_CC_SetEnumValue_NET("ExposureAuto", 0);
-            int nRet = m_MyCamera.MV_CC_SetFloatValue_NET("ExposureTime", Exposure);
-            if (nRet != MyCamera.MV_OK)
+            if (!TrySetExposure(Exposure, out int errorCode))
             {
-                ShowErrorMsg("设置曝光时间失败!", nRet);
+                ShowErrorMsg("设置曝光时间失败!", errorCode);
             }
 
             //m_MyCamera.MV_CC_SetEnumValue_NET("GainAuto", 0);

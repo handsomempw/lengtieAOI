@@ -165,6 +165,142 @@ namespace F7_L12_Position_Detect
         }
 
         /// <summary>
+        /// 按主配置和当前 WPF 有效工作区确定本次启动使用的布局。自动模式覆盖 1366×768 显示器、任务栏占用和 Windows DPI 缩放后的等效小工作区。
+        /// </summary>
+        private void ApplyConfiguredUiLayout()
+        {
+            SettingModel setting = vml?.Main?.DataModel?.Settingmodel;
+            if (setting == null)
+            {
+                return;
+            }
+
+            string configuredMode = NormalizeUiLayoutMode(setting.UiLayoutMode);
+            setting.UiLayoutMode = configuredMode;
+
+            Rect workArea = SystemParameters.WorkArea;
+            bool compact = configuredMode == SettingModel.UiLayoutModeCompact
+                || (configuredMode == SettingModel.UiLayoutModeAuto
+                    && (workArea.Width <= 1366 || workArea.Height <= 768));
+
+            WindowXCaption.SetHeight(this, compact ? 44 : 60);
+            FontSize = compact ? 14 : 16;
+            MainLayoutRoot.Margin = compact ? new Thickness(2) : new Thickness(3);
+            ToolStripRow.MinHeight = compact ? 72 : 100;
+            ToolStripRow.MaxHeight = compact ? 112 : 160;
+            double compactReportWidth = Math.Max(280, Math.Min(320, workArea.Width * 0.28));
+            ReportPanelColumn.Width = new GridLength(compact ? compactReportWidth : 300);
+            InspectionBanner.Margin = compact ? new Thickness(0, 0, 0, 3) : new Thickness(0, 0, 0, 6);
+            InspectionBanner.Padding = compact ? new Thickness(8, 3, 8, 3) : new Thickness(10, 5, 10, 5);
+            ReportPanel.Margin = compact ? new Thickness(3) : new Thickness(5);
+            ReportTitle.FontSize = compact ? 18 : 22;
+            ReportTitle.Margin = compact ? new Thickness(0, 2, 0, 2) : new Thickness(0, 8, 0, 8);
+            ReportSuccessLogScroll.MaxHeight = compact ? 110 : 180;
+            ToolDetailPanel.Visibility = compact && workArea.Width < 1150
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+
+            Thickness groupMargin = compact ? new Thickness(0, 2, 0, 2) : new Thickness(0, 5, 0, 5);
+            ProductInfoGroup.Margin = groupMargin;
+            ReportConfigGroup.Margin = groupMargin;
+            WorkerInfoGroup.Margin = groupMargin;
+            ReportStatusGroup.Margin = groupMargin;
+            TextElement.SetFontSize(FooterStatusPanel, compact ? 12 : 16);
+
+            int configuredImageSize = Math.Max(40, setting.ImageSize);
+            setting.EffectiveImageSize = compact ? Math.Min(configuredImageSize, 96) : configuredImageSize;
+            ConfigureReportGridLayout(compact);
+
+            string effectiveMode = compact ? SettingModel.UiLayoutModeCompact : SettingModel.UiLayoutModeStandard;
+            vml.Main.writeLog(
+                $"界面布局已应用: 配置={configuredMode}, 生效={effectiveMode}, 有效工作区={workArea.Width:0}×{workArea.Height:0}, " +
+                $"报工栏宽度={ReportPanelColumn.Width.Value:0}, 工具详情={ToolDetailPanel.Visibility}",
+                false);
+        }
+
+        /// <summary>
+        /// 规范 XML 中的布局模式。现场配置支持“自动”“标准”“紧凑”，其他值回退自动模式并写入诊断日志。
+        /// </summary>
+        private string NormalizeUiLayoutMode(string configuredMode)
+        {
+            string mode = (configuredMode ?? string.Empty).Trim();
+            if (mode == SettingModel.UiLayoutModeStandard || mode == SettingModel.UiLayoutModeCompact)
+            {
+                return mode;
+            }
+
+            if (mode != SettingModel.UiLayoutModeAuto && !string.IsNullOrEmpty(mode))
+            {
+                vml?.Main?.writeLog($"界面布局模式配置值“{mode}”无法识别，已按自动模式处理", false);
+            }
+
+            return SettingModel.UiLayoutModeAuto;
+        }
+
+        /// <summary>
+        /// 紧凑模式采用三行双列报工配置，标准模式保留六行单列结构。字段绑定和保存事件在两种布局中保持一致。
+        /// </summary>
+        private void ConfigureReportGridLayout(bool compact)
+        {
+            ReportConfigGrid.RowDefinitions.Clear();
+            ReportConfigGrid.ColumnDefinitions.Clear();
+
+            int rowCount = compact ? 3 : 6;
+            for (int i = 0; i < rowCount; i++)
+            {
+                ReportConfigGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+
+            if (compact)
+            {
+                ReportConfigGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                ReportConfigGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                ReportConfigGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                ReportConfigGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                SetGridCell(StationCodeLabel, 0, 0);
+                SetGridCell(txtStationCode, 0, 1);
+                SetGridCell(ProcedureCodeLabel, 0, 2);
+                SetGridCell(txtProcedureCode, 0, 3);
+
+                SetGridCell(ProcedureNameLabel, 1, 0);
+                SetGridCell(txtProcedureName, 1, 1);
+                SetGridCell(EquipmentNumberLabel, 1, 2);
+                SetGridCell(txtEquipmentNumber, 1, 3);
+
+                SetGridCell(AutoReportLabel, 2, 0);
+                SetGridCell(chkEnableAutoReportWork, 2, 1);
+                SetGridCell(ScanAutoLabel, 2, 2);
+                SetGridCell(chkEnableScanAutoTriggerStages, 2, 3);
+                return;
+            }
+
+            ReportConfigGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            ReportConfigGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            SetGridCell(StationCodeLabel, 0, 0);
+            SetGridCell(txtStationCode, 0, 1);
+            SetGridCell(ProcedureNameLabel, 1, 0);
+            SetGridCell(txtProcedureName, 1, 1);
+            SetGridCell(ProcedureCodeLabel, 2, 0);
+            SetGridCell(txtProcedureCode, 2, 1);
+            SetGridCell(EquipmentNumberLabel, 3, 0);
+            SetGridCell(txtEquipmentNumber, 3, 1);
+            SetGridCell(AutoReportLabel, 4, 0);
+            SetGridCell(chkEnableAutoReportWork, 4, 1);
+            SetGridCell(ScanAutoLabel, 5, 0);
+            SetGridCell(chkEnableScanAutoTriggerStages, 5, 1);
+        }
+
+        private static void SetGridCell(UIElement element, int row, int column)
+        {
+            Grid.SetRow(element, row);
+            Grid.SetColumn(element, column);
+            Grid.SetRowSpan(element, 1);
+            Grid.SetColumnSpan(element, 1);
+        }
+
+        /// <summary>
         /// 主窗口加载完成后的启动流程：加载配置/工程、初始化相机与通讯、启动 PLC 轮询等后台逻辑。
         /// </summary>
         /// <param name="sender">事件源。</param>
@@ -176,6 +312,7 @@ namespace F7_L12_Position_Detect
             vml.Main.DataModel.Processmodel.Tools.Add(new Model.Tool.ToolModel());
             vml.Main.BackupConfigXmlsBeforeLoad();
             vml.Main.LoadSettingModel();
+            ApplyConfiguredUiLayout();
             //vml.Main.LoadProcessmodel();
             vml.Main.Load_Prj();
             //vml.Main.ConnectPC();
@@ -388,10 +525,16 @@ namespace F7_L12_Position_Detect
             ofd.Filter = "*.jpg|*.jpg";
             if (ofd.ShowDialog() == true)
             {
-                HObject ho_Image;
-                HOperatorSet.GenEmptyObj(out ho_Image);
-                HOperatorSet.ReadImage(out ho_Image, ofd.FileName);
-                var r = reg.ReadBarcode(ho_Image, 1, 165, 1837, 650, 2445, true);
+                HObject image = null;
+                try
+                {
+                    HOperatorSet.ReadImage(out image, ofd.FileName);
+                    var r = reg.ReadBarcode(image, 1, 165, 1837, 650, 2445, true);
+                }
+                finally
+                {
+                    image?.Dispose();
+                }
             }
         }
 
@@ -405,6 +548,11 @@ namespace F7_L12_Position_Detect
 
         private void tooltest_Click(object sender, RoutedEventArgs e)
         {
+            if (!vml.Main.CanRunManualImageTest)
+            {
+                NoticeBox.Show("检测或扫码处理正在执行，请在本轮结束后再进行照片测试", "提示", MessageBoxIcon.Warning, true, 5000);
+                return;
+            }
 
             try
             {
@@ -413,14 +561,25 @@ namespace F7_L12_Position_Detect
                 if (ofd.ShowDialog() == true)
                 {
                     HTuple W = new HTuple(), H = new HTuple();
-
-                    HObject image;
-                    HOperatorSet.GenEmptyObj(out image);
-                    HOperatorSet.ReadImage(out image, ofd.FileName);
-                    HOperatorSet.GetImageSize(image, out W, out H);
-                    vml.Main.DataModel.Processmodel.ToolIndex = vml.Main.DataModel.Processmodel.selectedindex;
-                    vml.Main.DataModel.Processmodel.RCMD = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex].Command;
-                    vml.Main.OnReceiveProcess(image, (int)H, (int)W);
+                    HObject image = null;
+                    try
+                    {
+                        HOperatorSet.ReadImage(out image, ofd.FileName);
+                        HOperatorSet.GetImageSize(image, out W, out H);
+                        if (!vml.Main.TryRunManualToolTest(
+                            image,
+                            (int)H,
+                            (int)W,
+                            vml.Main.DataModel.Processmodel.selectedindex,
+                            out string message))
+                        {
+                            NoticeBox.Show(message, "提示", MessageBoxIcon.Warning, true, 5000);
+                        }
+                    }
+                    finally
+                    {
+                        image?.Dispose();
+                    }
                 }
             }
             catch (Exception ex)

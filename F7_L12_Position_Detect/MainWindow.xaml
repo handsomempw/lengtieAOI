@@ -126,11 +126,11 @@
         </Style>
     </p:WindowXCaption.CloseButtonStyle>-->
 
-    <Grid Margin="3">
+    <Grid x:Name="MainLayoutRoot" Margin="3">
 
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
-            <RowDefinition Height="auto" MaxHeight="160" MinHeight="100"/>
+            <RowDefinition x:Name="ToolStripRow" Height="auto" MaxHeight="160" MinHeight="100"/>
             <RowDefinition Height="auto" />
             <RowDefinition/>
             <RowDefinition Height="auto" />
@@ -139,7 +139,7 @@
             <ColumnDefinition/>
             <ColumnDefinition Width="auto" />
             <ColumnDefinition Width="auto" />
-            <ColumnDefinition Width="300" />
+            <ColumnDefinition x:Name="ReportPanelColumn" Width="300" />
         </Grid.ColumnDefinitions>
 
         <Grid Grid.Row="0" Grid.ColumnSpan="3" MinHeight="30" Margin="5">
@@ -149,7 +149,7 @@
             </Grid.RowDefinitions>
 
             <!-- 点检倒计时显示（不改变现有UI结构：嵌入到顶部区域） -->
-            <Border Grid.Row="0"
+            <Border x:Name="InspectionBanner" Grid.Row="0"
                     Background="{Binding DataModel.Processmodel.InspectionCountdownColor}"
                     Margin="0,0,0,6" Padding="10,5" CornerRadius="5">
                 <Grid>
@@ -213,8 +213,8 @@
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <ctr:Toolcontrol MinHeight="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.ImageSize}" 
-                                     MinWidth="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.ImageSize}" 
+                    <ctr:Toolcontrol Height="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.EffectiveImageSize}"
+                                     Width="{Binding Source={StaticResource Locator},Path=Main.DataModel.Settingmodel.EffectiveImageSize}"
                                      DataContext="{Binding}"/>
                 </DataTemplate>
             </ListBox.ItemTemplate>
@@ -239,10 +239,10 @@
             <Button   Grid.Row="2" Grid.Column="1"   Background="#101010" Foreground="White"  Command="{Binding ClearToolCMD}"  p:ButtonHelper.CornerRadius="0,0,15,0">清空</Button>
         </Grid>
 
-        <!-- 报工板块 -->
-        <Grid Grid.Row="1" Grid.Column="3" Grid.RowSpan="3" Margin="5">
+        <!-- 报工板块：状态记录与配置区域各自滚动，紧凑布局保持关键信息可达。 -->
+        <Grid x:Name="ReportPanel"
+              Grid.Row="1" Grid.Column="3" Grid.RowSpan="3" Margin="5">
             <Grid.RowDefinitions>
-                <RowDefinition Height="auto"/>
                 <RowDefinition Height="auto"/>
                 <RowDefinition Height="auto"/>
                 <RowDefinition Height="auto"/>
@@ -250,12 +250,12 @@
             </Grid.RowDefinitions>
 
             <!-- 报工标题 - 增强显著程度 -->
-            <TextBlock Grid.Row="0" Text="生产报工" FontSize="22" FontWeight="Bold"
+            <TextBlock x:Name="ReportTitle" Grid.Row="0" Text="生产报工" FontSize="22" FontWeight="Bold"
                        HorizontalAlignment="Center" Margin="0,8" Foreground="DarkBlue"
                        Effect="{DynamicResource DropShadowEffect}"/>
 
             <!-- SN输入区域 - 减小字体突出主次 -->
-            <GroupBox Grid.Row="1" Header="产品信息" Margin="0,5" FontSize="13" FontWeight="Normal">
+            <GroupBox x:Name="ProductInfoGroup" Grid.Row="1" Header="产品信息" Margin="0,5" FontSize="13" FontWeight="Normal">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="auto"/>
@@ -295,9 +295,44 @@
                 </Grid>
             </GroupBox>
 
-            <!-- 报工配置区域 - 减小字体突出主次 -->
-            <GroupBox Grid.Row="2" Header="报工配置" Margin="0,5" FontSize="13" FontWeight="Normal">
+            <!-- 报工状态显示 -->
+            <GroupBox x:Name="ReportStatusGroup" Grid.Row="2" Header="报工状态" Margin="0,5" FontSize="13" FontWeight="Normal">
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 当前报工状态 -->
+                    <TextBlock Grid.Row="0" Text="{Binding DataModel.Processmodel.ReportWorkStatus}"
+                               Foreground="{Binding DataModel.Processmodel.ReportWorkStatusColor}"
+                               FontSize="14" FontWeight="Bold" Margin="5"
+                               HorizontalAlignment="Center" TextWrapping="Wrap"/>
+
+                    <!-- 报工成功记录 -->
+                    <ScrollViewer x:Name="ReportSuccessLogScroll"
+                                  Grid.Row="1" MaxHeight="180" Margin="0,5,0,0"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding DataModel.Processmodel.ReportWorkSuccessLog}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="11" Margin="2"
+                                               Foreground="Green" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </GroupBox>
+
+            <!-- 报工配置区域 - 减小字体突出主次 -->
+            <ScrollViewer Grid.Row="3"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel>
+            <GroupBox x:Name="ReportConfigGroup" Header="报工配置" Margin="0,5" FontSize="13" FontWeight="Normal">
+                <Grid x:Name="ReportConfigGrid">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
@@ -311,7 +346,7 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="工位号:" VerticalAlignment="Center"
+                    <TextBlock x:Name="StationCodeLabel" Grid.Row="0" Grid.Column="0" Text="工位号:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="0" Grid.Column="1" Name="txtStationCode"
                              Text="{Binding DataModel.Settingmodel.ReportWorkConfig.StationCode, UpdateSourceTrigger=PropertyChanged}"
@@ -321,7 +356,7 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="工序名称:" VerticalAlignment="Center"
+                    <TextBlock x:Name="ProcedureNameLabel" Grid.Row="1" Grid.Column="0" Text="工序名称:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="1" Grid.Column="1" Name="txtProcedureName"
                              Text="{Binding DataModel.Settingmodel.ReportWorkConfig.ProcedureName, UpdateSourceTrigger=PropertyChanged}"
@@ -331,7 +366,7 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="工序码:" VerticalAlignment="Center"
+                    <TextBlock x:Name="ProcedureCodeLabel" Grid.Row="2" Grid.Column="0" Text="工序码:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="2" Grid.Column="1" Name="txtProcedureCode"
                              Text="{Binding DataModel.Settingmodel.ReportWorkConfig.ProcedureCode, UpdateSourceTrigger=PropertyChanged}"
@@ -341,7 +376,7 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="设备编号:" VerticalAlignment="Center"
+                    <TextBlock x:Name="EquipmentNumberLabel" Grid.Row="3" Grid.Column="0" Text="设备编号:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
                     <TextBox Grid.Row="3" Grid.Column="1" Name="txtEquipmentNumber"
                              Text="{Binding DataModel.Settingmodel.ReportWorkConfig.EquipmentNumber, UpdateSourceTrigger=PropertyChanged}"
@@ -351,7 +386,7 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="4" Grid.Column="0" Text="自动报工:" VerticalAlignment="Center"
+                    <TextBlock x:Name="AutoReportLabel" Grid.Row="4" Grid.Column="0" Text="自动报工:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
                     <CheckBox Grid.Row="4" Grid.Column="1" Name="chkEnableAutoReportWork"
                               IsChecked="{Binding DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork}"
@@ -361,7 +396,7 @@
                               VerticalAlignment="Center" Margin="5" FontSize="12"
                               Foreground="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigForeground}}"/>
 
-                    <TextBlock Grid.Row="5" Grid.Column="0" Text="扫码触发自动执行:" VerticalAlignment="Center"
+                    <TextBlock x:Name="ScanAutoLabel" Grid.Row="5" Grid.Column="0" Text="扫码触发自动执行:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
                     <CheckBox Grid.Row="5" Grid.Column="1" Name="chkEnableScanAutoTriggerStages"
                               IsChecked="{Binding DataModel.Settingmodel.EnableScanAutoTriggerStages}"
@@ -374,7 +409,7 @@
             </GroupBox>
 
             <!-- 上岗人员信息 - 减小字体突出主次 -->
-            <GroupBox Grid.Row="3" Header="上岗人员" Margin="0,5" FontSize="13" FontWeight="Normal">
+            <GroupBox x:Name="WorkerInfoGroup" Header="上岗人员" Margin="0,5" FontSize="13" FontWeight="Normal">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="auto"/>
@@ -415,36 +450,10 @@
                 </Grid>
             </GroupBox>
 
-            <!-- 报工状态显示 -->
-            <GroupBox Grid.Row="4" Header="报工状态" Margin="0,5" FontSize="13" FontWeight="Normal">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- 当前报工状态 -->
-                    <TextBlock Grid.Row="0" Text="{Binding DataModel.Processmodel.ReportWorkStatus}"
-                               Foreground="{Binding DataModel.Processmodel.ReportWorkStatusColor}"
-                               FontSize="14" FontWeight="Bold" Margin="5"
-                               HorizontalAlignment="Center" TextWrapping="Wrap"/>
-
-                    <!-- 报工成功记录 -->
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,5,0,0">
-                        <ListBox ItemsSource="{Binding DataModel.Processmodel.ReportWorkSuccessLog}"
-                                 Background="Transparent" BorderThickness="0">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" FontSize="11" Margin="2"
-                                               Foreground="Green" TextWrapping="Wrap"/>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </ScrollViewer>
-                </Grid>
-            </GroupBox>
+              </StackPanel>
+            </ScrollViewer>
         </Grid>
-        <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" >
+        <Grid x:Name="ToolDetailPanel" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" >
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto"/>
                 <RowDefinition Height="auto"/>
@@ -609,7 +618,7 @@
             </ListBox>
         </DockPanel>
         
-        <WrapPanel Grid.Row="4" HorizontalAlignment="Center" Grid.ColumnSpan="4" >
+        <WrapPanel x:Name="FooterStatusPanel" Grid.Row="4" HorizontalAlignment="Center" Grid.ColumnSpan="4" >
 
             <!--<TextBlock Margin="10,0" Text="{Binding DataModel.Processmodel.ImageNum,StringFormat=照片数:{0}}"  />-->
             <TextBlock Margin="10,0" Text="{Binding DataModel.Settingmodel.RobotConnect.IsConnected,StringFormat=机器人连接:{0}}"  />
@@ -628,11 +637,16 @@
 
             <!--<CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveOK }">保存OK</CheckBox>
             <CheckBox Margin="10,0" IsChecked="{Binding DataModel.Settingmodel.ImageSaveSetting.SaveNG }">保存NG</CheckBox>-->
-            <TextBlock Text="{Binding DataModel.Processmodel.Scannerstr,StringFormat=扫码器:{0}}"/>
+            <TextBlock MaxWidth="260"
+                       Text="{Binding DataModel.Processmodel.Scannerstr,StringFormat=扫码器:{0}}"
+                       TextTrimming="CharacterEllipsis"
+                       TextWrapping="NoWrap"
+                       ToolTip="{Binding DataModel.Processmodel.Scannerstr}"/>
             <Button Name="Send2Soft_btn" Click="Send2Soft_btn_Click" Visibility="Collapsed" >发送测试Soft</Button>
             <Button Name="Send2Robot_btn" Click="Send2Robot_btn_Click" Visibility="Collapsed">发送测试Robot</Button>
             <Button Name="Barcodetest_btn"  Click="Barcodetest_btn_Click" Visibility="Collapsed">二维码识别测试</Button>
-            <Button Name="tooltest" Click="tooltest_Click" Content="照片测试" />
+            <Button Name="tooltest" Click="tooltest_Click" Content="照片测试"
+                    IsEnabled="{Binding CanRunManualImageTest}" />
             <Button x:Name="scannertrig" Click="scannertrig_Click" Content="扫码测试"/>
         </WrapPanel>
     </Grid>

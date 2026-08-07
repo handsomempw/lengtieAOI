@@ -71,6 +71,10 @@
         </ScrollViewer>
 
         <GroupBox Header="工具参数" Grid.Column="1">
+            <ScrollViewer x:Name="ToolParameterScrollViewer"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          CanContentScroll="True">
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height=" auto"/>
@@ -488,6 +492,7 @@
 
 
             </Grid>
+            </ScrollViewer>
         </GroupBox>
 
         <WrapPanel Grid.Row="1" HorizontalAlignment="Center" Grid.ColumnSpan="3" >

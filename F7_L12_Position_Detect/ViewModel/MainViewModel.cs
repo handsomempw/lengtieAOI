@@ -480,41 +480,81 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                 }
 
-                // 如果找到匹配的相机且与当前选择不同，则切换相机
-                if (targetIndex >= 0 && camera.SelectedIndex != targetIndex)
+                bool requiresReopen = _cameraRecoveryRequired || !camera.IsOpen;
+                if (targetIndex >= 0 && (camera.SelectedIndex != targetIndex || requiresReopen))
                 {
-                    WriteCameraDebugLog($"[工具相机切换] 匹配成功 目标下标={targetIndex} 目标设备='{camera.cbDeviceList[targetIndex]}' 现在开始切换");
+                    var switchStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    WriteCameraDebugLog(
+                        $"[工具相机切换] 准备相机 目标下标={targetIndex} 目标设备='{camera.cbDeviceList[targetIndex]}' " +
+                        $"恢复重开={_cameraRecoveryRequired} 当前打开={camera.IsOpen}");
                     writeLog($"工具{tool.Index}切换到相机: {camera.cbDeviceList[targetIndex]}", false);
 
-                    // 关闭当前相机 - 使用状态轮询替代固定延时
-                    camera.bnClose_Click();
                     var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                    while (stopwatch.ElapsedMilliseconds < 3000 && camera.bnCloseEnabled)
+                    long closeElapsedMs = 0;
+                    bool closeCompleted = true;
+                    if (camera.IsOpen)
                     {
-                        Thread.Sleep(50); // 50ms轮询间隔
+                        camera.bnClose_Click();
+                        while (stopwatch.ElapsedMilliseconds < 3000 && camera.IsOpen)
+                        {
+                            Thread.Sleep(50);
+                        }
+                        closeElapsedMs = stopwatch.ElapsedMilliseconds;
+                        closeCompleted = !camera.IsOpen;
+                        if (!closeCompleted)
+                        {
+                            DataModel.Processmodel.CameraStatus = "相机关闭失败";
+                            WriteCameraDebugLog($"[工具相机切换] 关闭超时 工具序号={tool.Index} 耗时={closeElapsedMs}ms");
+                            return false;
+                        }
                     }
 
-                    // 切换到目标相机
                     camera.SelectedIndex = targetIndex;
-
-                    // 打开新相机 - 使用状态轮询替代固定延时
                     camera.bnOpen_Click();
                     stopwatch.Restart();
-                    while (stopwatch.ElapsedMilliseconds < 3000 && !camera.bnCloseEnabled)
+                    while (stopwatch.ElapsedMilliseconds < 3000 && !camera.IsOpen)
                     {
-                        Thread.Sleep(50); // 50ms轮询间隔
+                        Thread.Sleep(50);
+                    }
+                    long openElapsedMs = stopwatch.ElapsedMilliseconds;
+                    bool openCompleted = camera.IsOpen;
+                    if (!openCompleted)
+                    {
+                        DataModel.Processmodel.CameraStatus = "相机打开失败";
+                        WriteCameraDebugLog($"[工具相机切换] 打开失败 工具序号={tool.Index} 耗时={openElapsedMs}ms");
+                        return false;
                     }
 
-                    // 启动取流
                     camera.bnStartGrab_Click();
+                    if (!camera.IsGrabbing)
+                    {
+                        DataModel.Processmodel.CameraStatus = "相机取流失败";
+                        WriteCameraDebugLog($"[工具相机切换] 取流失败 工具序号={tool.Index}");
+                        return false;
+                    }
 
+                    _cameraRecoveryRequired = false;
                     writeLog($"工具{tool.Index}相机切换完成", false);
+                    WriteCameraDebugLog(
+                        $"[工具相机切换耗时] 工具序号={tool.Index} 关闭={closeElapsedMs}ms(完成={closeCompleted}) " +
+                        $"打开={openElapsedMs}ms(完成={openCompleted}) 总耗时={switchStopwatch.ElapsedMilliseconds}ms");
                     return true;
                 }
                 else if (targetIndex >= 0)
                 {
-                    WriteCameraDebugLog($"[工具相机切换] 匹配成功 目标下标={targetIndex} 已经是当前所选相机（无需切换）");
-                    writeLog($"工具{tool.Index}相机已是目标相机，无需切换", false);
+                    if (!camera.IsGrabbing)
+                    {
+                        camera.bnStartGrab_Click();
+                        if (!camera.IsGrabbing)
+                        {
+                            DataModel.Processmodel.CameraStatus = "相机取流失败";
+                            WriteCameraDebugLog($"[工具相机切换] 当前相机恢复取流失败 工具序号={tool.Index}");
+                            return false;
+                        }
+                    }
+
+                    WriteCameraDebugLog($"[工具相机切换] 匹配成功 目标下标={targetIndex} 当前相机已就绪");
+                    writeLog($"工具{tool.Index}相机已就绪", false);
                     return true;
                 }
                 else
@@ -653,6 +693,14 @@ namespace F7_L12_Position_Detect.ViewModel
         private volatile bool _isExecuting = false;
         private readonly object _executionLock = new object();
         private DateTime _executionStartTime = DateTime.MinValue;
+        private bool _processingImage;
+        private bool _manualImageTestInProgress;
+        private long _executionSequence;
+        private long _activeExecutionId;
+        private long _captureRequestSequence;
+        private long _expectedCaptureSessionId;
+        private long _expectedCaptureRequestId;
+        private volatile bool _cameraRecoveryRequired;
         private int ExecutionTimeoutMs => Math.Max(500, DataModel?.Settingmodel?.ExecutionTimeoutMs ?? 5000);
         private int _plcProbeCounter = 0;
 
@@ -704,12 +752,12 @@ namespace F7_L12_Position_Detect.ViewModel
          *
          * 业务规则：
          * - PLC 只触发一次“下一步”，视觉端在一个阶段内可能需要多次取图：
-         *   - 同一阶段工具若配置了不同相机序列号，则按相机分组，每个相机取图一次；
-         *   - 同一相机分组内的多个工具，共用这一张图做识别（同图多工具）。
+         *   - 同一阶段工具按相机序列号和曝光时间分组，每组取图一次；
+         *   - 相机与曝光时间一致的多个工具，共用这一张图做识别（同图多工具）。
          *
          * 时序与收口：
          * - ProcessSerialTrigger() 初始化 _pendingCameraGroups，并触发第一组相机取图；
-         * - OnReceiveProcess() 只处理 RCMD 且匹配当前 _activeCameraSerial 的工具；
+         * - 相机回调受理时冻结执行代次、阶段、相机和曝光，OnReceiveProcess() 只处理该上下文匹配的工具；
          * - OnReceiveProcess() finally 中：
          *     - 若还有相机组未处理，则继续触发下一组取图（不 EndExecution）；
          *     - 若 TriggerNextCameraGroupCapture 返回 false 或抛异常，立即 NG、NeedRestart、EndExecution，不等超时看门狗；
@@ -718,7 +766,7 @@ namespace F7_L12_Position_Detect.ViewModel
          * 等图门闩（_waitingImage）：
          * - 仅在成功软触发 bnTriggerExec 前置 true；相机线程 OnReceive 入口 TryAcceptImageCallback 原子消费为 false。
          * - 非执行态、或非“等图”态到达的回调直接丢弃，减少晚到帧误入当前轮（日志用 WriteDetailLog，不作为拦截依据）。
-         * - 手动“照片测试”直接调用 OnReceiveProcess，不经 OnReceive，不受门闩影响。
+         * - 手动“照片测试”使用独立上下文，只执行选中工具，并跳过生产留图、设备发送、阶段结算和报工。
          *
          * 注意：
          * - 当前实现为“串行多相机”（依次取图），避免并行回调竞态；
@@ -727,18 +775,86 @@ namespace F7_L12_Position_Detect.ViewModel
         private sealed class CameraGroup
         {
             public string CameraSerial { get; }
+            public int ExposureTime { get; }
             public List<int> ToolIndices { get; }
-            public CameraGroup(string cameraSerial, List<int> toolIndices)
+            public CameraGroup(string cameraSerial, int exposureTime, List<int> toolIndices)
             {
                 CameraSerial = cameraSerial ?? string.Empty;
+                ExposureTime = exposureTime;
                 ToolIndices = toolIndices ?? new List<int>();
             }
         }
 
+        /// <summary>
+        /// 冻结一张回图所属的执行代次、阶段、相机和曝光。UI 排队期间即使现场触发了新一轮执行，旧帧也只能处理和释放自己的代次。
+        /// </summary>
+        private sealed class FrameProcessingContext
+        {
+            public long ExecutionId { get; }
+            public string Command { get; }
+            public string CameraSerial { get; }
+            public int? ExposureTime { get; }
+            public string ProductSerialNumber { get; }
+            public long CaptureSessionId { get; }
+            public long CaptureRequestId { get; }
+            public bool IsProduction { get; }
+            public int ManualToolIndex { get; }
+
+            private FrameProcessingContext(
+                long executionId,
+                string command,
+                string cameraSerial,
+                int? exposureTime,
+                string productSerialNumber,
+                long captureSessionId,
+                long captureRequestId,
+                bool isProduction,
+                int manualToolIndex)
+            {
+                ExecutionId = executionId;
+                Command = command ?? string.Empty;
+                CameraSerial = cameraSerial;
+                ExposureTime = exposureTime;
+                ProductSerialNumber = productSerialNumber ?? string.Empty;
+                CaptureSessionId = captureSessionId;
+                CaptureRequestId = captureRequestId;
+                IsProduction = isProduction;
+                ManualToolIndex = manualToolIndex;
+            }
+
+            public static FrameProcessingContext Production(
+                long executionId,
+                string command,
+                string cameraSerial,
+                int? exposureTime,
+                string productSerialNumber,
+                long captureSessionId,
+                long captureRequestId)
+            {
+                return new FrameProcessingContext(
+                    executionId,
+                    command,
+                    cameraSerial,
+                    exposureTime,
+                    productSerialNumber,
+                    captureSessionId,
+                    captureRequestId,
+                    true,
+                    -1);
+            }
+
+            public static FrameProcessingContext Manual(string command, int toolIndex)
+            {
+                return new FrameProcessingContext(0, command, null, null, string.Empty, 0, 0, false, toolIndex);
+            }
+        }
+
         private Queue<CameraGroup> _pendingCameraGroups = null;
+        private long _imageSaveSequence;
         /// <summary>等图门闩：仅在一次软触发之后为 true，回调入口原子消费为 false，避免非预期帧进入处理。</summary>
         private bool _waitingImage = false;
         private string _activeCameraSerial = null; // null 表示不按相机过滤（兼容旧逻辑）
+        private int? _activeExposureTime = null; // null 表示不按曝光过滤（手动照片测试兼容路径）
 
         /// <summary>
         /// 归一化相机序列号：将 null 统一视为空串，并去除首尾空格、统一为大写，确保分组和精确匹配口径一致。
@@ -749,7 +865,7 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 构建当前阶段的“相机分组队列”。
+        /// 构建当前阶段的拍照分组队列。相机序列号和曝光时间均一致的工具共享一帧，并保持工具配置中的首次出现顺序。
         /// </summary>
         /// <remarks>
         /// - 仅收集 <paramref name="command"/> 对应阶段的工具；
@@ -759,9 +875,9 @@ namespace F7_L12_Position_Detect.ViewModel
         /// </remarks>
         private Queue<CameraGroup> BuildCameraGroupsForStageCommand(string command)
         {
-            // 按工具列表顺序稳定分组：同一阶段内不同相机 -> 多次取图
-            var groups = new Dictionary<string, List<int>>();
-            var groupOrder = new List<string>();
+            // 按工具列表顺序稳定分组。相机相同而曝光不同的工具需要独立取图，避免共享错误曝光的图像。
+            var groups = new Dictionary<Tuple<string, int>, List<int>>();
+            var groupOrder = new List<Tuple<string, int>>();
             string normalizedCommand = NormalizeStageCommand(command);
 
             for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
@@ -770,20 +886,25 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (NormalizeStageCommand(tool.Command) != normalizedCommand) continue;
 
                 string cam = NormalizeCameraSerial(tool.CameraSerialNumber);
-                if (!groups.TryGetValue(cam, out var list))
+                var key = Tuple.Create(cam, tool.ExposureTime);
+                if (!groups.TryGetValue(key, out var list))
                 {
                     list = new List<int>();
-                    groups[cam] = list;
-                    groupOrder.Add(cam);
+                    groups[key] = list;
+                    groupOrder.Add(key);
                 }
                 list.Add(i);
             }
 
             var q = new Queue<CameraGroup>();
-            foreach (var cam in groupOrder)
+            foreach (var key in groupOrder)
             {
-                q.Enqueue(new CameraGroup(cam, groups[cam]));
+                q.Enqueue(new CameraGroup(key.Item1, key.Item2, groups[key]));
             }
+
+            WriteCameraDebugLog(
+                $"[阶段拍照分组] 指令='{normalizedCommand}' 分组数={q.Count} " +
+                $"顺序=[{string.Join(" -> ", q.Select(group => $"{group.CameraSerial}/曝光{group.ExposureTime}/工具{group.ToolIndices.Count}"))}]");
             return q;
         }
 
@@ -795,20 +916,34 @@ namespace F7_L12_Position_Detect.ViewModel
         /// 工具识别与阶段结算在相机回调 <see cref="OnReceiveProcess"/> 中完成。
         /// 软触发前在锁内置 <see cref="_waitingImage"/> 为 true，供 <see cref="TryAcceptImageCallback"/> 校验。
         /// </remarks>
-        private bool TriggerNextCameraGroupCapture(string command)
+        private bool TriggerNextCameraGroupCapture(string command, long? expectedExecutionId = null)
         {
+            if (expectedExecutionId.HasValue)
+            {
+                lock (_executionLock)
+                {
+                    if (!_isExecuting || _activeExecutionId != expectedExecutionId.Value)
+                    {
+                        WriteDetailLog($"[阶段触发下一相机组] 执行代次已失效，跳过触发 expected={expectedExecutionId.Value} active={_activeExecutionId}");
+                        return false;
+                    }
+                }
+            }
+
             if (_pendingCameraGroups == null || _pendingCameraGroups.Count == 0)
             {
                 _activeCameraSerial = null;
+                _activeExposureTime = null;
                 return false;
             }
 
             var group = _pendingCameraGroups.Dequeue();
             _activeCameraSerial = group.CameraSerial;
+            _activeExposureTime = group.ExposureTime;
 
             if (group.ToolIndices.Count == 0)
             {
-                return TriggerNextCameraGroupCapture(command);
+                return TriggerNextCameraGroupCapture(command, expectedExecutionId);
             }
 
             int firstToolIndex = group.ToolIndices[0];
@@ -817,48 +952,176 @@ namespace F7_L12_Position_Detect.ViewModel
             DataModel.Processmodel.ToolIndex = firstToolIndex + 1;
 
             // 切换到该相机并按该组第一个工具设置曝光
-            WriteCameraDebugLog($"[阶段触发下一相机组] 指令='{command}' 当前激活相机序列号='{_activeCameraSerial}' 本组工具数={group.ToolIndices.Count} 首工具下标={firstToolIndex} 首工具相机序列号='{firstTool.CameraSerialNumber}'");
+            Stopwatch preparationStopwatch = Stopwatch.StartNew();
+            WriteCameraDebugLog($"[阶段触发下一相机组] 指令='{command}' 当前激活相机序列号='{_activeCameraSerial}' 曝光={group.ExposureTime} 本组工具数={group.ToolIndices.Count} 首工具下标={firstToolIndex} 首工具相机序列号='{firstTool.CameraSerialNumber}'");
             if (!SwitchCameraForTool(firstTool))
             {
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
                 WriteDetailLog($"[阶段触发下一相机组] 指定相机不可用 工具下标={firstToolIndex} 序列号='{firstTool.CameraSerialNumber}'");
                 return false;
             }
             Thread.Sleep(100);
-            DataModel.Settingmodel.camedata.CameraModel.exposuretime = firstTool.ExposureTime;
-            DataModel.Settingmodel.camedata.CameraModel.camera.Exposure = firstTool.ExposureTime;
-            DataModel.Settingmodel.camedata.CameraModel.camera.bnSetParam_Click();
-            Thread.Sleep(DataModel.Settingmodel.delaytime);
+            DataModel.Settingmodel.camedata.CameraModel.exposuretime = group.ExposureTime;
+            Hikvision camera = DataModel.Settingmodel.camedata.CameraModel.camera;
+            camera.Exposure = group.ExposureTime;
+            if (!camera.TrySetExposure(group.ExposureTime, out int exposureErrorCode))
+            {
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.CameraStatus = "相机曝光设置失败";
+                _cameraRecoveryRequired = true;
+                WriteCameraDebugLog(
+                    $"[阶段曝光设置] 失败 指令='{command}' 相机='{_activeCameraSerial}' " +
+                    $"曝光={group.ExposureTime} 错误码=0x{exposureErrorCode:X8}");
+                return false;
+            }
+            int configuredDelayMs = Math.Max(0, DataModel.Settingmodel.delaytime);
+            Thread.Sleep(configuredDelayMs);
 
             writeLog($"开始拍照: {command}阶段 - 相机='{_activeCameraSerial}', 工具数={group.ToolIndices.Count}");
+            WriteCameraDebugLog(
+                $"[阶段拍照准备] 指令='{command}' 相机='{_activeCameraSerial}' 曝光={group.ExposureTime} " +
+                $"配置等待={configuredDelayMs}ms 准备总耗时={preparationStopwatch.ElapsedMilliseconds}ms");
+            long captureSessionId = camera.ActiveCaptureSessionId;
+            long captureRequestId = Interlocked.Increment(ref _captureRequestSequence);
+            if (captureSessionId <= 0)
+            {
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.CameraStatus = "相机会话无效";
+                _cameraRecoveryRequired = true;
+                WriteCameraDebugLog($"[阶段软触发] 相机会话无效 指令='{command}' 请求={captureRequestId}");
+                return false;
+            }
+
             lock (_executionLock)
             {
+                if (expectedExecutionId.HasValue && (!_isExecuting || _activeExecutionId != expectedExecutionId.Value))
+                {
+                    WriteDetailLog($"[阶段拍照准备] 执行代次在软触发前失效，跳过触发 expected={expectedExecutionId.Value} active={_activeExecutionId}");
+                    return false;
+                }
+
+                _executionStartTime = DateTime.UtcNow;
+                _expectedCaptureSessionId = captureSessionId;
+                _expectedCaptureRequestId = captureRequestId;
                 _waitingImage = true;
             }
-            DataModel.Settingmodel.camedata.CameraModel.camera.bnTriggerExec_Click();
+
+            if (!camera.TryTriggerExec(captureRequestId, out int triggerErrorCode))
+            {
+                lock (_executionLock)
+                {
+                    if (_expectedCaptureSessionId == captureSessionId
+                        && _expectedCaptureRequestId == captureRequestId)
+                    {
+                        _waitingImage = false;
+                        _expectedCaptureSessionId = 0;
+                        _expectedCaptureRequestId = 0;
+                    }
+                }
+
+                _cameraRecoveryRequired = true;
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.CameraStatus = "相机软触发失败";
+                WriteCameraDebugLog(
+                    $"[阶段软触发] 失败 指令='{command}' 会话={captureSessionId} 请求={captureRequestId} " +
+                    $"错误码=0x{triggerErrorCode:X8}");
+                return false;
+            }
+
+            WriteCameraDebugLog(
+                $"[阶段软触发] 成功 指令='{command}' 会话={captureSessionId} 请求={captureRequestId}");
             return true;
         }
 
         /// <summary>
-        /// 尝试进入“单次指令执行窗口”，用于防止 PLC 触发重入/并发执行。
+        /// 对外提供照片测试按钮的可用状态。生产执行、扫码/MES 和手工测试共用一把互斥锁，避免测试图改变现场产品与检测状态。
         /// </summary>
-        /// <returns>成功进入执行态返回 true；若已有执行在进行中返回 false。</returns>
-        private bool TryBeginExecution()
+        public bool CanRunManualImageTest
         {
-            lock (_executionLock)
+            get
             {
-                if (_isExecuting) return false;
-                _isExecuting = true;
-                _waitingImage = false;
-                _executionStartTime = DateTime.UtcNow;
-                return true;
+                lock (_executionLock)
+                {
+                    return !_isExecuting && !_manualImageTestInProgress && !_isScanProcessing;
+                }
+            }
+        }
+
+        private void NotifyCanRunManualImageTestChanged()
+        {
+            Action notify = () => RaisePropertyChanged(() => CanRunManualImageTest);
+            if (System.Windows.Application.Current?.Dispatcher == null
+                || System.Windows.Application.Current.Dispatcher.CheckAccess())
+            {
+                notify();
+            }
+            else
+            {
+                System.Windows.Application.Current.Dispatcher.BeginInvoke(notify);
             }
         }
 
         /// <summary>
-        /// 相机 SDK 线程上调用：仅当处于 PLC 执行窗口且本帧为“软触发所等待的那一帧”时放行，并原子清除等图门闩。
+        /// 尝试进入单次阶段执行窗口，防止 PLC、扫码/MES、扫码自动执行和照片测试并发修改产品与检测状态。
         /// </summary>
-        private bool TryAcceptImageCallback(out string dropReason)
+        /// <param name="executionId">成功进入后返回本轮唯一执行代次，用于隔离超时帧和迟到帧。</param>
+        /// <returns>成功进入执行态时返回 true；已有生产执行、扫码/MES 或照片测试时返回 false。</returns>
+        private bool TryBeginExecution(out long executionId)
         {
+            executionId = 0;
+            lock (_executionLock)
+            {
+                if (_isExecuting || _manualImageTestInProgress || _isScanProcessing) return false;
+                _isExecuting = true;
+                _waitingImage = false;
+                _processingImage = false;
+                _activeExecutionId = ++_executionSequence;
+                _expectedCaptureSessionId = 0;
+                _expectedCaptureRequestId = 0;
+                executionId = _activeExecutionId;
+                _executionStartTime = DateTime.UtcNow;
+            }
+
+            NotifyCanRunManualImageTestChanged();
+            return true;
+        }
+
+        private bool TryBeginManualImageTest()
+        {
+            lock (_executionLock)
+            {
+                if (_isExecuting || _manualImageTestInProgress || _isScanProcessing)
+                {
+                    return false;
+                }
+
+                _manualImageTestInProgress = true;
+            }
+
+            NotifyCanRunManualImageTestChanged();
+            return true;
+        }
+
+        private void EndManualImageTest()
+        {
+            lock (_executionLock)
+            {
+                _manualImageTestInProgress = false;
+            }
+
+            NotifyCanRunManualImageTestChanged();
+        }
+
+        /// <summary>
+        /// 相机 SDK 线程上调用：仅当处于 PLC 执行窗口且本帧为“软触发所等待的那一帧”时放行，并冻结本帧执行上下文。
+        /// </summary>
+        private bool TryAcceptImageCallback(MyEventArgs imageEvent, out FrameProcessingContext context, out string dropReason)
+        {
+            context = null;
             lock (_executionLock)
             {
                 if (!_isExecuting)
@@ -873,25 +1136,128 @@ namespace F7_L12_Position_Detect.ViewModel
                     return false;
                 }
 
+                if (imageEvent == null
+                    || imageEvent.CaptureSessionId != _expectedCaptureSessionId
+                    || imageEvent.CaptureRequestId != _expectedCaptureRequestId)
+                {
+                    dropReason =
+                        $"回图请求不匹配 expected={_expectedCaptureSessionId}/{_expectedCaptureRequestId} " +
+                        $"actual={imageEvent?.CaptureSessionId ?? 0}/{imageEvent?.CaptureRequestId ?? 0} " +
+                        $"frame={imageEvent?.FrameNumber ?? 0}";
+                    return false;
+                }
+
                 _waitingImage = false;
+                _processingImage = true;
+                context = FrameProcessingContext.Production(
+                    _activeExecutionId,
+                    NormalizeStageCommand(DataModel.Processmodel.RCMD),
+                    _activeCameraSerial,
+                    _activeExposureTime,
+                    DataModel.Processmodel.CurrentProductSN,
+                    imageEvent.CaptureSessionId,
+                    imageEvent.CaptureRequestId);
                 dropReason = string.Empty;
                 return true;
             }
         }
 
-        /// <summary>
-        /// 结束当前执行窗口，释放 PLC 指令互斥状态。
-        /// </summary>
-        private void EndExecution()
+        private bool IsExecutionContextActive(FrameProcessingContext context)
+        {
+            if (context == null || !context.IsProduction)
+            {
+                return false;
+            }
+
+            lock (_executionLock)
+            {
+                return _isExecuting && _activeExecutionId == context.ExecutionId;
+            }
+        }
+
+        private bool CompleteFrameProcessing(FrameProcessingContext context)
         {
             lock (_executionLock)
             {
+                if (context == null || !context.IsProduction || !_isExecuting || _activeExecutionId != context.ExecutionId)
+                {
+                    return false;
+                }
+
+                _processingImage = false;
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 仅结束仍在等待当前软触发回图的执行代次。正在 UI 线程处理的图像保持到帧尾，避免看门狗释放后旧帧污染下一轮。
+        /// </summary>
+        private bool TryTimeoutWaitingExecution(out long executionId, out string command)
+        {
+            executionId = 0;
+            command = string.Empty;
+            bool timedOut = false;
+
+            lock (_executionLock)
+            {
+                if (!_isExecuting || !_waitingImage || _processingImage
+                    || (DateTime.UtcNow - _executionStartTime).TotalMilliseconds <= ExecutionTimeoutMs)
+                {
+                    return false;
+                }
+
+                executionId = _activeExecutionId;
+                command = DataModel.Processmodel.RCMD;
+                DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                DataModel.Processmodel.Status = ToolStatus.NG;
+                DataModel.Processmodel.CameraStatus = "读图超时";
+                _cameraRecoveryRequired = true;
                 _isExecuting = false;
                 _waitingImage = false;
+                _processingImage = false;
+                _activeExecutionId = 0;
+                _expectedCaptureSessionId = 0;
+                _expectedCaptureRequestId = 0;
+                _pendingCameraGroups = null;
+                _activeCameraSerial = null;
+                _activeExposureTime = null;
+                timedOut = true;
             }
-            _pendingCameraGroups = null;
-            _activeCameraSerial = null;
+
+            if (timedOut)
+            {
+                QueueInspectionStatusRefresh();
+            }
+
+            return timedOut;
+        }
+
+        /// <summary>
+        /// 结束当前执行窗口，释放 PLC 指令互斥状态。传入执行代次时，旧帧只能结束自己的执行窗口。
+        /// </summary>
+        private bool EndExecution(long? expectedExecutionId = null)
+        {
+            lock (_executionLock)
+            {
+                if (!_isExecuting || (expectedExecutionId.HasValue && _activeExecutionId != expectedExecutionId.Value))
+                {
+                    return false;
+                }
+
+                _isExecuting = false;
+                _waitingImage = false;
+                _processingImage = false;
+                _activeExecutionId = 0;
+                _expectedCaptureSessionId = 0;
+                _expectedCaptureRequestId = 0;
+                _pendingCameraGroups = null;
+                _activeCameraSerial = null;
+                _activeExposureTime = null;
+            }
+
+            NotifyCanRunManualImageTestChanged();
             QueueInspectionStatusRefresh();
+            return true;
         }
 
         public void PLC_Start()
@@ -946,21 +1312,16 @@ namespace F7_L12_Position_Detect.ViewModel
                     WriteDetailLog($"[PLC状态] 报工状态={hasValidSN}, 当前SN={DataModel.Processmodel.CurrentProductSN}, 执行状态={_isExecuting}, 界面触发标志={DataModel.Processmodel.Trig_IO.IOstatus}");
                 }
 
-                // 超时看门狗：检测执行态是否超时（相机不回图时兜底释放）
-                if (_isExecuting && (DateTime.UtcNow - _executionStartTime).TotalMilliseconds > ExecutionTimeoutMs)
+                // 超时看门狗只处理“已发软触发、仍等待回图”的代次；UI 正在处理回图时保持执行锁到帧尾。
+                if (TryTimeoutWaitingExecution(out long timeoutExecutionId, out string timeoutCmd))
                 {
-                    string timeoutCmd = DataModel.Processmodel.RCMD;
                     writeError($"执行超时({ExecutionTimeoutMs}ms): {timeoutCmd}指令强制释放");
-                    WriteDetailLog($"[超时看门狗] 指令{timeoutCmd}执行超过{ExecutionTimeoutMs}ms，强制EndExecution并标记NG");
-                    // 普通生产沿用从头开始的失败策略；点检保留当前阶段，技术人员调参后可直接重复触发该阶段。
-                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
-                    DataModel.Processmodel.Status = ToolStatus.NG;
-                    DataModel.Processmodel.CameraStatus = "读图超时";
+                    WriteDetailLog($"[超时看门狗] 代次{timeoutExecutionId} 指令{timeoutCmd}等待回图超过{ExecutionTimeoutMs}ms，标记NG");
                     if (DataModel.Processmodel.IsInspectionMode)
                     {
-                        UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{DataModel.Processmodel.RCMD}执行超时，请调参后重复触发当前阶段。 ");
+                        UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{timeoutCmd}等待回图超时，请调参后重复触发当前阶段。 ");
                     }
-                    EndExecution();
+                    NotifyCanRunManualImageTestChanged();
                 }
 
                 // 检查报工模块状态：只有有SN且工序校验成功才进行PLC轮询
@@ -1018,11 +1379,25 @@ namespace F7_L12_Position_Detect.ViewModel
                             if (currentValue > 0 && currentValue != lastTriggerValue)
                             {
                                 // PLC 只负责“触发下一步”，阶段推进完全由视觉端内部状态机控制
-                                writeLog($"PLC触发: 串行阶段执行 (地址{DataModel.Settingmodel.AddressStart}={currentValue})");
                                 WriteDetailLog($"[PLC触发] 地址触发值变化: {lastTriggerValue} -> {currentValue}");
-                                ProcessSerialTrigger(DataModel.Settingmodel.AddressStart, currentValue, modbusTcp);
+                                bool triggerAccepted = ProcessSerialTrigger(
+                                    DataModel.Settingmodel.AddressStart,
+                                    currentValue,
+                                    modbusTcp);
+                                if (triggerAccepted)
+                                {
+                                    writeLog($"PLC触发: 串行阶段执行 (地址{DataModel.Settingmodel.AddressStart}={currentValue})");
+                                    lastTriggerValue = currentValue;
+                                }
+                                else
+                                {
+                                    lastTriggerValue = 0;
+                                }
                             }
-                            lastTriggerValue = currentValue;
+                            else
+                            {
+                                lastTriggerValue = currentValue;
+                            }
                         }
 
                         WriteDetailLog($"[PLC连接] 关闭连接");
@@ -1046,7 +1421,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeError($"PLC通讯异常: {ex.Message}");
                     WriteDetailLog($"[PLC异常] {ex.Message}\n{ex.StackTrace}");
-                    EndExecution();
+                    // 已受理的相机回图继续持有执行代次到帧尾；PLC 下一轮轮询负责恢复通讯状态。
                 }
                 Thread.Sleep(100);
             }
@@ -1089,17 +1464,60 @@ namespace F7_L12_Position_Detect.ViewModel
         /// - 任意入口（扫码测试、串口监听、SN 框换行）最终汇聚到此方法，统一走 MES 与状态更新。
         /// - 进入时先 <see cref="StopScanAutoExecution"/>，避免上一轮的扫码自动循环与新 SN 交错。
         /// - 清空 <see cref="Processmodel.ReportWorkStatus"/>：表示「新一件扫码开始」，避免仍显示上一枪的报工提示。
-        /// - 使用 <see cref="_mesScanProcessLock"/> 保证同一时刻只有一条扫码/MES 链路在执行。
+        /// - 使用 <see cref="_mesScanProcessLock"/> 保证同一时刻只有一条扫码/MES 链路，并与生产执行、照片测试共用产品上下文互斥。
         /// </remarks>
         public async Task ProcessScanCodeWithMESAsync(string scanCode)
         {
+            bool scanBlocked;
+            bool executing;
+            bool processingImage;
+            bool manualImageTest;
+            lock (_executionLock)
+            {
+                executing = _isExecuting;
+                processingImage = _processingImage;
+                manualImageTest = _manualImageTestInProgress;
+                scanBlocked = executing || processingImage || manualImageTest;
+            }
+
+            if (scanBlocked)
+            {
+                writeLog("当前检测或照片测试尚未收口，本次扫码保持原产品上下文并等待下一次扫码", false);
+                WriteDetailLog(
+                    $"[扫码门禁] 忽略并发扫码 execution={executing} processing={processingImage} " +
+                    $"manual={manualImageTest}");
+                return;
+            }
+
             if (!await _mesScanProcessLock.WaitAsync(0))
             {
                 writeLog("扫码/MES 处理尚未结束，本次已忽略（请勿连续快速触发扫码测试或等待上一次完成）", false);
                 return;
             }
 
-            _isScanProcessing = true;
+            lock (_executionLock)
+            {
+                executing = _isExecuting;
+                processingImage = _processingImage;
+                manualImageTest = _manualImageTestInProgress;
+                scanBlocked = executing || processingImage || manualImageTest;
+                if (!scanBlocked)
+                {
+                    _isScanProcessing = true;
+                }
+            }
+
+            if (scanBlocked)
+            {
+                _mesScanProcessLock.Release();
+                writeLog("当前检测或照片测试已进入执行窗口，本次扫码保持原产品上下文并等待下一次扫码", false);
+                WriteDetailLog(
+                    $"[扫码门禁] 入口复核拒绝并发扫码 execution={executing} processing={processingImage} " +
+                    $"manual={manualImageTest}");
+                return;
+            }
+
+            NotifyCanRunManualImageTestChanged();
 
             try
             {
@@ -1226,8 +1644,12 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             finally
             {
-                _isScanProcessing = false;
+                lock (_executionLock)
+                {
+                    _isScanProcessing = false;
+                }
                 _mesScanProcessLock.Release();
+                NotifyCanRunManualImageTestChanged();
                 QueueInspectionStatusRefresh();
             }
         }
@@ -1338,6 +1760,13 @@ namespace F7_L12_Position_Detect.ViewModel
                             continue;
                         }
 
+                        // 扫码入口可能已创建自动循环，MES 链路释放产品上下文互斥后再进入首个检测阶段。
+                        if (_isScanProcessing)
+                        {
+                            await Task.Delay(50, token);
+                            continue;
+                        }
+
                         // 等待本轮执行窗口释放
                         if (_isExecuting)
                         {
@@ -1422,11 +1851,12 @@ namespace F7_L12_Position_Detect.ViewModel
         /// </summary>
         private bool TriggerNextStageByScan()
         {
+            long executionId = 0;
             try
             {
                 WriteDetailLog($"[扫码触发阶段] 进入 TryBeginExecution 前 _isExecuting={_isExecuting}");
 
-                if (!TryBeginExecution())
+                if (!TryBeginExecution(out executionId))
                 {
                     writeLog("扫码自动执行: 系统忙碌(_isExecuting)，无法开始新阶段；若持续出现请检查 PLC 与扫码是否并发触发", false);
                     WriteDetailLog("[扫码触发阶段] TryBeginExecution 失败: 已有执行窗口未释放");
@@ -1437,7 +1867,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"报工状态不满足: 跳过扫码阶段触发 (SN={DataModel.Processmodel.CurrentProductSN})");
                     WriteDetailLog($"[扫码触发阶段] HasValidSNAndValidation=false SN={DataModel.Processmodel.CurrentProductSN} Status={DataModel.Processmodel.ScanCodeStatus}");
-                    EndExecution();
+                    EndExecution(executionId);
                     return false;
                 }
 
@@ -1468,14 +1898,14 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog("扫码自动执行: ConfiguredStages 为空，无法匹配阶段", false);
                     WriteDetailLog("[扫码触发阶段] ConfiguredStages 为空或 null");
-                    EndExecution();
+                    EndExecution(executionId);
                     return false;
                 }
                 if (idx >= stages.Count)
                 {
                     writeLog($"扫码自动执行: 阶段索引越界 idx={idx} 阶段数={stages.Count}", false);
                     WriteDetailLog($"[扫码触发阶段] idx>=stages.Count idx={idx} count={stages.Count}");
-                    EndExecution();
+                    EndExecution(executionId);
                     return false;
                 }
 
@@ -1493,16 +1923,16 @@ namespace F7_L12_Position_Detect.ViewModel
                     writeLog($"未找到匹配工具: {command}阶段(扫码触发)；请检查工具 Command 是否与阶段一致、相机序列号是否配置", false);
                     WriteDetailLog($"[扫码触发阶段] 相机分组为空 command={command}，各工具 Command 一览: " +
                                   string.Join("; ", DataModel.Processmodel.Tools.Select((t, i) => $"[{i}]'{t.Command}' Cam='{t.CameraSerialNumber}'")));
-                    EndExecution();
+                    EndExecution(executionId);
                     return false;
                 }
 
-                bool triggered = TriggerNextCameraGroupCapture(command);
+                bool triggered = TriggerNextCameraGroupCapture(command, executionId);
                 if (!triggered)
                 {
                     writeLog($"扫码自动执行: 相机软触发失败({command})；请检查相机初始化、曝光与连接", false);
                     WriteDetailLog($"[扫码触发阶段] TriggerNextCameraGroupCapture 返回 false command={command} 剩余分组队列长度={_pendingCameraGroups?.Count ?? -1}");
-                    EndExecution();
+                    EndExecution(executionId);
                     return false;
                 }
 
@@ -1513,30 +1943,42 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 writeError($"扫码阶段触发处理异常: {ex.Message}");
                 WriteDetailLog($"[扫码触发阶段] 异常: {ex.Message}\n{ex.StackTrace}");
-                try { EndExecution(); } catch { }
+                try { EndExecution(executionId); } catch { }
                 return false;
             }
         }
 
         /// <summary>
-        /// 处理PLC触发信号
+        /// 复位已完成相机准备的 PLC 触发值。相机准备失败时不调用此方法，保留 PLC 值供轮询重试。
         /// </summary>
-        /// <param name="address">触发地址</param>
-        /// <param name="triggerValue">触发值</param>
-        /// <param name="modbusTcp">ModbusTcp连接对象</param>
-        private void ProcessSerialTrigger(int address, int triggerValue, ModbusTcpNet modbusTcp)
+        /// <param name="address">触发地址。</param>
+        /// <param name="triggerValue">触发值。</param>
+        /// <param name="modbusTcp">ModbusTcp 连接对象。</param>
+        /// <returns>PLC 复位成功时返回 true。</returns>
+        private bool TryAcknowledgePlcTrigger(int address, int triggerValue, ModbusTcpNet modbusTcp)
         {
+            var resetResult = modbusTcp.Write(address.ToString(), (UInt16)0);
+            WriteDetailLog($"[PLC触发] 地址{address}触发值{triggerValue}复位结果={resetResult.IsSuccess}");
+            return resetResult.IsSuccess;
+        }
+
+        /// <summary>
+        /// 处理 PLC 触发信号。
+        /// </summary>
+        /// <param name="address">触发地址。</param>
+        /// <param name="triggerValue">触发值。</param>
+        /// <param name="modbusTcp">ModbusTcp 连接对象。</param>
+        /// <returns>触发已经受理并完成 PLC 复位时返回 true；执行窗口忙碌、相机准备失败或复位失败时返回 false，轮询层保留触发等待重试。</returns>
+        private bool ProcessSerialTrigger(int address, int triggerValue, ModbusTcpNet modbusTcp)
+        {
+            long executionId = 0;
+            bool triggerAcknowledged = false;
             try
             {
-                WriteDetailLog($"[PLC触发] 准备复位地址{address}为0");
-                var resetResult = modbusTcp.Write(address.ToString(), (UInt16)0);
-                WriteDetailLog($"[PLC触发] 地址{address}复位结果={resetResult.IsSuccess}");
-
-                if (!TryBeginExecution())
+                if (!TryBeginExecution(out executionId))
                 {
-                    writeLog($"系统忙碌: 忽略PLC触发 (地址{address}={triggerValue})");
-                    WriteDetailLog($"[业务逻辑] 系统正在执行中，忽略地址{address}触发值{triggerValue}");
-                    return;
+                    WriteDetailLog($"[业务逻辑] 系统正在执行中，保留地址{address}触发值{triggerValue}等待重试");
+                    return false;
                 }
                 WriteDetailLog($"[业务逻辑] 设置执行状态为true，开始处理串行阶段触发");
 
@@ -1544,8 +1986,14 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"报工状态不满足: 跳过PLC触发 (SN={DataModel.Processmodel.CurrentProductSN})");
                     WriteDetailLog($"[业务逻辑] 报工模块状态不满足，跳过PLC触发执行 (SN={DataModel.Processmodel.CurrentProductSN})");
-                    EndExecution();
-                    return;
+                    if (!TryAcknowledgePlcTrigger(address, triggerValue, modbusTcp))
+                    {
+                        EndExecution(executionId);
+                        return false;
+                    }
+                    triggerAcknowledged = true;
+                    EndExecution(executionId);
+                    return true;
                 }
 
                 if (DataModel.Processmodel.NeedRestart && DataModel.Processmodel.IsInspectionMode)
@@ -1567,14 +2015,33 @@ namespace F7_L12_Position_Detect.ViewModel
                 }
 
                 var stages = DataModel.Processmodel.ConfiguredStages;
+                if (stages == null || stages.Count == 0)
+                {
+                    WriteDetailLog("[业务逻辑] 未配置阶段，复位并消费本次PLC触发");
+                    if (!TryAcknowledgePlcTrigger(address, triggerValue, modbusTcp))
+                    {
+                        EndExecution(executionId);
+                        return false;
+                    }
+                    triggerAcknowledged = true;
+                    EndExecution(executionId);
+                    return true;
+                }
+
                 int idx = DataModel.Processmodel.CurrentStageIndex;
                 if (idx < 0) idx = 0;
                 if (idx >= stages.Count)
                 {
                     // 已完成所有阶段：忽略多余触发
                     WriteDetailLog($"[业务逻辑] 所有阶段已完成，忽略本次PLC触发");
-                    EndExecution();
-                    return;
+                    if (!TryAcknowledgePlcTrigger(address, triggerValue, modbusTcp))
+                    {
+                        EndExecution(executionId);
+                        return false;
+                    }
+                    triggerAcknowledged = true;
+                    EndExecution(executionId);
+                    return true;
                 }
 
                 string command = stages[idx];
@@ -1593,24 +2060,64 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (_pendingCameraGroups.Count == 0)
                 {
                     writeLog($"未找到匹配工具: {command}阶段", false);
-                    EndExecution();
-                    return;
+                    if (!TryAcknowledgePlcTrigger(address, triggerValue, modbusTcp))
+                    {
+                        EndExecution(executionId);
+                        return false;
+                    }
+                    triggerAcknowledged = true;
+                    EndExecution(executionId);
+                    return true;
                 }
-                bool triggered = TriggerNextCameraGroupCapture(command);
+                bool triggered = TriggerNextCameraGroupCapture(command, executionId);
                 if (!triggered)
                 {
-                    EndExecution();
-                    return;
+                    DataModel.Processmodel.Status = ToolStatus.NG;
+                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                    if (string.IsNullOrWhiteSpace(DataModel.Processmodel.CameraStatus))
+                    {
+                        DataModel.Processmodel.CameraStatus = "相机准备失败";
+                    }
+                    WriteDetailLog($"[PLC触发] 首组相机准备失败，保留地址{address}触发值{triggerValue}等待重试");
+                    EndExecution(executionId);
+                    return false;
                 }
+
+                // 相机已经完成切换、曝光配置和软触发后再复位 PLC；准备阶段失败时保留原触发值供下一轮重试。
+                if (!TryAcknowledgePlcTrigger(address, triggerValue, modbusTcp))
+                {
+                    DataModel.Processmodel.Status = ToolStatus.NG;
+                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                    DataModel.Processmodel.CameraStatus = "PLC触发复位失败";
+                    _cameraRecoveryRequired = true;
+                    WriteDetailLog($"[PLC触发] 相机已触发但地址{address}复位失败，结束本轮并等待恢复后重试");
+                    EndExecution(executionId);
+                    return false;
+                }
+                triggerAcknowledged = true;
 
                 WriteDetailLog($"[界面更新] 更新界面触发标志从{DataModel.Processmodel.Trig_IO.IOstatus}到{triggerValue}");
                 DataModel.Processmodel.Trig_IO.IOstatus = triggerValue;
+                return true;
             }
             catch (Exception ex)
             {
                 writeError($"PLC触发处理异常: {ex.Message}");
                 WriteDetailLog($"[PLC触发] 处理异常: {ex.Message}");
-                EndExecution();
+                if (triggerAcknowledged)
+                {
+                    try
+                    {
+                        var restoreResult = modbusTcp.Write(address.ToString(), (UInt16)triggerValue);
+                        WriteDetailLog($"[PLC触发] 异常后恢复地址{address}触发值{triggerValue}结果={restoreResult.IsSuccess}");
+                    }
+                    catch (Exception restoreException)
+                    {
+                        WriteDetailLog($"[PLC触发] 异常后恢复地址{address}失败: {restoreException.Message}");
+                    }
+                }
+                EndExecution(executionId);
+                return false;
             }
         }
 
@@ -2562,6 +3069,9 @@ namespace F7_L12_Position_Detect.ViewModel
             XElement lastTimeElement = reportWorkConfig.Element("上次点检时间");
             XElement manualInspectionModeElement = reportWorkConfig.Element("手动点检模式");
             XElement snDecodeModeElement = reportWorkConfig.Element("SN解码方式");
+            XElement uiLayoutModeElement = document.Root?.Element("界面布局模式");
+            XElement captureDelayElement = document.Root?.Element("测试延时");
+            XElement executionTimeoutElement = document.Root?.Element("执行超时ms");
             XElement stageRetryElement = document.Root?.Element("阶段失败重试策略");
             if (intervalElement == null || ngConditionElement == null || okSnElement == null || ngSnElement == null || lastTimeElement == null)
             {
@@ -2589,6 +3099,21 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 snDecodeModeElement.AddBeforeSelf(new XComment(
                     " SN解码方式只支持“DecodeSN”或“最终绑定”。DecodeSN：按扫码内容用MES DecodeSN解析产品SN（与3月可用版本一致，现场默认推荐）。最终绑定：先查MES零件码最终绑定的产品SN，查不到再回退DecodeSN。配置缺失或非法值按DecodeSN处理；请先退出软件再改，保存后重启生效。 "));
+            }
+            if (uiLayoutModeElement != null)
+            {
+                uiLayoutModeElement.AddBeforeSelf(new XComment(
+                    " 界面布局模式支持“自动”“标准”“紧凑”。自动模式在WPF有效工作区宽度不大于1366或高度不大于768时采用紧凑布局，可覆盖任务栏和Windows DPI缩放；修改后重启软件生效。 "));
+            }
+            if (captureDelayElement != null)
+            {
+                captureDelayElement.AddBeforeSelf(new XComment(
+                    " 测试延时按“触发指令 + 相机序列号 + 曝光时间”拍照组执行一次，单位为毫秒；同组多个工具共享本次等待和同一张回图。两台相机各一组且填写1000时，拍照准备等待合计约2秒；现场以稳定回图为前提逐步调低。 "));
+            }
+            if (executionTimeoutElement != null)
+            {
+                executionTimeoutElement.AddBeforeSelf(new XComment(
+                    " 执行超时ms用于单个相机组软触发后的回图等待，单位为毫秒，最小生效值500；图像进入检测后由当前执行代次处理到帧尾。 "));
             }
             if (stageRetryElement != null)
             {
@@ -2962,12 +3487,15 @@ namespace F7_L12_Position_Detect.ViewModel
         }
         /// <summary>
         /// 相机 SDK 的 ImageReceived 入口：
-        /// - PLC 执行窗口且“等图门闩”通过时，投递到 UI 线程执行 <see cref="OnReceiveProcess"/>（识别/报工）。
-        /// - 未在执行态时仅做预览显示（<see cref="TryAcceptImageCallback"/> 失败且原因为“当前不在执行态”），不走识别/报工。
+        /// - PLC 执行窗口且“等图门闩”通过时，冻结执行代次并投递到 UI 线程执行识别/报工。
+        /// - 未在执行态且请求号为 0 的操作员软触发只做预览显示；带生产请求号的超时迟到帧直接释放，避免覆盖当前产品证据。
+        /// - 回调图像的所有权在此入口完成交接；预览、丢弃、生产处理和投递异常路径都会释放 HALCON 图像句柄。
         /// </summary>
         private void OnReceive(object sender, EventArgs e)
         {
-
+            HObject receivedImage = null;
+            bool ownershipTransferredToUi = false;
+            FrameProcessingContext acceptedContext = null;
             try
             {
                 writeLog($"相机->视觉:接收照片", false);
@@ -2979,100 +3507,321 @@ namespace F7_L12_Position_Detect.ViewModel
                     return;
                 }
 
-                if (!TryAcceptImageCallback(out string dropReason))
+                receivedImage = myEventArgs.Image;
+                int imageHeight = myEventArgs.Height;
+                int imageWidth = myEventArgs.Width;
+
+                if (!TryAcceptImageCallback(myEventArgs, out acceptedContext, out string dropReason))
                 {
-                    // 未在执行态：仅显示预览，不参与识别/报工逻辑。
-                    if (dropReason == "当前不在执行态")
+                    if (dropReason == "当前不在执行态" && myEventArgs.CaptureRequestId == 0)
                     {
+                        HObject previewImage = receivedImage;
                         App.Current.Dispatcher.BeginInvoke(new Action(() =>
                         {
                             try
                             {
                                 HWindow hwindow = DataModel.Settingmodel.HWindow;
                                 hwindow.ClearWindow();
-                                hwindow.DispObj(myEventArgs.Image);
+                                hwindow.DispObj(previewImage);
                             }
-                            catch {; }
+                            catch (Exception ex)
+                            {
+                                WriteDetailLog($"[相机预览] 显示失败: {ex.Message}");
+                            }
+                            finally
+                            {
+                                previewImage?.Dispose();
+                            }
                         }));
+                        ownershipTransferredToUi = true;
                         return;
                     }
 
-                    // 执行窗口内但不满足“等图帧”：仍保持丢弃，避免晚到帧污染本轮识别序列。
-                    WriteDetailLog($"[回调丢弃] {dropReason}");
+                    WriteDetailLog(
+                        $"[回调丢弃] {dropReason} session={myEventArgs.CaptureSessionId} " +
+                        $"request={myEventArgs.CaptureRequestId} frame={myEventArgs.FrameNumber}");
                     return;
                 }
 
+                HObject productionImage = receivedImage;
+                FrameProcessingContext productionContext = acceptedContext;
                 App.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    OnReceiveProcess(myEventArgs.Image, myEventArgs.Height, myEventArgs.Width);
+                    try
+                    {
+                        OnReceiveProcess(productionImage, imageHeight, imageWidth, productionContext);
+                    }
+                    finally
+                    {
+                        productionImage?.Dispose();
+                    }
                 }));
-
+                ownershipTransferredToUi = true;
             }
             catch (Exception ex)
             {
                 DataModel.Processmodel.CameraStatus = "相机异常";
-                writeError($"[{DataModel.Processmodel.RCMD}]识别错误:{ex.ToString()}");
+                writeError($"[{acceptedContext?.Command ?? DataModel.Processmodel.RCMD}]回图投递错误:{ex}");
+                if (acceptedContext != null)
+                {
+                    DataModel.Processmodel.Status = ToolStatus.NG2;
+                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                    EndExecution(acceptedContext.ExecutionId);
+                }
+            }
+            finally
+            {
+                if (!ownershipTransferredToUi)
+                {
+                    receivedImage?.Dispose();
+                }
             }
         }
 
 
         /// <summary>
-        /// UI 线程上处理一帧图像：按当前 RCMD 与 <see cref="_activeCameraSerial"/> 匹配工具并跑识别，最后做阶段/报工判断。
+        /// 为本次回图生成一份可由同组工具共用的冻结缩略图。缩略图只服务主界面状态展示，检测算法持续使用原始回图。
+        /// </summary>
+        private BitmapSource CreateFrameThumbnail(HObject image)
+        {
+            HObject reducedImage = null;
+            Bitmap bitmap = null;
+            try
+            {
+                int imageSize = DataModel?.Settingmodel?.EffectiveImageSize ?? 140;
+                imageSize = Math.Max(40, imageSize);
+                reducedImage = GetReducedImage(imageSize, imageSize, image);
+                Hobject2Bitmap.HobjectToBitmap24(reducedImage, out bitmap);
+                BitmapSource source = ImageHelper.ToBitmapSource(bitmap);
+                if (source != null && source.CanFreeze)
+                {
+                    source.Freeze();
+                }
+                return source;
+            }
+            catch (Exception ex)
+            {
+                WriteDetailLog($"[帧缩略图] 生成失败: {ex.Message}");
+                return null;
+            }
+            finally
+            {
+                bitmap?.Dispose();
+                reducedImage?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 清理 SN、指令、相机标识和工具名称中的文件名非法字符，保证现场码值无法改变照片目录层级。
+        /// </summary>
+        private static string SanitizeFileNamePart(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            var builder = new StringBuilder(value.Length);
+            foreach (char character in value.Trim())
+            {
+                builder.Append(character < 32 || invalidChars.Contains(character) ? '_' : character);
+            }
+
+            return builder.ToString().Trim(' ', '.', '_');
+        }
+
+        /// <summary>
+        /// 控制动态文件名片段长度。超长内容保留前缀和稳定哈希，兼顾现场可读性与 Windows 路径长度限制。
+        /// </summary>
+        private static string LimitFileNamePart(string value, int maxLength)
+        {
+            string normalized = value ?? string.Empty;
+            if (normalized.Length <= maxLength)
+            {
+                return normalized;
+            }
+
+            byte[] hashBytes;
+            using (SHA256 sha256 = SHA256.Create())
+            {
+                hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(normalized));
+            }
+
+            string hash = BitConverter.ToString(hashBytes, 0, 4).Replace("-", string.Empty);
+            int prefixLength = Math.Max(1, maxLength - hash.Length - 1);
+            return normalized.Substring(0, prefixLength) + "_" + hash;
+        }
+
+        /// <summary>
+        /// 生成整帧追溯标识。MES 解析后的当前产品 SN 优先；其后依次汇总本帧工具对应工位 SN、工具条码、扫码原文和兼容条码字段。
+        /// </summary>
+        private string ResolveFrameImageSn(IList<ToolModel> tools, string frozenProductSn = null)
+        {
+            string currentProductSn = SanitizeFileNamePart(
+                string.IsNullOrWhiteSpace(frozenProductSn)
+                    ? DataModel?.Processmodel?.CurrentProductSN
+                    : frozenProductSn);
+            if (!string.IsNullOrEmpty(currentProductSn))
+            {
+                return currentProductSn;
+            }
+
+            var positionSns = new List<string>();
+            if (tools != null && DataModel?.Processmodel?.SNList != null)
+            {
+                foreach (ToolModel tool in tools)
+                {
+                    int position = tool.ProductPositionNO;
+                    if (position < 0 || position >= DataModel.Processmodel.SNList.Count)
+                    {
+                        continue;
+                    }
+
+                    string positionSn = SanitizeFileNamePart(DataModel.Processmodel.SNList[position]);
+                    if (!string.IsNullOrEmpty(positionSn) && !positionSns.Contains(positionSn))
+                    {
+                        positionSns.Add(positionSn);
+                    }
+                }
+            }
+            if (positionSns.Count > 0)
+            {
+                return string.Join("+", positionSns);
+            }
+
+            if (tools != null)
+            {
+                string toolBarcode = tools
+                    .Select(tool => SanitizeFileNamePart(tool.BarcodeStr))
+                    .FirstOrDefault(value => !string.IsNullOrEmpty(value));
+                if (!string.IsNullOrEmpty(toolBarcode))
+                {
+                    return toolBarcode;
+                }
+            }
+
+            string scannerCode = SanitizeFileNamePart(DataModel?.Processmodel?.Scannerstr);
+            if (!string.IsNullOrEmpty(scannerCode))
+            {
+                return scannerCode;
+            }
+
+            string compatibilityBarcode = SanitizeFileNamePart(DataModel?.Processmodel?.BarcodeStr);
+            return string.IsNullOrEmpty(compatibilityBarcode) ? "NOSN" : compatibilityBarcode;
+        }
+
+        /// <summary>
+        /// 按“一次受理回图对应一个 JPEG”保存检测证据。全部工具 OK 时进入 OK 目录；任一工具为 NG、NG2 或未完成状态时整帧进入 NG 目录。
+        /// </summary>
+        /// <returns>本帧实际写入 JPEG 时返回 true；保存开关关闭或本帧无匹配工具时返回 false。</returns>
+        private bool SaveFrameImage(HObject image, IList<ToolModel> matchedTools, FrameProcessingContext context)
+        {
+            if (image == null || matchedTools == null || matchedTools.Count == 0)
+            {
+                return false;
+            }
+
+            bool frameOk = matchedTools.All(tool => tool.ToolStatus == ToolStatus.OK);
+            var imageSaveSetting = DataModel?.Settingmodel?.ImageSaveSetting;
+            if (imageSaveSetting == null || (frameOk && !imageSaveSetting.SaveOK) || (!frameOk && !imageSaveSetting.SaveNG))
+            {
+                return false;
+            }
+
+            string resultFolder = frameOk ? "OK" : "NG";
+            DateTime now = DateTime.Now;
+            long frameSequence = Interlocked.Increment(ref _imageSaveSequence);
+            string sn = LimitFileNamePart(
+                SanitizeFileNamePart(ResolveFrameImageSn(matchedTools, context?.ProductSerialNumber)),
+                32);
+            string command = LimitFileNamePart(SanitizeFileNamePart(context?.Command), 12);
+            string camera = LimitFileNamePart(SanitizeFileNamePart(context?.CameraSerial), 16);
+            string fullToolSummary = string.Join(
+                "+",
+                matchedTools.Select(tool =>
+                    $"{tool.Index:00}_{SanitizeFileNamePart(tool.Name)}_P{tool.ProductPositionNO}_{tool.ToolStatus}"));
+            string toolSummary = LimitFileNamePart(fullToolSummary, 48);
+
+            string fileName =
+                $"{(string.IsNullOrEmpty(sn) ? "NOSN" : sn)}-" +
+                $"{(string.IsNullOrEmpty(command) ? "NOCMD" : command)}-" +
+                $"{(string.IsNullOrEmpty(camera) ? "NOCAM" : camera)}-" +
+                $"{(string.IsNullOrEmpty(toolSummary) ? "NOTOOL" : toolSummary)}-" +
+                $"{now:yyyyMMddHHmmssFFF}-{frameSequence:D6}.jpg";
+            string directory = Path.Combine(imageSaveSetting.ImageSaveDir, now.ToString("yyyyMMdd"), resultFolder);
+            Directory.CreateDirectory(directory);
+            string savePath = Path.Combine(directory, fileName);
+
+            HOperatorSet.WriteImage(image, "jpg", 0, savePath);
+            WriteDetailLog(
+                $"[图片保存] 一帧一图完成 结果={resultFolder} 指令='{context?.Command}' " +
+                $"相机='{context?.CameraSerial}' 工具数={matchedTools.Count} 工具结果='{fullToolSummary}' 路径='{savePath}'");
+            return true;
+        }
+
+        /// <summary>
+        /// UI 线程上处理一帧图像。生产上下文按冻结的阶段、相机和曝光执行；照片测试上下文只执行操作员选中的工具。
         /// </summary>
         /// <remarks>
         /// 多相机阶段：在 finally 中若仍有 <see cref="_pendingCameraGroups"/>，会调用 <see cref="TriggerNextCameraGroupCapture"/>；
         /// 若返回 false 或抛异常，则立即 NG、NeedRestart、<see cref="EndExecution"/>，不等待超时看门狗。
-        /// 阶段结算：按当前 <see cref="Processmodel.RCMD"/> 与工具 <see cref="ToolModel.Command"/> 做 <see cref="NormalizeStageCommand"/> 后筛选本阶段工具，
+        /// 阶段结算：按冻结的阶段指令与工具 <see cref="ToolModel.Command"/> 做 <see cref="NormalizeStageCommand"/> 后筛选本阶段工具，
         /// 再聚合 OK/NG/NG2 决定阶段是否完成、是否推进 <see cref="Processmodel.CurrentStageIndex"/> 以及是否触发自动报工；点检样件由独立结算方法累计全部配置阶段后判定。
         /// </remarks>
-        public void OnReceiveProcess(HObject Image, int H, int W)
+        private void OnReceiveProcess(HObject Image, int H, int W, FrameProcessingContext context)
         {
-            HObject processImage = null;
-            // 同一帧回图在多工具/多相机逻辑下可能被复用；先收集本帧匹配工具结果，
-            // 再在帧尾按 OK/NG 合并保存，避免重复落盘。
+            bool isProduction = context?.IsProduction == true;
+            string frameCommand = NormalizeStageCommand(context?.Command);
+            Stopwatch frameStopwatch = Stopwatch.StartNew();
+            long thumbnailElapsedMs = 0;
+            long toolDetectionElapsedMs = 0;
+            long outputElapsedMs = 0;
+            long imageSaveElapsedMs = 0;
+            var processRecords = new List<string>();
+            bool frameProcessingFailed = false;
+            // 同一拍照组的工具复用回图和缩略图，帧尾按整帧结果只保存一个 JPEG。
             List<ToolModel> matchedTools = new List<ToolModel>();
             try
             {
-                DataModel.Processmodel.CameraStatus = "正常";
+                if (isProduction && !IsExecutionContextActive(context))
+                {
+                    WriteDetailLog($"[回图丢弃] 执行代次已失效 id={context.ExecutionId} 指令={frameCommand}");
+                    return;
+                }
+
+                if (isProduction)
+                {
+                    DataModel.Processmodel.CameraStatus = "正常";
+                }
 
                 #region 图片接收
-
-                //Image
-
-
-                HOperatorSet.CountChannels(Image, out var channels);
-
-                if (channels == 1)
-                {
-                    HOperatorSet.Compose3(Image, Image, Image, out var multiChannelImage);
-                    processImage = multiChannelImage; // 使用局部变量管理
-                }
-                else
-                {
-                    processImage = Image; // 直接使用原图像
-                }
-
-
-
                 HWindow hwindow = DataModel.Settingmodel.HWindow;
                 hwindow.ClearWindow();
                 //hwindow.SetPart(0, 0, H - 1, W - 1);
                 hwindow.DispObj(Image);
+
+                Stopwatch thumbnailStopwatch = Stopwatch.StartNew();
+                BitmapSource frameThumbnail = CreateFrameThumbnail(Image);
+                thumbnailElapsedMs = thumbnailStopwatch.ElapsedMilliseconds;
+
                 for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
                 {
-                    bool isMatch = NormalizeStageCommand(DataModel.Processmodel.Tools[i].Command)
-                        == NormalizeStageCommand(DataModel.Processmodel.RCMD);
-                    if (isMatch && _activeCameraSerial != null)
+                    bool isMatch = isProduction
+                        ? NormalizeStageCommand(DataModel.Processmodel.Tools[i].Command) == frameCommand
+                        : i == context.ManualToolIndex;
+                    if (isMatch && isProduction && context.CameraSerial != null)
                     {
-                        isMatch = NormalizeCameraSerial(DataModel.Processmodel.Tools[i].CameraSerialNumber) == _activeCameraSerial;
+                        isMatch = NormalizeCameraSerial(DataModel.Processmodel.Tools[i].CameraSerialNumber) == context.CameraSerial;
+                    }
+                    if (isMatch && isProduction && context.ExposureTime.HasValue)
+                    {
+                        isMatch = DataModel.Processmodel.Tools[i].ExposureTime == context.ExposureTime.Value;
                     }
 
                     if (isMatch)
                     {
-                        Stopwatch stopwatch = new Stopwatch();
-                        stopwatch.Start();
-
-                        if (i == 0)
+                        if (isProduction && matchedTools.Count == 0)
                         {
                             DataModel.Processmodel.Status = ToolStatus.识别中;
                         }
@@ -3080,41 +3829,9 @@ namespace F7_L12_Position_Detect.ViewModel
                         DataModel.Processmodel.ToolIndex = i + 1;
 
                         ToolModel tool = DataModel.Processmodel.Tools[i];
+                        tool.CurrentBitmapSource = frameThumbnail;
 
-
-                        Bitmap bmp;
-                        try
-                        {
-                            var dst = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, Image);
-                            Hobject2Bitmap.HobjectToBitmap24(dst, out bmp);
-                            tool.CurrentBitmapSource = null;
-                            tool.CurrentBitmapSource = ImageHelper.ToBitmapSource(bmp);
-                            bmp?.Dispose();
-                            dst?.Dispose();
-                        }
-                        catch (Exception e)
-                        {; }
-
-
-
-                        //Bitmap bmp;
-                        //try
-                        //{
-                        //    Hobject2Bitmap.HobjectToBitmap24(Image, out bmp);
-
-                        //    using (Bitmap bmp1 = GetReducedImage(DataModel.Settingmodel.ImageSize, DataModel.Settingmodel.ImageSize, bmp))
-                        //    {
-                        //        tool.CurrentBitmapSource = null;
-                        //        tool.CurrentBitmapSource = Imaging.CreateBitmapSourceFromHBitmap(bmp1.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                        //    }
-                        //    bmp.Dispose();
-                        //}
-                        //catch (Exception ex)
-                        //{
-
-                        //}
-
-
+                        Stopwatch stopwatch = Stopwatch.StartNew();
                         ClearTool(tool);
                         tool.ToolStatus = ToolStatus.识别中;
                         try
@@ -3137,11 +3854,11 @@ namespace F7_L12_Position_Detect.ViewModel
                                         //}
                                         writeLog($"二维码读取成功:{barcodelist[0].codestr}");
 
-                                        if (tool.MPMode)
+                                        if (isProduction && tool.MPMode)
                                         {
                                             DataModel.Processmodel.Barcodes += barcodelist[0].codestr + ";";
                                         }
-                                        if (tool.SendBarcode)
+                                        if (isProduction && tool.SendBarcode)
                                         {
                                             tool.ToolStatus = ToolStatus.等待中;
 
@@ -3224,14 +3941,15 @@ namespace F7_L12_Position_Detect.ViewModel
                                     else
                                     {
                                         tool.BarcodeStr = string.Empty;
-                                        writeLog($"二维码读取失败:{barcodelist[0].codestr}");
+                                        writeLog("二维码读取失败: 未识别到有效条码");
                                         tool.ToolStatus = ToolStatus.NG;
 
                                     }
                                 }
-                                catch
+                                catch (Exception ex)
                                 {
-                                    ;
+                                    tool.ToolStatus = ToolStatus.NG2;
+                                    writeError($"工具{tool.Index}({tool.Name})二维码识别异常: {ex.Message}");
                                 }
 
                                 #endregion
@@ -3294,9 +4012,10 @@ namespace F7_L12_Position_Detect.ViewModel
                                         tool.ToolStatus = ToolStatus.NG2;
                                     }
                                 }
-                                catch
+                                catch (Exception ex)
                                 {
-                                    ;
+                                    tool.ToolStatus = ToolStatus.NG2;
+                                    writeError($"工具{tool.Index}({tool.Name})模板匹配异常: {ex.Message}");
                                 }
 
 
@@ -3321,23 +4040,27 @@ namespace F7_L12_Position_Detect.ViewModel
                                 #endregion
                             }
                         }
-                        catch {; }
+                        catch (Exception ex)
+                        {
+                            tool.ToolStatus = ToolStatus.NG2;
+                            writeError($"工具{tool.Index}({tool.Name})检测异常: {ex.Message}");
+                        }
 
-                        writeLog($"视觉->视觉:计算完成", false);
-                        string s1 = $"{DataModel.Processmodel.Tools[i].Name}:识别耗时:{stopwatch.ElapsedMilliseconds}ms";
-                        Save_record(s1);
+                        long detectionElapsedMs = stopwatch.ElapsedMilliseconds;
+                        toolDetectionElapsedMs += detectionElapsedMs;
+                        processRecords.Add($"{DataModel.Processmodel.Tools[i].Name}:识别耗时:{detectionElapsedMs}ms");
                         stopwatch.Restart();
 
                         // 记录本帧匹配工具的最终状态；图片保存改到帧尾合并处理
                         matchedTools.Add(tool);
 
-                        if (tool.SendStatus)
+                        if (isProduction && tool.SendStatus)
                         {
 
                             int status = -1;
 
                             var r = (from ToolModel in DataModel.Processmodel.Tools
-                                     where (NormalizeStageCommand(ToolModel.Command) == NormalizeStageCommand(DataModel.Processmodel.RCMD))
+                                     where (NormalizeStageCommand(ToolModel.Command) == frameCommand)
                                      select ToolModel);
                             var wait = (from ToolModel in r
                                         where (ToolModel.ToolStatus == ToolStatus.等待中 || ToolModel.ToolStatus == ToolStatus.识别中)
@@ -3394,120 +4117,48 @@ namespace F7_L12_Position_Detect.ViewModel
                                     }
                             }
                         }
-
-
-                        writeLog($"视觉->视觉:发送完成", false);
-
-                        string s2 = $"{DataModel.Processmodel.Tools[i].Name}:发送结果耗时:{stopwatch.ElapsedMilliseconds}ms";
-                        Save_record(s2);
+                        long sendElapsedMs = stopwatch.ElapsedMilliseconds;
+                        outputElapsedMs += sendElapsedMs;
+                        processRecords.Add($"{DataModel.Processmodel.Tools[i].Name}:发送结果耗时:{sendElapsedMs}ms");
 
                     }
                 }
 
-                #region 保存图片（合并，按 OK/NG 分组每状态组只保存一次）
-                try
+                #region 保存图片（一次受理回图只保存一个 JPEG）
+                if (isProduction)
                 {
-                    var okTools = matchedTools.Where(t => t.ToolStatus == ToolStatus.OK).ToList();
-                    var ngTools = matchedTools.Where(t => t.ToolStatus != ToolStatus.OK).ToList(); // NG/NG2/识别中都归到 NG
-
-                    // SN 取值兜底顺序：
-                    // 1) SNList[ProductPositionNO]：只要元素非空就直接用
-                    // 2) CurrentProductSN
-                    // 3) 本帧任一工具的 tool.BarcodeStr
-                    // 4) 兼容旧字段 Processmodel.BarcodeStr
-                    // 5) UNKNOWN
-                    Func<IEnumerable<ToolModel>, string> getSnForTools = tools =>
+                    try
                     {
-                        var list = tools == null ? null : tools.ToList();
-                        if (list == null || list.Count == 0) return "UNKNOWN";
-
-                        try
-                        {
-                            foreach (var t in list)
-                            {
-                                int pos = t.ProductPositionNO;
-                                if (pos >= 0 && pos < DataModel.Processmodel.SNList.Count)
-                                {
-                                    string snFromList = DataModel.Processmodel.SNList[pos];
-                                    if (!string.IsNullOrWhiteSpace(snFromList))
-                                        return snFromList;
-                                }
-                            }
-                        }
-                        catch { ; }
-
-                        if (!string.IsNullOrWhiteSpace(DataModel.Processmodel.CurrentProductSN))
-                            return DataModel.Processmodel.CurrentProductSN;
-
-                        foreach (var t in list)
-                        {
-                            if (!string.IsNullOrWhiteSpace(t.BarcodeStr))
-                                return t.BarcodeStr;
-                        }
-
-                        if (!string.IsNullOrWhiteSpace(DataModel.Processmodel.BarcodeStr))
-                            return DataModel.Processmodel.BarcodeStr;
-
-                        return "UNKNOWN";
-                    };
-
-                    var now = DateTime.Now;
-                    string day = now.ToString("yyyyMMdd");
-                    string ts = now.ToString("yyyyMMddHHmmssFFF");
-
-                    if (okTools.Count > 0 && DataModel.Settingmodel.ImageSaveSetting.SaveOK)
-                    {
-                        string sn = getSnForTools(okTools);
-                        string indicesPart = string.Join("_", okTools.Select(t => t.Index.ToString("00")).Distinct().OrderBy(x => x));
-                        string namesPart = string.Join("_", okTools.Select(t => t.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct());
-                        string statusPart = string.Join("_", okTools.Select(t => t.ToolStatus.ToString()).Distinct());
-
-                        string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{day}\\OK\\{sn}-{indicesPart}-{namesPart}-{statusPart}-{ts}.jpg";
-                        string dir = Path.GetDirectoryName(savefilename);
-                        if (!Directory.Exists(dir))
-                        { Directory.CreateDirectory(dir); }
-
-                        HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                        Stopwatch imageSaveStopwatch = Stopwatch.StartNew();
+                        SaveFrameImage(Image, matchedTools, context);
+                        imageSaveElapsedMs = imageSaveStopwatch.ElapsedMilliseconds;
                     }
-
-                    if (ngTools.Count > 0 && DataModel.Settingmodel.ImageSaveSetting.SaveNG)
+                    catch (Exception ex)
                     {
-                        string sn = getSnForTools(ngTools);
-                        string indicesPart = string.Join("_", ngTools.Select(t => t.Index.ToString("00")).Distinct().OrderBy(x => x));
-                        string namesPart = string.Join("_", ngTools.Select(t => t.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct());
-                        string statusPart = string.Join("_", ngTools.Select(t => t.ToolStatus.ToString()).Distinct());
-
-                        string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{day}\\NG\\{sn}-{indicesPart}-{namesPart}-{statusPart}-{ts}.jpg";
-                        string dir = Path.GetDirectoryName(savefilename);
-                        if (!Directory.Exists(dir))
-                        { Directory.CreateDirectory(dir); }
-
-                        HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                        writeLog($"视觉->保存照片(一帧一图)失败：{ex}", false);
                     }
-                }
-                catch (Exception ex)
-                {
-                    writeLog($"视觉->保存照片(合并)失败：{ex.ToString()}", false);
                 }
                 #endregion
 
                 #region 阶段结算（按当前指令过滤工具集合）
                 // 业务说明：currentCommand 与工具 Command 均经 NormalizeStageCommand，与 ConfiguredStages、PLC/扫码触发的阶段键一致，
                 // 避免「全 A1 却判阶段未完成」等由字符串脏数据导致的误判。
-                string currentCommand = NormalizeStageCommand(DataModel.Processmodel.RCMD);
-                var currentCommandTools = (from t in DataModel.Processmodel.Tools
-                                           where (NormalizeStageCommand(t.Command) == currentCommand)
-                                           select t).ToList();
-                int toolCount = currentCommandTools.Count;
-
-                if (toolCount > 0)
+                if (isProduction)
                 {
-                    var okTools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.OK);
-                    var ng2Tools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.NG2);
-                    var waitTools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.等待中 || t.ToolStatus == ToolStatus.识别中);
+                    string currentCommand = frameCommand;
+                    var currentCommandTools = (from t in DataModel.Processmodel.Tools
+                                               where (NormalizeStageCommand(t.Command) == currentCommand)
+                                               select t).ToList();
+                    int toolCount = currentCommandTools.Count;
 
-                    if (waitTools.Count() == 0)
+                    if (toolCount > 0)
                     {
+                        var okTools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.OK);
+                        var ng2Tools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.NG2);
+                        var waitTools = currentCommandTools.Where(t => t.ToolStatus == ToolStatus.等待中 || t.ToolStatus == ToolStatus.识别中);
+
+                        if (waitTools.Count() == 0)
+                        {
                         // 普通生产阶段结算：所有工具OK推进阶段；NG/NG2按配置重试策略处理。
                         // 点检阶段结算：OK样件要求当前阶段全OK；NG样件允许当前阶段出现普通NG并继续后续阶段，最终再汇总全部阶段工具。
                         int stageStatus;
@@ -3587,6 +4238,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         }
                     }
                 }
+                }
                 #endregion
 
                 #endregion
@@ -3594,24 +4246,72 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex)
             {
-                DataModel.Processmodel.CameraStatus = "相机异常";
-                writeError($"[{DataModel.Processmodel.RCMD}]图像处理异常:{ex.Message}");
+                frameProcessingFailed = true;
+                if (isProduction)
+                {
+                    foreach (ToolModel tool in DataModel.Processmodel.Tools.Where(tool =>
+                        NormalizeStageCommand(tool.Command) == frameCommand
+                        && (context.CameraSerial == null || NormalizeCameraSerial(tool.CameraSerialNumber) == context.CameraSerial)
+                        && (!context.ExposureTime.HasValue || tool.ExposureTime == context.ExposureTime.Value)))
+                    {
+                        if (tool.ToolStatus == ToolStatus.等待中 || tool.ToolStatus == ToolStatus.识别中)
+                        {
+                            tool.ToolStatus = ToolStatus.NG2;
+                        }
+                    }
+
+                    lock (_executionLock)
+                    {
+                        if (_isExecuting && _activeExecutionId == context.ExecutionId)
+                        {
+                            _pendingCameraGroups?.Clear();
+                        }
+                    }
+
+                    DataModel.Processmodel.Status = ToolStatus.NG2;
+                    DataModel.Processmodel.NeedRestart = !DataModel.Processmodel.IsInspectionMode;
+                    DataModel.Processmodel.CameraStatus = "图像处理异常";
+                    if (DataModel.Processmodel.IsInspectionMode)
+                    {
+                        UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{frameCommand}图像处理异常，请调参后重复触发当前阶段。 ");
+                    }
+                }
+                else if (context != null && context.ManualToolIndex >= 0 && context.ManualToolIndex < DataModel.Processmodel.Tools.Count)
+                {
+                    DataModel.Processmodel.Tools[context.ManualToolIndex].ToolStatus = ToolStatus.NG2;
+                }
+
+                writeError($"[{frameCommand}]图像处理异常:{ex.Message}");
             }
             finally
             {
-                if (processImage != null && processImage != Image)
+                long frameElapsedMs = frameStopwatch.ElapsedMilliseconds;
+                string processingMode = isProduction ? "生产" : "照片测试";
+                string frameSummary =
+                    $"模式={processingMode},代次={(isProduction ? context.ExecutionId.ToString() : "手工")},指令={frameCommand}," +
+                    $"相机={context?.CameraSerial ?? "空"},曝光={(context?.ExposureTime.HasValue == true ? context.ExposureTime.Value.ToString() : "兼容")}," +
+                    $"工具数={matchedTools.Count},缩略图={thumbnailElapsedMs}ms,工具识别合计={toolDetectionElapsedMs}ms," +
+                    $"结果发送合计={outputElapsedMs}ms,留图={imageSaveElapsedMs}ms,整帧={frameElapsedMs}ms";
+                processRecords.Add("帧汇总:" + frameSummary);
+                Save_records(processRecords);
+                writeLog("视觉帧处理完成: " + frameSummary, false);
+
+                if (isProduction)
                 {
-                    processImage.Dispose();
-                }
-                if (_isExecuting)
-                {
-                    // 若同一阶段存在多相机分组，则在上一张图处理结束后继续触发下一相机取图；
-                    // 下一组触发失败或异常时立即 NG、NeedRestart、收口，不依赖超时看门狗。
-                    if (_pendingCameraGroups != null && _pendingCameraGroups.Count > 0)
+                    bool contextActive = CompleteFrameProcessing(context);
+                    if (!contextActive)
+                    {
+                        WriteDetailLog($"[帧尾收口] 执行代次已失效，跳过队列推进 id={context.ExecutionId} 指令={frameCommand}");
+                    }
+                    else if (frameProcessingFailed)
+                    {
+                        EndExecution(context.ExecutionId);
+                    }
+                    else if (_pendingCameraGroups != null && _pendingCameraGroups.Count > 0)
                     {
                         try
                         {
-                            bool triggered = TriggerNextCameraGroupCapture(DataModel.Processmodel.RCMD);
+                            bool triggered = TriggerNextCameraGroupCapture(frameCommand, context.ExecutionId);
                             if (!triggered)
                             {
                                 DataModel.Processmodel.Status = ToolStatus.NG;
@@ -3619,10 +4319,10 @@ namespace F7_L12_Position_Detect.ViewModel
                                 DataModel.Processmodel.CameraStatus = "相机异常";
                                 if (DataModel.Processmodel.IsInspectionMode)
                                 {
-                                    UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{DataModel.Processmodel.RCMD}相机触发失败，请调参后重复触发当前阶段。 ");
+                                    UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{frameCommand}相机触发失败，请调参后重复触发当前阶段。 ");
                                 }
                                 writeError("下一相机组触发失败，已按失败立即收口");
-                                EndExecution();
+                                EndExecution(context.ExecutionId);
                             }
                         }
                         catch (Exception ex)
@@ -3632,25 +4332,83 @@ namespace F7_L12_Position_Detect.ViewModel
                             DataModel.Processmodel.CameraStatus = "相机异常";
                             if (DataModel.Processmodel.IsInspectionMode)
                             {
-                                UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{DataModel.Processmodel.RCMD}相机触发异常，请调参后重复触发当前阶段。 ");
+                                UpdateInspectionStatusMessage($"{DataModel.Processmodel.InspectionType}点检阶段{frameCommand}相机触发异常，请调参后重复触发当前阶段。 ");
                             }
                             writeError($"下一相机组触发异常，已按失败立即收口: {ex.Message}");
-                            EndExecution();
+                            EndExecution(context.ExecutionId);
                         }
                     }
                     else
                     {
-                        EndExecution();
+                        EndExecution(context.ExecutionId);
                     }
                 }
             }
 
         }
 
+        /// <summary>
+        /// 使用本地照片执行当前选中工具。该入口与生产执行互斥，只更新所选工具的显示和检测结果，并跳过生产留图、设备发送、阶段结算与报工。
+        /// </summary>
+        /// <param name="image">由界面加载并在调用完成后释放的 HALCON 图像。</param>
+        /// <param name="height">图像高度，单位为像素。</param>
+        /// <param name="width">图像宽度，单位为像素。</param>
+        /// <param name="toolIndex">工具列表的零基下标。</param>
+        /// <param name="message">拒绝执行时返回操作员可读原因。</param>
+        /// <returns>照片测试已进入检测流程时返回 true；生产忙碌或工具下标无效时返回 false。</returns>
+        public bool TryRunManualToolTest(HObject image, int height, int width, int toolIndex, out string message)
+        {
+            message = string.Empty;
+            if (image == null || toolIndex < 0 || toolIndex >= DataModel.Processmodel.Tools.Count)
+            {
+                message = "请先选择需要测试的工具和有效照片";
+                return false;
+            }
+
+            if (!TryBeginManualImageTest())
+            {
+                message = "检测或扫码处理正在执行，请在本轮结束后再进行照片测试";
+                return false;
+            }
+
+            try
+            {
+                ToolModel tool = DataModel.Processmodel.Tools[toolIndex];
+                FrameProcessingContext context = FrameProcessingContext.Manual(
+                    NormalizeStageCommand(tool.Command),
+                    toolIndex);
+                OnReceiveProcess(image, height, width, context);
+                return true;
+            }
+            finally
+            {
+                EndManualImageTest();
+            }
+        }
+
 
         public void Save_record(string info)
         {
-            if (DataModel.Settingmodel.SaveProcessData)
+            Save_records(new[] { info });
+        }
+
+        /// <summary>
+        /// 将同一帧的工具耗时和帧汇总一次性追加到识别过程日志，减少多工具流程中的重复文件打开与关闭。
+        /// </summary>
+        private void Save_records(IEnumerable<string> records)
+        {
+            if (DataModel?.Settingmodel?.SaveProcessData != true || records == null)
+            {
+                return;
+            }
+
+            List<string> recordList = records.Where(record => !string.IsNullOrWhiteSpace(record)).ToList();
+            if (recordList.Count == 0)
+            {
+                return;
+            }
+
+            try
             {
                 DateTime dt = DateTime.Now;
                 string filename = $"{Environment.CurrentDirectory}\\识别过程日志\\{dt.ToString("yyyy-MM-dd")}\\{dt.ToString("yyyyMMddHH")}.txt";
@@ -3662,11 +4420,16 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 using (StreamWriter sw = new StreamWriter(filename, true))
                 {
-                    sw.WriteLine($"[{dt.ToString("yyyy-MM-dd HH:mm:ss.FFF")}]{info}");
+                    foreach (string record in recordList)
+                    {
+                        sw.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.FFF}]{record}");
+                    }
                 }
             }
-
-
+            catch (Exception ex)
+            {
+                WriteDetailLog($"[识别过程日志] 批量写入失败: {ex.Message}");
+            }
         }
 
 

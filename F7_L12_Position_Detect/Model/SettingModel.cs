@@ -27,6 +27,21 @@ namespace F7_L12_Position_Detect.Model
 
     public class SettingModel : ObservableObject
     {
+        /// <summary>
+        /// 根据系统有效工作区自动选择标准或紧凑布局，适合不同分辨率和 Windows DPI 缩放比例的现场显示器。
+        /// </summary>
+        public const string UiLayoutModeAuto = "自动";
+
+        /// <summary>
+        /// 保持主窗口现有间距、标题栏和单列报工配置的布局模式。
+        /// </summary>
+        public const string UiLayoutModeStandard = "标准";
+
+        /// <summary>
+        /// 压缩标题栏、工具带和报工配置高度，供 1366×768 等有效工作区较小的显示器使用。
+        /// </summary>
+        public const string UiLayoutModeCompact = "紧凑";
+
         [XmlIgnore]
         public HWindow HWindow { get; set; } = null;
 
@@ -110,13 +125,41 @@ namespace F7_L12_Position_Detect.Model
         #endregion
 
 
+        /// <summary>
+        /// 每个“相机序列号 + 曝光时间”拍照组设置曝光后、发送软触发前的稳定等待时间，单位为毫秒。两台相机各一个曝光组时会累计等待两次。
+        /// </summary>
         [XmlElement("测试延时")]
-
         public int delaytime { set; get; } = 1000;
 
 
         [XmlElement("缩放照片尺寸")]
         public int ImageSize { set; get; } = 140;
+
+        /// <summary>
+        /// 当前布局实际使用的工具缩略图边长，单位为 WPF 设备无关像素。紧凑布局可临时缩小显示，主配置仍保留“缩放照片尺寸”的现场设定。
+        /// </summary>
+        [XmlIgnore]
+        public int EffectiveImageSize
+        {
+            get => _effectiveImageSize;
+            set
+            {
+                if (_effectiveImageSize == value)
+                {
+                    return;
+                }
+
+                _effectiveImageSize = value;
+                RaisePropertyChanged(() => EffectiveImageSize);
+            }
+        }
+        private int _effectiveImageSize = 140;
+
+        /// <summary>
+        /// 主界面启动布局。支持“自动”“标准”“紧凑”；配置缺失或填写其他值时按“自动”处理，修改后重启软件生效。
+        /// </summary>
+        [XmlElement("界面布局模式")]
+        public string UiLayoutMode { set; get; } = UiLayoutModeAuto;
 
 
         [XmlElement("自动记录识别过程日志")]
@@ -134,6 +177,9 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("阶段失败重试策略")]
         public StageFailRetryStrategy StageFailRetryStrategy { get; set; } = StageFailRetryStrategy.从头开始重跑;
 
+        /// <summary>
+        /// 单个相机组从软触发发出到收到有效回图的最长等待时间，单位为毫秒。图像已进入检测后由帧处理代次持有执行锁到帧尾。
+        /// </summary>
         [XmlElement("执行超时ms")]
         public int ExecutionTimeoutMs { get; set; } = 5000;
 
