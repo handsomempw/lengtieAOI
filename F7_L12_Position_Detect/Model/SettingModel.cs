@@ -126,7 +126,7 @@ namespace F7_L12_Position_Detect.Model
 
 
         /// <summary>
-        /// 每个“相机序列号 + 曝光时间”拍照组设置曝光后、发送软触发前的稳定等待时间，单位为毫秒。两台相机各一个曝光组时会累计等待两次。
+        /// 每个相机拍照组设置曝光后、发送软触发前的稳定等待时间，单位为毫秒。两台相机各一组时会累计等待两次。
         /// </summary>
         [XmlElement("测试延时")]
         public int delaytime { set; get; } = 100;

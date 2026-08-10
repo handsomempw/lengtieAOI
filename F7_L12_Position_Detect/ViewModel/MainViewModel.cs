@@ -752,12 +752,13 @@ namespace F7_L12_Position_Detect.ViewModel
          *
          * 业务规则：
          * - PLC 只触发一次“下一步”，视觉端在一个阶段内可能需要多次取图：
-         *   - 同一阶段工具按相机序列号和曝光时间分组，每组取图一次；
-         *   - 相机与曝光时间一致的多个工具，共用这一张图做识别（同图多工具）。
+         *   - 同一阶段工具若配置了不同相机序列号，则按相机分组，每个相机取图一次；
+         *   - 同一相机分组内的多个工具，共用这一张图做识别（同图多工具）；
+         *   - 曝光取该组工具列表中的首个工具，同组其余工具即使曝光配置不同也共用该帧。
          *
          * 时序与收口：
          * - ProcessSerialTrigger() 初始化 _pendingCameraGroups，并触发第一组相机取图；
-         * - 相机回调受理时冻结执行代次、阶段、相机和曝光，OnReceiveProcess() 只处理该上下文匹配的工具；
+         * - 相机回调受理时冻结执行代次、阶段、相机和实际曝光，OnReceiveProcess() 只处理该上下文匹配的工具；
          * - OnReceiveProcess() finally 中：
          *     - 若还有相机组未处理，则继续触发下一组取图（不 EndExecution）；
          *     - 若 TriggerNextCameraGroupCapture 返回 false 或抛异常，立即 NG、NeedRestart、EndExecution，不等超时看门狗；
@@ -775,18 +776,17 @@ namespace F7_L12_Position_Detect.ViewModel
         private sealed class CameraGroup
         {
             public string CameraSerial { get; }
-            public int ExposureTime { get; }
             public List<int> ToolIndices { get; }
-            public CameraGroup(string cameraSerial, int exposureTime, List<int> toolIndices)
+            public CameraGroup(string cameraSerial, List<int> toolIndices)
             {
                 CameraSerial = cameraSerial ?? string.Empty;
-                ExposureTime = exposureTime;
                 ToolIndices = toolIndices ?? new List<int>();
             }
         }
 
         /// <summary>
-        /// 冻结一张回图所属的执行代次、阶段、相机和曝光。UI 排队期间即使现场触发了新一轮执行，旧帧也只能处理和释放自己的代次。
+        /// 冻结一张回图所属的执行代次、阶段、相机和实际曝光。UI 排队期间即使现场触发了新一轮执行，旧帧也只能处理和释放自己的代次。
+        /// ExposureTime 仅记录本组首工具实际下发的曝光，用于诊断日志，不参与工具匹配。
         /// </summary>
         private sealed class FrameProcessingContext
         {
@@ -854,7 +854,7 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <summary>等图门闩：仅在一次软触发之后为 true，回调入口原子消费为 false，避免非预期帧进入处理。</summary>
         private bool _waitingImage = false;
         private string _activeCameraSerial = null; // null 表示不按相机过滤（兼容旧逻辑）
-        private int? _activeExposureTime = null; // null 表示不按曝光过滤（手动照片测试兼容路径）
+        private int? _activeExposureTime = null; // 本组首工具实际下发的曝光，仅写入帧上下文供诊断
 
         /// <summary>
         /// 归一化相机序列号：将 null 统一视为空串，并去除首尾空格、统一为大写，确保分组和精确匹配口径一致。
@@ -865,19 +865,20 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 构建当前阶段的拍照分组队列。相机序列号和曝光时间均一致的工具共享一帧，并保持工具配置中的首次出现顺序。
+        /// 构建当前阶段的拍照分组队列。同一相机序列号的工具共享一帧，并保持工具配置中的首次出现顺序。
         /// </summary>
         /// <remarks>
         /// - 仅收集 <paramref name="command"/> 对应阶段的工具；
         /// - 按工具列表的首次出现顺序稳定输出分组（避免 Dictionary 枚举导致顺序不稳定）。
         /// - 工具是否属于本阶段：对 <paramref name="command"/> 与 <see cref="ToolModel.Command"/> 均做 <see cref="NormalizeStageCommand"/> 后相等判断，
         ///   与 <see cref="BuildConfiguredStages"/>、阶段结算一致。
+        /// - 曝光不参与分组；触发时取组内首个工具的曝光。
         /// </remarks>
         private Queue<CameraGroup> BuildCameraGroupsForStageCommand(string command)
         {
-            // 按工具列表顺序稳定分组。相机相同而曝光不同的工具需要独立取图，避免共享错误曝光的图像。
-            var groups = new Dictionary<Tuple<string, int>, List<int>>();
-            var groupOrder = new List<Tuple<string, int>>();
+            // 按工具列表顺序稳定分组：同一阶段内不同相机 -> 多次取图
+            var groups = new Dictionary<string, List<int>>();
+            var groupOrder = new List<string>();
             string normalizedCommand = NormalizeStageCommand(command);
 
             for (int i = 0; i < DataModel.Processmodel.Tools.Count; i++)
@@ -886,25 +887,24 @@ namespace F7_L12_Position_Detect.ViewModel
                 if (NormalizeStageCommand(tool.Command) != normalizedCommand) continue;
 
                 string cam = NormalizeCameraSerial(tool.CameraSerialNumber);
-                var key = Tuple.Create(cam, tool.ExposureTime);
-                if (!groups.TryGetValue(key, out var list))
+                if (!groups.TryGetValue(cam, out var list))
                 {
                     list = new List<int>();
-                    groups[key] = list;
-                    groupOrder.Add(key);
+                    groups[cam] = list;
+                    groupOrder.Add(cam);
                 }
                 list.Add(i);
             }
 
             var q = new Queue<CameraGroup>();
-            foreach (var key in groupOrder)
+            foreach (var cam in groupOrder)
             {
-                q.Enqueue(new CameraGroup(key.Item1, key.Item2, groups[key]));
+                q.Enqueue(new CameraGroup(cam, groups[cam]));
             }
 
             WriteCameraDebugLog(
                 $"[阶段拍照分组] 指令='{normalizedCommand}' 分组数={q.Count} " +
-                $"顺序=[{string.Join(" -> ", q.Select(group => $"{group.CameraSerial}/曝光{group.ExposureTime}/工具{group.ToolIndices.Count}"))}]");
+                $"顺序=[{string.Join(" -> ", q.Select(group => $"{group.CameraSerial}/工具{group.ToolIndices.Count}"))}]");
             return q;
         }
 
@@ -939,7 +939,6 @@ namespace F7_L12_Position_Detect.ViewModel
 
             var group = _pendingCameraGroups.Dequeue();
             _activeCameraSerial = group.CameraSerial;
-            _activeExposureTime = group.ExposureTime;
 
             if (group.ToolIndices.Count == 0)
             {
@@ -948,12 +947,14 @@ namespace F7_L12_Position_Detect.ViewModel
 
             int firstToolIndex = group.ToolIndices[0];
             var firstTool = DataModel.Processmodel.Tools[firstToolIndex];
+            int groupExposureTime = firstTool.ExposureTime;
+            _activeExposureTime = groupExposureTime;
 
             DataModel.Processmodel.ToolIndex = firstToolIndex + 1;
 
             // 切换到该相机并按该组第一个工具设置曝光
             Stopwatch preparationStopwatch = Stopwatch.StartNew();
-            WriteCameraDebugLog($"[阶段触发下一相机组] 指令='{command}' 当前激活相机序列号='{_activeCameraSerial}' 曝光={group.ExposureTime} 本组工具数={group.ToolIndices.Count} 首工具下标={firstToolIndex} 首工具相机序列号='{firstTool.CameraSerialNumber}'");
+            WriteCameraDebugLog($"[阶段触发下一相机组] 指令='{command}' 当前激活相机序列号='{_activeCameraSerial}' 曝光={groupExposureTime}(首工具) 本组工具数={group.ToolIndices.Count} 首工具下标={firstToolIndex} 首工具相机序列号='{firstTool.CameraSerialNumber}'");
             if (!SwitchCameraForTool(firstTool))
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
@@ -962,10 +963,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 return false;
             }
             Thread.Sleep(100);
-            DataModel.Settingmodel.camedata.CameraModel.exposuretime = group.ExposureTime;
+            DataModel.Settingmodel.camedata.CameraModel.exposuretime = groupExposureTime;
             Hikvision camera = DataModel.Settingmodel.camedata.CameraModel.camera;
-            camera.Exposure = group.ExposureTime;
-            if (!camera.TrySetExposure(group.ExposureTime, out int exposureErrorCode))
+            camera.Exposure = groupExposureTime;
+            if (!camera.TrySetExposure(groupExposureTime, out int exposureErrorCode))
             {
                 DataModel.Processmodel.Status = ToolStatus.NG;
                 DataModel.Processmodel.NeedRestart = true;
@@ -973,7 +974,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 _cameraRecoveryRequired = true;
                 WriteCameraDebugLog(
                     $"[阶段曝光设置] 失败 指令='{command}' 相机='{_activeCameraSerial}' " +
-                    $"曝光={group.ExposureTime} 错误码=0x{exposureErrorCode:X8}");
+                    $"曝光={groupExposureTime} 错误码=0x{exposureErrorCode:X8}");
                 return false;
             }
             int configuredDelayMs = Math.Max(0, DataModel.Settingmodel.delaytime);
@@ -981,7 +982,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
             writeLog($"开始拍照: {command}阶段 - 相机='{_activeCameraSerial}', 工具数={group.ToolIndices.Count}");
             WriteCameraDebugLog(
-                $"[阶段拍照准备] 指令='{command}' 相机='{_activeCameraSerial}' 曝光={group.ExposureTime} " +
+                $"[阶段拍照准备] 指令='{command}' 相机='{_activeCameraSerial}' 曝光={groupExposureTime}(首工具) " +
                 $"配置等待={configuredDelayMs}ms 准备总耗时={preparationStopwatch.ElapsedMilliseconds}ms");
             long captureSessionId = camera.ActiveCaptureSessionId;
             long captureRequestId = Interlocked.Increment(ref _captureRequestSequence);
@@ -3189,7 +3190,7 @@ namespace F7_L12_Position_Detect.ViewModel
             if (captureDelayElement != null)
             {
                 captureDelayElement.AddBeforeSelf(new XComment(
-                    " 测试延时按“触发指令 + 相机序列号 + 曝光时间”拍照组执行一次，单位为毫秒；同组多个工具共享本次等待和同一张回图。两台相机各一组且填写1000时，拍照准备等待合计约2秒；现场以稳定回图为前提逐步调低。 "));
+                    " 测试延时按“触发指令 + 相机序列号”拍照组执行一次，单位为毫秒；同组多个工具共享本次等待和同一张回图，曝光取组内首个工具。两台相机各一组且填写1000时，拍照准备等待合计约2秒；现场以稳定回图为前提逐步调低。 "));
             }
             if (executionTimeoutElement != null)
             {
@@ -3842,7 +3843,7 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// UI 线程上处理一帧图像。生产上下文按冻结的阶段、相机和曝光执行；照片测试上下文只执行操作员选中的工具。
+        /// UI 线程上处理一帧图像。生产上下文按冻结的阶段和相机执行；照片测试上下文只执行操作员选中的工具。
         /// </summary>
         /// <remarks>
         /// 多相机阶段：在 finally 中若仍有 <see cref="_pendingCameraGroups"/>，会调用 <see cref="TriggerNextCameraGroupCapture"/>；
@@ -3894,10 +3895,6 @@ namespace F7_L12_Position_Detect.ViewModel
                     if (isMatch && isProduction && context.CameraSerial != null)
                     {
                         isMatch = NormalizeCameraSerial(DataModel.Processmodel.Tools[i].CameraSerialNumber) == context.CameraSerial;
-                    }
-                    if (isMatch && isProduction && context.ExposureTime.HasValue)
-                    {
-                        isMatch = DataModel.Processmodel.Tools[i].ExposureTime == context.ExposureTime.Value;
                     }
 
                     if (isMatch)
@@ -4332,8 +4329,7 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     foreach (ToolModel tool in DataModel.Processmodel.Tools.Where(tool =>
                         NormalizeStageCommand(tool.Command) == frameCommand
-                        && (context.CameraSerial == null || NormalizeCameraSerial(tool.CameraSerialNumber) == context.CameraSerial)
-                        && (!context.ExposureTime.HasValue || tool.ExposureTime == context.ExposureTime.Value)))
+                        && (context.CameraSerial == null || NormalizeCameraSerial(tool.CameraSerialNumber) == context.CameraSerial)))
                     {
                         if (tool.ToolStatus == ToolStatus.等待中 || tool.ToolStatus == ToolStatus.识别中)
                         {
