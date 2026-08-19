@@ -192,6 +192,47 @@ namespace F7_L12_Position_Detect.ViewModel
             return "NOSN";
         }
 
+        /// <summary>
+        /// 获取生产图片归档使用的规格名称。冷贴 AOI 的工程名称就是当前加载的规格配方，
+        /// 因此图片目录和文件名沿用同一份工程身份，便于现场按规格追溯。
+        /// </summary>
+        private string GetImageSpecificationName()
+        {
+            string specification = SanitizeFileNamePart(DataModel?.Settingmodel?.Name);
+            if (!string.IsNullOrEmpty(specification))
+            {
+                return specification;
+            }
+
+            WriteDetailLog("[图片保存] 当前工程名称为空，使用UNKNOWN_SPEC作为规格目录和文件名前缀");
+            return "UNKNOWN_SPEC";
+        }
+
+        /// <summary>
+        /// 生成生产检测图片路径。规格目录位于日期目录之前，文件名保留 SN、工具和结果信息，
+        /// 使整目录复制或单张图片脱离原目录后仍可识别规格。
+        /// </summary>
+        private string BuildInspectionImagePath(int toolIndex, string resultFolder, DateTime captureTime)
+        {
+            var tool = DataModel.Processmodel.Tools[toolIndex];
+            string specification = GetImageSpecificationName();
+            string prefix = GetImageFilePrefix(toolIndex);
+            string toolName = SanitizeFileNamePart(tool.Name);
+            if (string.IsNullOrEmpty(toolName))
+            {
+                toolName = "NOTOOL";
+            }
+
+            string fileName =
+                $"{specification}-{prefix}-{tool.Index:00}-{toolName}-{tool.ToolStatus}-{captureTime:yyyyMMddHHmmssFFF}.jpg";
+            return Path.Combine(
+                DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir,
+                specification,
+                captureTime.ToString("yyyyMMdd"),
+                resultFolder,
+                fileName);
+        }
+
         // 点检定时器
         private System.Windows.Threading.DispatcherTimer _inspectionTimer;
         
@@ -3064,32 +3105,21 @@ namespace F7_L12_Position_Detect.ViewModel
                         #region 保存图片
                         try
                         {
-                            if (tool.ToolStatus == ToolStatus.OK)
+                            string resultFolder = tool.ToolStatus == ToolStatus.OK ? "OK" : "NG";
+                            bool shouldSave = tool.ToolStatus == ToolStatus.OK
+                                ? DataModel.Settingmodel.ImageSaveSetting.SaveOK
+                                : DataModel.Settingmodel.ImageSaveSetting.SaveNG;
+                            if (shouldSave)
                             {
-                                if (DataModel.Settingmodel.ImageSaveSetting.SaveOK)
+                                string savefilename = BuildInspectionImagePath(i, resultFolder, DateTime.Now);
+                                string dir = Path.GetDirectoryName(savefilename);
+                                if (!Directory.Exists(dir))
                                 {
-
-                                    string prefix = GetImageFilePrefix(i);
-                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\OK\\{prefix}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-
-                                    string dir = Path.GetDirectoryName(savefilename);
-                                    if (!Directory.Exists(dir))
-                                    { Directory.CreateDirectory(dir); }
-                                    HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                                    Directory.CreateDirectory(dir);
                                 }
-                            }
-                            else
-                            {
-                                if (DataModel.Settingmodel.ImageSaveSetting.SaveNG)
-                                {
-                                    string prefix = GetImageFilePrefix(i);
-                                    string savefilename = $"{DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir}\\{DateTime.Now.ToString("yyyyMMdd")}\\NG\\{prefix}-{tool.Index.ToString("00")}-{tool.Name}-{tool.ToolStatus}-{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.jpg";
-                                    string dir = Path.GetDirectoryName(savefilename);
-                                    if (!Directory.Exists(dir))
-                                    { Directory.CreateDirectory(dir); }
-                                    HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
 
-                                }
+                                HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                                WriteDetailLog($"[图片保存] 规格={GetImageSpecificationName()} 结果={resultFolder} 路径={savefilename}");
                             }
                         }
                         catch (Exception ex)
