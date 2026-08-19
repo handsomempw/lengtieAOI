@@ -340,6 +340,7 @@
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto"/>
@@ -404,6 +405,18 @@
                               Checked="chkEnableScanAutoTriggerStages_Checked"
                               Unchecked="chkEnableScanAutoTriggerStages_Unchecked"
                               VerticalAlignment="Center" Margin="5" FontSize="12"
+                              Foreground="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigForeground}}"/>
+
+                    <TextBlock x:Name="SerialSoftwareTriggerLabel" Grid.Row="6" Grid.Column="0" Text="串口软件触发扫码:" VerticalAlignment="Center"
+                               Margin="5" FontSize="12" Foreground="DimGray"
+                               ToolTip="关闭后由物理IO触发扫码，软件只通过串口接收条码"/>
+                    <CheckBox Grid.Row="6" Grid.Column="1" Name="chkEnableSerialSoftwareTrigger"
+                              IsChecked="{Binding DataModel.Settingmodel.EnableSerialSoftwareTrigger}"
+                              IsEnabled="{Binding DataModel.Settingmodel.permission}"
+                              Checked="chkEnableSerialSoftwareTrigger_Changed"
+                              Unchecked="chkEnableSerialSoftwareTrigger_Changed"
+                              VerticalAlignment="Center" Margin="5" FontSize="12"
+                              ToolTip="关闭后由物理IO触发扫码，软件只通过串口接收条码"
                               Foreground="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigForeground}}"/>
                 </Grid>
             </GroupBox>

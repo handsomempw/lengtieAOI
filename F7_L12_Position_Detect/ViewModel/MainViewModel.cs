@@ -3155,6 +3155,7 @@ namespace F7_L12_Position_Detect.ViewModel
             XElement captureDelayElement = document.Root?.Element("测试延时");
             XElement executionTimeoutElement = document.Root?.Element("执行超时ms");
             XElement stageRetryElement = document.Root?.Element("阶段失败重试策略");
+            XElement serialSoftwareTriggerElement = document.Root?.Element("串口软件主动触发");
             if (intervalElement == null || ngConditionElement == null || okSnElement == null || ngSnElement == null || lastTimeElement == null)
             {
                 throw new InvalidOperationException("主配置缺少点检配置节点，无法写入点检操作说明");
@@ -3201,6 +3202,11 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 stageRetryElement.AddBeforeSelf(new XComment(
                     " 普通生产阶段失败重试策略：从头开始重跑会从A1重新执行；仅重试失败阶段会保留已完成阶段。点检模式使用独立规则，当前失败阶段重复触发，XML全局策略不改变点检重试方式。 "));
+            }
+            if (serialSoftwareTriggerElement != null)
+            {
+                serialSoftwareTriggerElement.AddBeforeSelf(new XComment(
+                    " 串口扫码触发方式：true表示软件通过串口发送启动指令后取码；false表示由扫码器物理IO触发，软件只接收串口数据。该配置只影响串口模式，修改后重启软件生效。 "));
             }
 
             document.Save(filename);

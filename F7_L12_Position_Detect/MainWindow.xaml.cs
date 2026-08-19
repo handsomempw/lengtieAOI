@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.IO.Ports;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,6 +46,10 @@ namespace F7_L12_Position_Detect
         private DateTime _serialScanWarmupUntilUtc = DateTime.MinValue;
         private string _lastAcceptedSerialScanCode = string.Empty;
         private DateTime _lastAcceptedSerialScanTimeUtc = DateTime.MinValue;
+        private readonly object _passiveSerialLock = new object();
+        private readonly StringBuilder _passiveSerialBuffer = new StringBuilder();
+        private SerialPort _passiveSerialPort;
+        private CancellationTokenSource _passiveSerialFrameCts;
 
         private static bool IsKeyboardWedgeScannerMode(string mode)
         {
@@ -97,9 +102,19 @@ namespace F7_L12_Position_Detect
                     {
                         if (!IsSerialScannerMode())
                         {
+                            ClosePassiveSerialPort();
                             await Task.Delay(300, token);
                             continue;
                         }
+
+                        if (!vml.Main.DataModel.Settingmodel.EnableSerialSoftwareTrigger)
+                        {
+                            EnsurePassiveSerialPortOpen();
+                            await Task.Delay(300, token);
+                            continue;
+                        }
+
+                        ClosePassiveSerialPort();
 
                         DateTime scanTriggeredAtUtc = DateTime.UtcNow;
                         string scanCode = string.Empty;
@@ -168,6 +183,7 @@ namespace F7_L12_Position_Detect
             try
             {
                 _serialScanListenerCts?.Cancel();
+                ClosePassiveSerialPort();
             }
             catch
             {
@@ -266,7 +282,7 @@ namespace F7_L12_Position_Detect
             ReportConfigGrid.RowDefinitions.Clear();
             ReportConfigGrid.ColumnDefinitions.Clear();
 
-            int rowCount = compact ? 3 : 6;
+            int rowCount = compact ? 4 : 7;
             for (int i = 0; i < rowCount; i++)
             {
                 ReportConfigGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -293,6 +309,9 @@ namespace F7_L12_Position_Detect
                 SetGridCell(chkEnableAutoReportWork, 2, 1);
                 SetGridCell(ScanAutoLabel, 2, 2);
                 SetGridCell(chkEnableScanAutoTriggerStages, 2, 3);
+                SetGridCell(SerialSoftwareTriggerLabel, 3, 0);
+                SetGridCell(chkEnableSerialSoftwareTrigger, 3, 1);
+                Grid.SetColumnSpan(chkEnableSerialSoftwareTrigger, 3);
                 return;
             }
 
@@ -311,6 +330,8 @@ namespace F7_L12_Position_Detect
             SetGridCell(chkEnableAutoReportWork, 4, 1);
             SetGridCell(ScanAutoLabel, 5, 0);
             SetGridCell(chkEnableScanAutoTriggerStages, 5, 1);
+            SetGridCell(SerialSoftwareTriggerLabel, 6, 0);
+            SetGridCell(chkEnableSerialSoftwareTrigger, 6, 1);
         }
 
         private static void SetGridCell(UIElement element, int row, int column)
@@ -559,6 +580,141 @@ namespace F7_L12_Position_Detect
             }
         }
 
+        /// <summary>
+        /// 在物理 IO 触发模式下常开配置的 COM 口。该入口只设置接收参数和订阅数据事件，不向扫码器写入启动或停止指令。
+        /// </summary>
+        private void EnsurePassiveSerialPortOpen()
+        {
+            lock (_passiveSerialLock)
+            {
+                string portName = vml.Main.DataModel.Settingmodel.ScannerModel.PortName;
+                if (_passiveSerialPort != null && _passiveSerialPort.IsOpen &&
+                    string.Equals(_passiveSerialPort.PortName, portName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                ClosePassiveSerialPortCore();
+                var port = new SerialPort(portName, 115200, Parity.None, 8, StopBits.One)
+                {
+                    Encoding = Encoding.ASCII,
+                    ReadTimeout = 500,
+                    NewLine = "\r"
+                };
+                port.DataReceived += PassiveSerialPort_DataReceived;
+                port.Open();
+                _passiveSerialPort = port;
+                Dispatcher.BeginInvoke(new Action(() =>
+                    vml.Main.writeLog($"串口扫码器已进入物理IO被动接收模式: {portName}，软件不发送扫码触发指令", false)));
+            }
+        }
+
+        /// <summary>
+        /// 接收物理 IO 触发后由扫码器主动上报的串口数据。连续字节静默 100ms 后形成一条条码，兼容带 CR/LF 结束符和一次性完整上报。
+        /// </summary>
+        /// <param name="sender">当前常开的扫码器串口。</param>
+        /// <param name="e">串口数据到达事件参数。</param>
+        private void PassiveSerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        {
+            try
+            {
+                string received;
+                lock (_passiveSerialLock)
+                {
+                    if (_passiveSerialPort == null || !_passiveSerialPort.IsOpen)
+                    {
+                        return;
+                    }
+
+                    received = _passiveSerialPort.ReadExisting();
+                    _passiveSerialBuffer.Append(received);
+                    _passiveSerialFrameCts?.Cancel();
+                    _passiveSerialFrameCts = new CancellationTokenSource();
+                    _ = CompletePassiveSerialFrameAfterIdleAsync(_passiveSerialFrameCts.Token);
+                }
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                    vml?.Main?.writeLog($"串口被动接收异常: {ex.Message}", true)));
+            }
+        }
+
+        /// <summary>
+        /// 在串口字节静默窗口结束后提交完整条码，随后复用现有扫码去重和 MES 处理链路。
+        /// </summary>
+        /// <param name="token">新字节到达时取消上一轮组帧等待。</param>
+        private async Task CompletePassiveSerialFrameAfterIdleAsync(CancellationToken token)
+        {
+            try
+            {
+                await Task.Delay(100, token);
+                string scanCode;
+                lock (_passiveSerialLock)
+                {
+                    scanCode = _passiveSerialBuffer.ToString().Replace("\r", "").Replace("\n", "").Trim();
+                    _passiveSerialBuffer.Clear();
+                }
+
+                if (string.IsNullOrEmpty(scanCode))
+                {
+                    return;
+                }
+
+                DateTime receivedAtUtc = DateTime.UtcNow;
+                if (receivedAtUtc < _serialScanWarmupUntilUtc ||
+                    (string.Equals(scanCode, _lastAcceptedSerialScanCode, StringComparison.Ordinal) &&
+                     (receivedAtUtc - _lastAcceptedSerialScanTimeUtc).TotalMilliseconds < 1500))
+                {
+                    return;
+                }
+
+                _lastAcceptedSerialScanCode = scanCode;
+                _lastAcceptedSerialScanTimeUtc = receivedAtUtc;
+                await Dispatcher.InvokeAsync(async () =>
+                {
+                    vml.Main.DataModel.Processmodel.Scannerstr = scanCode;
+                    vml.Main.DataModel.Processmodel.SNList.Clear();
+                    vml.Main.DataModel.Processmodel.Barcodes = string.Empty;
+                    await vml.Main.ProcessScanCodeWithMESAsync(scanCode, receivedAtUtc, receivedAtUtc);
+                }).Task.Unwrap();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        /// <summary>
+        /// 关闭物理 IO 被动接收串口，供模式切换和软件退出释放 COM 口；扫码业务状态保持不变。
+        /// </summary>
+        private void ClosePassiveSerialPort()
+        {
+            lock (_passiveSerialLock)
+            {
+                ClosePassiveSerialPortCore();
+            }
+        }
+
+        private void ClosePassiveSerialPortCore()
+        {
+            _passiveSerialFrameCts?.Cancel();
+            _passiveSerialFrameCts?.Dispose();
+            _passiveSerialFrameCts = null;
+            _passiveSerialBuffer.Clear();
+            if (_passiveSerialPort == null)
+            {
+                return;
+            }
+
+            _passiveSerialPort.DataReceived -= PassiveSerialPort_DataReceived;
+            if (_passiveSerialPort.IsOpen)
+            {
+                _passiveSerialPort.Close();
+            }
+            _passiveSerialPort.Dispose();
+            _passiveSerialPort = null;
+        }
+
         private void ListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (vml.Main.DataModel.Processmodel.selectedindex >= 0)
@@ -619,6 +775,12 @@ namespace F7_L12_Position_Detect
                 vml.Main.writeLog("当前为键盘口/HID 模式：不占串口。已聚焦「产品 SN」框，请直接扫码（勿依赖本按钮读串口）。", false);
                 txtProductSN?.Focus();
                 txtProductSN?.SelectAll();
+                return;
+            }
+
+            if (IsSerialScannerMode() && !vml.Main.DataModel.Settingmodel.EnableSerialSoftwareTrigger)
+            {
+                vml.Main.writeLog("当前为物理IO被动接收模式：软件不发送扫码触发指令，请通过物理IO触发扫码器", false);
                 return;
             }
 
@@ -769,6 +931,22 @@ namespace F7_L12_Position_Detect
             if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
             {
                 SaveConfigWithDelay();
+            }
+        }
+
+        /// <summary>
+        /// 保存串口扫码触发方式。后台监听按该值在软件指令取码和物理 IO 被动接收之间切换，扫码后的 MES 与检测流程保持一致。
+        /// </summary>
+        private void chkEnableSerialSoftwareTrigger_Changed(object sender, RoutedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission == true)
+            {
+                SaveConfigWithDelay();
+                vml.Main.writeLog(
+                    vml.Main.DataModel.Settingmodel.EnableSerialSoftwareTrigger
+                        ? "串口扫码已切换为软件主动触发模式"
+                        : "串口扫码已切换为物理IO被动接收模式，软件不发送扫码触发指令",
+                    false);
             }
         }
 

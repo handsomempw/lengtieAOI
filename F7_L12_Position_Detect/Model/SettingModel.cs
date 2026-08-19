@@ -70,6 +70,13 @@ namespace F7_L12_Position_Detect.Model
         /// </summary>
         public string ScannerMode { set; get; } = "HF800";
 
+        /// <summary>
+        /// 控制串口扫码器是否由软件发送启动指令。启用时沿用 Scanner.dll 的主动取码流程；关闭时由物理 IO 触发扫码，软件常开串口并仅接收条码数据。
+        /// 该配置只影响串口模式，HF800 网口模式和 Keyboard/HID 键盘口模式保持各自原有入口。
+        /// </summary>
+        [XmlElement("串口软件主动触发")]
+        public bool EnableSerialSoftwareTrigger { get; set; } = true;
+
         #region 工程配置
         [XmlElement("工程路径")]
         public string Prjdir { set; get; } = $"{Environment.CurrentDirectory}\\工程文件";
