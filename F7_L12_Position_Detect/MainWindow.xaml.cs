@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -21,6 +22,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Xml.Serialization;
 using Camera;
 using F7_L12_Position_Detect.Model;
 using F7_L12_Position_Detect.Service;
@@ -130,6 +132,7 @@ namespace F7_L12_Position_Detect
             if (MessageBoxX.Show("是否确定打开编辑工具？", "提示", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
                 vml.Main.DataModel.Processmodel.tool = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
+                CaptureEditingToolSnapshotForAudit();
                 vml.Main.LoadBitmapSource();
                 //vml.Main.DataModel.Processmodel.tool = @vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
                 SettingForm settingForm = new SettingForm();
@@ -180,6 +183,13 @@ namespace F7_L12_Position_Detect
                     5000);
                 return;
             }
+
+#if DEBUG
+            if (TryEnableDebugPermission())
+            {
+                return;
+            }
+#endif
 
             var settingModel = vml.Main.DataModel.Settingmodel;
             var authSetting = settingModel.DynamicPasswordAuth;
@@ -252,7 +262,16 @@ namespace F7_L12_Position_Detect
                     };
                     aoiPermissionAuthService.PasswordExpired += aoiPermissionExpiredHandler;
 
+                    settingModel.PermissionGrantedAt = DateTime.Now;
+                    settingModel.PermissionAuthorizerName = window.VerifyInfo.AuthorizerName;
+                    settingModel.PermissionAuthorizerNo = window.VerifyInfo.AuthorizerNo;
+                    settingModel.PermissionPrivilegeLevel = authSetting.PrivilegeLevel;
+                    settingModel.PermissionPeriodMinutes = authSetting.PeriodMinutes;
+                    settingModel.PermissionReason = "AOI 工具编辑/参数修改";
+                    settingModel.PermissionRequestedReceivers = string.Join(", ",
+                        window.RequestedReceivers.Select(receiver => $"{receiver.ReceiverName}({receiver.ReceiverNo})"));
                     settingModel.permission = true;
+                    vml.Main.writeLog($"[动态密码][授权] 验证通过：授权人={settingModel.PermissionAuthorizerName}({settingModel.PermissionAuthorizerNo}), 权限等级={settingModel.PermissionPrivilegeLevel}, 有效期={settingModel.PermissionPeriodMinutes}分钟", true);
                     NoticeBox.Show($"动态密码验证通过，编辑权限有效期为 {authSetting.PeriodMinutes} 分钟", "提示", MessageBoxIcon.Success, true, 4000);
                 }
                 finally
@@ -282,9 +301,79 @@ namespace F7_L12_Position_Detect
                 vml.Main.SaveSettingModel();
                 return vml.Main.SavePrjXmls();
             }
-            catch
+            catch (Exception ex)
+            {
+                vml.Main.writeLog($"[动态密码][自动保存] 权限关闭前自动保存失败：{ex.Message}", true);
+                return false;
+            }
+        }
+
+#if DEBUG
+        /// <summary>
+        /// 在开发配置开启本地授权的 DEBUG 构建中建立本地 AOI 编辑会话。发布构建不包含该入口。
+        /// </summary>
+        private bool TryEnableDebugPermission()
+        {
+            var settingModel = vml.Main.DataModel.Settingmodel;
+            if (!settingModel.DeveloperLocalAuthEnabled)
             {
                 return false;
+            }
+
+            settingModel.PermissionGrantedAt = DateTime.Now;
+            settingModel.PermissionAuthorizerName = "开发调试";
+            settingModel.PermissionAuthorizerNo = "DEBUG";
+            settingModel.PermissionPrivilegeLevel = 0;
+            settingModel.PermissionPeriodMinutes = 0;
+            settingModel.PermissionReason = "本地开发调试";
+            settingModel.PermissionRequestedReceivers = string.Empty;
+            settingModel.permission = true;
+
+            vml.Main.writeLog("[动态密码][开发调试] 已启用本地 AOI 编辑权限：配置已开启，当前 DEBUG 会话使用本地授权", true);
+            NoticeBox.Show("Debug 调试会话已启用本地编辑权限", "提示", MessageBoxIcon.Info, true, 4000);
+            return true;
+        }
+#endif
+
+        private void CaptureEditingToolSnapshotForAudit()
+        {
+            var processModel = vml.Main.DataModel.Processmodel;
+            int selectedIndex = processModel.selectedindex;
+            if (selectedIndex < 0 || selectedIndex >= processModel.Tools.Count)
+            {
+                processModel.EditingToolIndex = -1;
+                processModel.EditingToolSnapshot = null;
+                processModel.EditingToolSnapshotTime = DateTime.MinValue;
+                return;
+            }
+
+            processModel.EditingToolIndex = selectedIndex;
+            processModel.EditingToolSnapshot = CloneToolModelForAudit(processModel.Tools[selectedIndex]);
+            processModel.EditingToolSnapshotTime = DateTime.Now;
+            vml.Main.WriteDetailLog($"[参数审查] 已记录工具编辑前快照：工具序号={selectedIndex + 1}, 时间={processModel.EditingToolSnapshotTime:yyyy-MM-dd HH:mm:ss.fff}");
+        }
+
+        private Model.Tool.ToolModel CloneToolModelForAudit(Model.Tool.ToolModel tool)
+        {
+            try
+            {
+                if (tool == null)
+                {
+                    return null;
+                }
+
+                var serializer = new XmlSerializer(typeof(Model.Tool.ToolModel));
+                using (var stream = new MemoryStream())
+                {
+                    serializer.Serialize(stream, tool);
+                    stream.Position = 0;
+                    return serializer.Deserialize(stream) as Model.Tool.ToolModel;
+                }
+            }
+            catch (Exception ex)
+            {
+                vml.Main.WriteDetailLog($"[参数审查] 工具编辑前快照失败：{ex.Message}");
+                return null;
             }
         }
 
@@ -318,6 +407,25 @@ namespace F7_L12_Position_Detect
             {
                 aoiPermissionAuthService = null;
                 aoiPermissionExpiredHandler = null;
+                var settingModel = vml?.Main?.DataModel?.Settingmodel;
+                if (settingModel != null)
+                {
+                    settingModel.PermissionGrantedAt = DateTime.MinValue;
+                    settingModel.PermissionAuthorizerName = string.Empty;
+                    settingModel.PermissionAuthorizerNo = string.Empty;
+                    settingModel.PermissionRequestedReceivers = string.Empty;
+                    settingModel.PermissionPrivilegeLevel = 0;
+                    settingModel.PermissionPeriodMinutes = 0;
+                    settingModel.PermissionReason = string.Empty;
+                }
+
+                var processModel = vml?.Main?.DataModel?.Processmodel;
+                if (processModel != null)
+                {
+                    processModel.EditingToolIndex = -1;
+                    processModel.EditingToolSnapshot = null;
+                    processModel.EditingToolSnapshotTime = DateTime.MinValue;
+                }
             }
         }
 

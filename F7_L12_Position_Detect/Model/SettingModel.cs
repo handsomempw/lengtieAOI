@@ -67,6 +67,37 @@ namespace F7_L12_Position_Detect.Model
         [XmlIgnore]
         [XmlElement("权限")]
         public bool permission { get; set; } = false;
+
+        /// <summary>
+        /// 本地开发调试授权开关。该节点仅由 DEBUG 构建读取；发布构建固定使用生产动态密码认证。
+        /// 默认关闭，现场配置不会因为升级自动获得本地编辑权限。
+        /// </summary>
+        [XmlElement("开发调试授权")]
+        public bool DeveloperLocalAuthEnabled { get; set; } = false;
+
+        /// <summary>
+        /// 当前编辑权限的授权时间和审查上下文。运行时字段不写入配置文件，权限会话结束时清空。
+        /// </summary>
+        [XmlIgnore]
+        public DateTime PermissionGrantedAt { get; set; } = DateTime.MinValue;
+
+        [XmlIgnore]
+        public string PermissionAuthorizerName { get; set; } = string.Empty;
+
+        [XmlIgnore]
+        public string PermissionAuthorizerNo { get; set; } = string.Empty;
+
+        [XmlIgnore]
+        public string PermissionRequestedReceivers { get; set; } = string.Empty;
+
+        [XmlIgnore]
+        public int PermissionPrivilegeLevel { get; set; }
+
+        [XmlIgnore]
+        public int PermissionPeriodMinutes { get; set; }
+
+        [XmlIgnore]
+        public string PermissionReason { get; set; } = string.Empty;
         #endregion
 
         #region 通讯配置

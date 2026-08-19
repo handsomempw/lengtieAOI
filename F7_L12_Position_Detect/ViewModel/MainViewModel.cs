@@ -17,6 +17,7 @@ using System.Text;
 using System.Threading;
 using TcpServerHelper;
 using System.Drawing;
+using System.Globalization;
 using System.Reflection;
 using System.Windows.Interop;
 using System.Collections.Generic;
@@ -2461,6 +2462,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                 string projectDir = Path.Combine(DataModel.Settingmodel.Prjdir, DataModel.Settingmodel.Name);
                 CleanupExtraToolConfigFiles(projectDir, DataModel.Processmodel.Tools.Count);
+                AuditSavedToolParameterChanges();
                 return true;
             }
             catch (Exception ex)
@@ -2468,6 +2470,164 @@ namespace F7_L12_Position_Detect.ViewModel
                 WriteDetailLog($"[配置保存] 工程配方保存异常：{ex.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 工程配方完成安全落盘后，依据打开编辑窗口前的工具快照记录参数审查明细。
+        /// 审查失败只记录详细日志，工程 XML 已完成的保存结果和现场编辑流程保持原有行为。
+        /// </summary>
+        private void AuditSavedToolParameterChanges()
+        {
+            try
+            {
+                var settingModel = DataModel.Settingmodel;
+                var processModel = DataModel.Processmodel;
+                int editingIndex = processModel.EditingToolIndex;
+                ToolModel previousTool = processModel.EditingToolSnapshot;
+                if (!settingModel.permission
+                    || previousTool == null
+                    || editingIndex < 0
+                    || editingIndex >= processModel.Tools.Count)
+                {
+                    return;
+                }
+
+                ToolModel currentTool = processModel.Tools[editingIndex];
+                var changes = new List<string>();
+                AppendToolParameterChanges(changes, previousTool, currentTool, string.Empty, 2);
+
+                string projectName = settingModel.Name ?? string.Empty;
+                string toolName = currentTool?.Name ?? string.Empty;
+                string authorizerName = settingModel.PermissionAuthorizerName ?? string.Empty;
+                string authorizerNo = settingModel.PermissionAuthorizerNo ?? string.Empty;
+                string grantedAt = settingModel.PermissionGrantedAt == DateTime.MinValue
+                    ? string.Empty
+                    : settingModel.PermissionGrantedAt.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+
+                string auditContext = $"工程={projectName}, 工具序号={editingIndex + 1}, 工具名称={toolName}, 授权人={authorizerName}({authorizerNo}), 授权时间={grantedAt}, 原因={settingModel.PermissionReason}, 权限等级={settingModel.PermissionPrivilegeLevel}, 有效期={settingModel.PermissionPeriodMinutes}分钟, 接收人={settingModel.PermissionRequestedReceivers}";
+                if (changes.Count == 0)
+                {
+                    WriteDetailLog($"[动态密码][参数审查] 工程保存完成，未检测到参数修改：{auditContext}");
+                }
+                else
+                {
+                    writeLog($"[动态密码][参数审查] 工程={projectName}, 工具序号={editingIndex + 1}, 参数变更={changes.Count}", false);
+                    WriteDetailLog($"[动态密码][参数审查] 工程保存完成，参数变更={changes.Count}：{auditContext}");
+                    foreach (string change in changes.Take(100))
+                    {
+                        WriteDetailLog($"[动态密码][参数审查][变更] {change}");
+                    }
+
+                    if (changes.Count > 100)
+                    {
+                        WriteDetailLog($"[动态密码][参数审查][变更] 变更项共 {changes.Count} 条，详细日志仅保留前 100 条");
+                    }
+                }
+
+                processModel.EditingToolSnapshot = CloneToolModelForAudit(currentTool);
+                processModel.EditingToolSnapshotTime = DateTime.Now;
+            }
+            catch (Exception ex)
+            {
+                WriteDetailLog($"[动态密码][参数审查] 审查记录失败：{ex.Message}");
+            }
+        }
+
+        private ToolModel CloneToolModelForAudit(ToolModel tool)
+        {
+            if (tool == null)
+            {
+                return null;
+            }
+
+            var serializer = new XmlSerializer(typeof(ToolModel));
+            using (var stream = new MemoryStream())
+            {
+                serializer.Serialize(stream, tool);
+                stream.Position = 0;
+                return serializer.Deserialize(stream) as ToolModel;
+            }
+        }
+
+        private void AppendToolParameterChanges(List<string> changes, object previousValue, object currentValue, string prefix, int depth)
+        {
+            if (depth < 0 || (previousValue == null && currentValue == null))
+            {
+                return;
+            }
+
+            Type valueType = (currentValue ?? previousValue).GetType();
+            foreach (PropertyInfo property in valueType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!property.CanRead
+                    || !property.CanWrite
+                    || property.GetIndexParameters().Length > 0
+                    || Attribute.IsDefined(property, typeof(XmlIgnoreAttribute))
+                    || !IsToolParameterRelevantForAudit(property.Name))
+                {
+                    continue;
+                }
+
+                object previousPropertyValue = previousValue == null ? null : property.GetValue(previousValue);
+                object currentPropertyValue = currentValue == null ? null : property.GetValue(currentValue);
+                string propertyName = GetToolParameterAuditName(property);
+                string path = string.IsNullOrEmpty(prefix) ? propertyName : $"{prefix}.{propertyName}";
+
+                if (IsToolParameterSimpleType(property.PropertyType))
+                {
+                    if (!object.Equals(previousPropertyValue, currentPropertyValue))
+                    {
+                        changes.Add($"{path}: {FormatToolParameterAuditValue(previousPropertyValue)} -> {FormatToolParameterAuditValue(currentPropertyValue)}");
+                    }
+                    continue;
+                }
+
+                AppendToolParameterChanges(changes, previousPropertyValue, currentPropertyValue, path, depth - 1);
+            }
+        }
+
+        private static bool IsToolParameterRelevantForAudit(string propertyName)
+        {
+            if (propertyName.StartsWith("Actual", StringComparison.Ordinal)
+                || propertyName.StartsWith("Delta", StringComparison.Ordinal)
+                || propertyName.StartsWith("CurrentBitmap", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return propertyName != "ToolStatus";
+        }
+
+        private static bool IsToolParameterSimpleType(Type valueType)
+        {
+            Type type = Nullable.GetUnderlyingType(valueType) ?? valueType;
+            return type.IsPrimitive
+                || type.IsEnum
+                || type == typeof(string)
+                || type == typeof(decimal)
+                || type == typeof(DateTime)
+                || type == typeof(Guid);
+        }
+
+        private static string GetToolParameterAuditName(PropertyInfo property)
+        {
+            var xmlElement = Attribute.GetCustomAttribute(property, typeof(XmlElementAttribute)) as XmlElementAttribute;
+            return string.IsNullOrWhiteSpace(xmlElement?.ElementName) ? property.Name : xmlElement.ElementName;
+        }
+
+        private static string FormatToolParameterAuditValue(object value)
+        {
+            if (value == null)
+            {
+                return "<空>";
+            }
+
+            if (value is IFormattable formattable)
+            {
+                return formattable.ToString(null, CultureInfo.InvariantCulture);
+            }
+
+            return value.ToString();
         }
 
         /// <summary>

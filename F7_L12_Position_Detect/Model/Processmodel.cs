@@ -36,6 +36,18 @@ namespace F7_L12_Position_Detect.Model
         [XmlIgnore]
         public int ToolIndex { set; get; } = -1;
 
+        /// <summary>
+        /// AOI 工具编辑前的运行时快照，用于保存成功后的参数变更审查，不写入工程 XML。
+        /// </summary>
+        [XmlIgnore]
+        public int EditingToolIndex { get; set; } = -1;
+
+        [XmlIgnore]
+        public ToolModel EditingToolSnapshot { get; set; }
+
+        [XmlIgnore]
+        public DateTime EditingToolSnapshotTime { get; set; } = DateTime.MinValue;
+
         [XmlElement("工具模型")]
         public ObservableCollection<ToolModel> Tools { get; set; } = new ObservableCollection<ToolModel>();
 
