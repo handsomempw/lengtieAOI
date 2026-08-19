@@ -136,6 +136,12 @@ namespace F7_L12_Position_Detect.Model
         [XmlElement("扫码检索服务器地址")]
         public string SNlistServerIP { set; get; } = "10.23.8.28";
 
+        /// <summary>
+        /// 冷贴 AOI 工具编辑的动态密码认证配置。设备号由报工配置中的设备编号统一提供。
+        /// </summary>
+        [XmlElement("动态密码认证")]
+        public DynamicPasswordAuthenticationSetting DynamicPasswordAuth { set; get; } = new DynamicPasswordAuthenticationSetting();
+
         [XmlElement("报工配置")]
         public ReportWorkConfig ReportWorkConfig { set; get; } = new ReportWorkConfig();
 

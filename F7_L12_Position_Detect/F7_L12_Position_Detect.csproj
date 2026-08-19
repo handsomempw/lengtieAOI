@@ -44,6 +44,9 @@
     <Reference Include="CommonServiceLocator, Version=2.0.2.0, Culture=neutral, PublicKeyToken=489b6accfaf20ef0, processorArchitecture=MSIL">
       <HintPath>..\packages\CommonServiceLocator.2.0.2\lib\net47\CommonServiceLocator.dll</HintPath>
     </Reference>
+    <Reference Include="Faratronic.EquipUtils.Authentication">
+      <HintPath>..\third_party\faratronic-auth\net462\Faratronic.EquipUtils.Authentication.dll</HintPath>
+    </Reference>
     <Reference Include="GalaSoft.MvvmLight, Version=5.4.1.0, Culture=neutral, PublicKeyToken=e7570ab207bcb616, processorArchitecture=MSIL">
       <HintPath>..\packages\MvvmLightLibs.5.4.1.1\lib\net45\GalaSoft.MvvmLight.dll</HintPath>
     </Reference>
@@ -123,9 +126,11 @@
     <Compile Include="Model\RecordModel.cs" />
     <Compile Include="Model\SettingModel.cs" />
     <Compile Include="Model\Setting\ImageSaveSetting.cs" />
+    <Compile Include="Model\Setting\DynamicPasswordAuthenticationSetting.cs" />
     <Compile Include="Model\Setting\TcpSetting.cs" />
     <Compile Include="Model\Tool\ToolModel.cs" />
     <Compile Include="Service\MESService.cs" />
+    <Compile Include="Service\DynamicPasswordAuthService.cs" />
     <Compile Include="SettingForm.xaml.cs">
       <DependentUpon>SettingForm.xaml</DependentUpon>
     </Compile>
@@ -139,6 +144,9 @@
     </Compile>
     <Compile Include="View\InputPassword.xaml.cs">
       <DependentUpon>InputPassword.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="View\DynamicPasswordAuthWindow.xaml.cs">
+      <DependentUpon>DynamicPasswordAuthWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="View\InspectionWindow.xaml.cs">
       <DependentUpon>InspectionWindow.xaml</DependentUpon>
@@ -181,6 +189,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="View\InputPassword.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="View\DynamicPasswordAuthWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

@@ -23,6 +23,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using Camera;
 using F7_L12_Position_Detect.Model;
+using F7_L12_Position_Detect.Service;
 using Honeywell;
 
 namespace F7_L12_Position_Detect
@@ -33,6 +34,10 @@ namespace F7_L12_Position_Detect
     public partial class MainWindow : WindowX
     {
         ViewModelLocator vml = null;
+        private DynamicPasswordAuthService aoiPermissionAuthService;
+        private CancellationTokenSource aoiPermissionCts;
+        private EventHandler aoiPermissionExpiredHandler;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -164,13 +169,155 @@ namespace F7_L12_Position_Detect
         {
             if (vml.Main.DataModel.Settingmodel.permission)
             {
+                bool saved = TrySaveBeforePermissionClose();
                 vml.Main.DataModel.Settingmodel.permission = false;
+                DisposeAoiPermissionAuthService();
+                NoticeBox.Show(
+                    saved ? "编辑权限已关闭，已保存工具配置" : "编辑权限已关闭，工具配置保存失败，请查看日志",
+                    "提示",
+                    saved ? MessageBoxIcon.Success : MessageBoxIcon.Warning,
+                    true,
+                    5000);
                 return;
             }
-            InputPassword ip = new InputPassword("faracheck");
-            if (ip.ShowDialog() == true)
+
+            var settingModel = vml.Main.DataModel.Settingmodel;
+            var authSetting = settingModel.DynamicPasswordAuth;
+            if (authSetting == null || !authSetting.Enabled)
             {
-                vml.Main.DataModel.Settingmodel.permission = true;
+                NoticeBox.Show("动态密码认证未启用，请检查系统配置", "提示", MessageBoxIcon.Warning, true, 5000);
+                return;
+            }
+
+            string equipmentNumber = settingModel.ReportWorkConfig?.EquipmentNumber;
+            if (string.IsNullOrWhiteSpace(equipmentNumber))
+            {
+                NoticeBox.Show("设备编号未配置，请先在报工配置中填写设备编号", "提示", MessageBoxIcon.Warning, true, 5000);
+                return;
+            }
+
+            var permissionButton = sender as Button;
+            if (permissionButton != null)
+            {
+                permissionButton.IsEnabled = false;
+            }
+
+            try
+            {
+                DisposeAoiPermissionAuthService();
+
+                CancellationTokenSource cts = new CancellationTokenSource();
+                DynamicPasswordAuthService service = new DynamicPasswordAuthService(authSetting, equipmentNumber);
+                try
+                {
+                    var window = new View.DynamicPasswordAuthWindow(service, "AOI 工具编辑/参数修改", cts.Token)
+                    {
+                        Owner = this
+                    };
+
+                    if (window.ShowDialog() != true || window.VerifyInfo == null || !window.VerifyInfo.Verified)
+                    {
+                        return;
+                    }
+
+                    aoiPermissionCts = cts;
+                    aoiPermissionAuthService = service;
+                    cts = null;
+                    service = null;
+
+                    aoiPermissionExpiredHandler = (s, args) =>
+                    {
+                        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+                        {
+                            return;
+                        }
+
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            if (!vml.Main.DataModel.Settingmodel.permission)
+                            {
+                                return;
+                            }
+
+                            bool saved = TrySaveBeforePermissionClose();
+                            vml.Main.DataModel.Settingmodel.permission = false;
+                            DisposeAoiPermissionAuthService();
+                            NoticeBox.Show(
+                                saved ? "动态密码已过期，编辑权限已关闭并保存工具配置" : "动态密码已过期，编辑权限已关闭，工具配置保存失败，请查看日志",
+                                "提示",
+                                MessageBoxIcon.Warning,
+                                true,
+                                6000);
+                        }));
+                    };
+                    aoiPermissionAuthService.PasswordExpired += aoiPermissionExpiredHandler;
+
+                    settingModel.permission = true;
+                    NoticeBox.Show($"动态密码验证通过，编辑权限有效期为 {authSetting.PeriodMinutes} 分钟", "提示", MessageBoxIcon.Success, true, 4000);
+                }
+                finally
+                {
+                    service?.Dispose();
+                    cts?.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                NoticeBox.Show($"动态密码认证失败：{ex.Message}", "错误", MessageBoxIcon.Error, true, 6000);
+            }
+            finally
+            {
+                if (permissionButton != null)
+                {
+                    permissionButton.IsEnabled = true;
+                }
+            }
+        }
+
+        private bool TrySaveBeforePermissionClose()
+        {
+            try
+            {
+                vml.Main.SaveProcessmodel();
+                vml.Main.SaveSettingModel();
+                return vml.Main.SavePrjXmls();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void DisposeAoiPermissionAuthService()
+        {
+            try
+            {
+                aoiPermissionCts?.Cancel();
+                aoiPermissionCts?.Dispose();
+            }
+            catch
+            {
+            }
+            finally
+            {
+                aoiPermissionCts = null;
+            }
+
+            try
+            {
+                if (aoiPermissionAuthService != null && aoiPermissionExpiredHandler != null)
+                {
+                    aoiPermissionAuthService.PasswordExpired -= aoiPermissionExpiredHandler;
+                }
+                aoiPermissionAuthService?.Dispose();
+            }
+            catch
+            {
+            }
+            finally
+            {
+                aoiPermissionAuthService = null;
+                aoiPermissionExpiredHandler = null;
             }
         }
 
@@ -187,6 +334,8 @@ namespace F7_L12_Position_Detect
             vml.Main.SaveRecordModel();
             vml.Main.SaveSettingModel();
             vml.Main.SavePrjXmls();
+            vml.Main.DataModel.Settingmodel.permission = false;
+            DisposeAoiPermissionAuthService();
 
             //vml.Main.close_device();
             Environment.Exit(0);
