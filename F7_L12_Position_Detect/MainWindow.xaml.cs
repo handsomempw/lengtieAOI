@@ -124,27 +124,41 @@ namespace F7_L12_Position_Detect
 
         private void ListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (!vml.Main.DataModel.Settingmodel.permission)
+            bool hasEditPermission = vml.Main.DataModel.Settingmodel.permission;
+            if (hasEditPermission &&
+                MessageBoxX.Show("是否确定打开编辑工具？", "提示", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             {
-                NoticeBox.Show("请先打开权限，再进行编辑", "提示", MessageBoxIcon.Warning, true, 5000);
                 return;
             }
-            if (MessageBoxX.Show("是否确定打开编辑工具？", "提示", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+
+            var tools = vml.Main.DataModel.Processmodel.Tools;
+            int selectedIndex = vml.Main.DataModel.Processmodel.selectedindex;
+            if (tools == null || tools.Count == 0)
             {
-                vml.Main.DataModel.Processmodel.tool = vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
+                NoticeBox.Show("当前没有可打开的工具", "提示", MessageBoxIcon.Warning, true, 3000);
+                return;
+            }
+
+            if (selectedIndex < 0 || selectedIndex >= tools.Count)
+            {
+                NoticeBox.Show("请先选中一个工具再打开", "提示", MessageBoxIcon.Warning, true, 3000);
+                return;
+            }
+
+            vml.Main.DataModel.Processmodel.tool = tools[selectedIndex];
+            vml.Main.LoadBitmapSource();
+            if (hasEditPermission)
+            {
                 CaptureEditingToolSnapshotForAudit();
-                vml.Main.LoadBitmapSource();
-                //vml.Main.DataModel.Processmodel.tool = @vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.selectedindex];
-                SettingForm settingForm = new SettingForm();
-                //settingForm.Topmost = true;
-                settingForm.ShowDialog();
-                if (!vml.Main.SavePrjXmls())
-                {
-                    NoticeBox.Show("工具参数未落盘，请查看详细日志", "提示", MessageBoxIcon.Warning, true, 5000);
-                }
-                //settingForm.Show();
+            }
 
+            SettingForm settingForm = new SettingForm(isReadOnly: !hasEditPermission);
+            settingForm.ShowDialog();
 
+            // 只读查看不能把窗口内的临时交互写回工程；编辑会话沿用原有保存流程。
+            if (hasEditPermission && !vml.Main.SavePrjXmls())
+            {
+                NoticeBox.Show("工具参数未落盘，请查看详细日志", "提示", MessageBoxIcon.Warning, true, 5000);
             }
         }
 
@@ -184,12 +198,10 @@ namespace F7_L12_Position_Detect
                 return;
             }
 
-#if DEBUG
             if (TryEnableDebugPermission())
             {
                 return;
             }
-#endif
 
             var settingModel = vml.Main.DataModel.Settingmodel;
             var authSetting = settingModel.DynamicPasswordAuth;
@@ -308,9 +320,8 @@ namespace F7_L12_Position_Detect
             }
         }
 
-#if DEBUG
         /// <summary>
-        /// 在开发配置开启本地授权的 DEBUG 构建中建立本地 AOI 编辑会话。发布构建不包含该入口。
+        /// 在配置开启本地授权的 Debug 程序中建立本地 AOI 编辑会话；关闭配置时继续进入动态密码认证。
         /// </summary>
         private bool TryEnableDebugPermission()
         {
@@ -333,7 +344,6 @@ namespace F7_L12_Position_Detect
             NoticeBox.Show("Debug 调试会话已启用本地编辑权限", "提示", MessageBoxIcon.Info, true, 4000);
             return true;
         }
-#endif
 
         private void CaptureEditingToolSnapshotForAudit()
         {

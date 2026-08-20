@@ -69,7 +69,7 @@ namespace F7_L12_Position_Detect.Model
         public bool permission { get; set; } = false;
 
         /// <summary>
-        /// 本地开发调试授权开关。该节点仅由 DEBUG 构建读取；发布构建固定使用生产动态密码认证。
+        /// Debug 程序的本地开发调试授权开关。打开后使用本地测试授权，关闭后使用动态密码认证。
         /// 默认关闭，现场配置不会因为升级自动获得本地编辑权限。
         /// </summary>
         [XmlElement("开发调试授权")]

@@ -10,6 +10,7 @@
            WindowStartupLocation="CenterScreen" WindowState="Maximized"
         Title="工具设置" Height="1020" Width="1200"
            SizeChanged="WindowX_SizeChanged"
+           Loaded="WindowX_Loaded"
            >
     <p:WindowX.DataContext>
         <Binding Source="{StaticResource Locator}" Path="Main.DataModel.Processmodel.tool"/>
@@ -70,7 +71,7 @@
 
         </ScrollViewer>
 
-        <GroupBox Header="工具参数" Grid.Column="1">
+        <GroupBox x:Name="ToolParameterPanel" Header="工具参数" Grid.Column="1">
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height=" auto"/>

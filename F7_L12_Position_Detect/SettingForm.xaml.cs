@@ -37,6 +37,14 @@ namespace F7_L12_Position_Detect
     {
         ViewModelLocator vml;
         ToolModel t = null;
+        private readonly bool _isReadOnly;
+
+        private static readonly HashSet<string> ReadOnlyAllowedTestButtonNames =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(DimensionApply),
+                nameof(DimensionApply_Pic)
+            };
 
 
         bool selectbroi = false;
@@ -44,8 +52,9 @@ namespace F7_L12_Position_Detect
         bool selectdroi = false;
 
 
-        public SettingForm()
+        public SettingForm(bool isReadOnly = false)
         {
+            _isReadOnly = isReadOnly;
             InitializeComponent();
             vml = this.FindResource("Locator") as ViewModelLocator;
             t = (ToolModel)DataContext;
@@ -53,6 +62,64 @@ namespace F7_L12_Position_Detect
 
             // 监听相机选择变更事件
             t.PropertyChanged += Tool_PropertyChanged;
+        }
+
+        private void WindowX_Loaded(object sender, RoutedEventArgs e)
+        {
+            refreshrectangle();
+            if (_isReadOnly)
+            {
+                Title = "工具设置（只读查看）";
+                ApplyReadOnlyState();
+            }
+        }
+
+        private void ApplyReadOnlyState()
+        {
+            ApplyReadOnlyToElement(ToolParameterPanel);
+        }
+
+        private void ApplyReadOnlyToElement(DependencyObject element)
+        {
+            if (element == null)
+            {
+                return;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(element);
+            for (int i = 0; i < childCount; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(element, i);
+                if (child is Button button && !ReadOnlyAllowedTestButtonNames.Contains(button.Name))
+                {
+                    button.IsEnabled = false;
+                }
+                else if (child is TextBox textBox)
+                {
+                    textBox.IsReadOnly = true;
+                }
+                else if (child is ComboBox comboBox)
+                {
+                    comboBox.IsEnabled = false;
+                }
+                else if (child is CheckBox checkBox)
+                {
+                    checkBox.IsEnabled = false;
+                }
+
+                ApplyReadOnlyToElement(child);
+            }
+        }
+
+        private bool EnsureEditable()
+        {
+            if (_isReadOnly)
+            {
+                NoticeBox.Show("当前为只读查看模式，解锁后才能调整参数", "提示", MessageBoxIcon.Warning, true, 4000);
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -110,9 +177,12 @@ namespace F7_L12_Position_Detect
                 }
                 else if (string.IsNullOrEmpty(configuredSerialNumber) && t.AvailableCameras.Count > 0)
                 {
-                    // 历史工具没有相机配置时沿用首次打开自动选择第一台在线相机的兼容口径。
+                    // 编辑模式沿用历史兼容口径；只读查看保留空配置，避免浏览工具时改变参数。
                     t.SelectedCameraIndex = 0;
-                    UpdateCameraSerialNumber();
+                    if (!_isReadOnly)
+                    {
+                        UpdateCameraSerialNumber();
+                    }
                 }
             }
             catch (Exception ex)
@@ -128,7 +198,7 @@ namespace F7_L12_Position_Detect
         /// </summary>
         private void Tool_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(ToolModel.SelectedCameraIndex))
+            if (!_isReadOnly && e.PropertyName == nameof(ToolModel.SelectedCameraIndex))
             {
                 UpdateCameraSerialNumber();
             }
@@ -141,6 +211,11 @@ namespace F7_L12_Position_Detect
         {
             try
             {
+                if (_isReadOnly)
+                {
+                    return;
+                }
+
                 if (t.SelectedCameraIndex >= 0 && t.SelectedCameraIndex < t.AvailableCameras.Count)
                 {
                     // 从相机名称中提取序列号
@@ -161,6 +236,11 @@ namespace F7_L12_Position_Detect
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureEditable())
+            {
+                return;
+            }
+
             try
             {
                 OpenFileDialog ofd = new OpenFileDialog();
@@ -246,6 +326,11 @@ namespace F7_L12_Position_Detect
         private bool _started = false;
         private void rectange_MouseMove(object sender, MouseEventArgs e)
         {
+            if (_isReadOnly)
+            {
+                return;
+            }
+
             if (_started)
             {
                 var point = e.GetPosition(show_image_canvas);
@@ -273,6 +358,11 @@ namespace F7_L12_Position_Detect
 
         private void rectange_MouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (_isReadOnly)
+            {
+                return;
+            }
+
             if (selectproi || selectbroi || selectdroi)
             {
                 _downPoint = e.GetPosition(show_image_canvas);
@@ -282,6 +372,10 @@ namespace F7_L12_Position_Detect
 
         private void rectange_MouseUp(object sender, MouseButtonEventArgs e)
         {
+            if (_isReadOnly)
+            {
+                return;
+            }
 
             if (selectbroi)
             {
@@ -479,6 +573,11 @@ namespace F7_L12_Position_Detect
 
         private void SelectPositionROI_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureEditable())
+            {
+                return;
+            }
+
             selectproi = !selectproi;
 
             SelectPositionROI.Background = selectproi ? System.Windows.Media.Brushes.Orange : System.Windows.Media.Brushes.Gray;
@@ -486,6 +585,11 @@ namespace F7_L12_Position_Detect
 
         private void SelectBarcodeROI_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureEditable())
+            {
+                return;
+            }
+
             selectbroi = !selectbroi;
             SelectBarcodeROI.Background = selectbroi ? System.Windows.Media.Brushes.OrangeRed : System.Windows.Media.Brushes.Gray;
 
@@ -493,6 +597,11 @@ namespace F7_L12_Position_Detect
 
         private void modelsetting_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureEditable())
+            {
+                return;
+            }
+
             try
             {
                 string shmfilename = $"{vml.Main.DataModel.Settingmodel.Prjdir}\\{vml.Main.DataModel.Settingmodel.Name}\\Tool{vml.Main.DataModel.Processmodel.Tools[vml.Main.DataModel.Processmodel.tool.Index - 1].Index}.shm";
@@ -505,6 +614,11 @@ namespace F7_L12_Position_Detect
 
         private void ApplyAll_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureEditable())
+            {
+                return;
+            }
+
             if (MessageBoxX.Show("是否确定应用并更新所有配置?", "提示", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
             {
                 for (int i = 0; i < vml.Main.DataModel.Processmodel.Tools.Count; i++)
@@ -524,6 +638,11 @@ namespace F7_L12_Position_Detect
 
         private void SelectDimensionROI_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureEditable())
+            {
+                return;
+            }
+
             selectdroi = !selectdroi;
             SelectDimensionROI.Background = selectdroi ? System.Windows.Media.Brushes.Orange : System.Windows.Media.Brushes.Gray;
         }

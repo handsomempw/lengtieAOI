@@ -17,6 +17,7 @@ using System.Text;
 using System.Threading;
 using TcpServerHelper;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Globalization;
 using System.Reflection;
 using System.Windows.Interop;
@@ -232,6 +233,86 @@ namespace F7_L12_Position_Detect.ViewModel
                 captureTime.ToString("yyyyMMdd"),
                 resultFolder,
                 fileName);
+        }
+
+        /// <summary>
+        /// 为面积工具生成带 ROI 和结果文字的图片副本。坐标使用原图像素坐标，避免把界面缩放坐标写入生产图片。
+        /// </summary>
+        private Bitmap CreateAreaAnnotatedBitmap(HObject image, ToolModel tool)
+        {
+            if (image == null || tool == null)
+            {
+                return null;
+            }
+
+            Bitmap source = null;
+            try
+            {
+                Hobject2Bitmap.HobjectToBitmap24(image, out source);
+                var annotated = new Bitmap(source.Width, source.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                using (Graphics graphics = Graphics.FromImage(annotated))
+                using (var roiPen = new System.Drawing.Pen(tool.ToolStatus == ToolStatus.OK ? Color.LimeGreen : Color.Red, 4f))
+                using (var textFont = new System.Drawing.Font("Microsoft YaHei", 18f, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Pixel))
+                using (var textBrush = new SolidBrush(tool.ToolStatus == ToolStatus.OK ? Color.LimeGreen : Color.Red))
+                using (var textBackground = new SolidBrush(Color.FromArgb(180, Color.Black)))
+                {
+                    graphics.DrawImageUnscaled(source, 0, 0);
+
+                    int left = Math.Max(0, Math.Min(tool.DimensionROI.Col1, tool.DimensionROI.Col2));
+                    int top = Math.Max(0, Math.Min(tool.DimensionROI.Row1, tool.DimensionROI.Row2));
+                    int right = Math.Min(annotated.Width - 1, Math.Max(tool.DimensionROI.Col1, tool.DimensionROI.Col2));
+                    int bottom = Math.Min(annotated.Height - 1, Math.Max(tool.DimensionROI.Row1, tool.DimensionROI.Row2));
+                    if (right > left && bottom > top)
+                    {
+                        graphics.DrawRectangle(roiPen, left, top, right - left, bottom - top);
+                    }
+
+                    string statusText = tool.ToolStatus == ToolStatus.OK ? "OK" : tool.ToolStatus.ToString();
+                    string resultText = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "面积: {0} px^2  范围: [{1}, {2}]  结果: {3}",
+                        tool.ActualDimension,
+                        tool.MinDimension,
+                        tool.MaxDimension,
+                        statusText);
+                    SizeF textSize = graphics.MeasureString(resultText, textFont);
+                    float textX = Math.Max(0, Math.Min(left, annotated.Width - textSize.Width - 8));
+                    float textY = top >= textSize.Height + 8 ? top - textSize.Height - 8 : Math.Min(bottom + 8, annotated.Height - textSize.Height - 8);
+                    textY = Math.Max(0, textY);
+                    graphics.FillRectangle(textBackground, textX, textY, textSize.Width + 8, textSize.Height + 4);
+                    graphics.DrawString(resultText, textFont, textBrush, textX + 4, textY + 2);
+                }
+
+                return annotated;
+            }
+            finally
+            {
+                source?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 保存检测图片。面积工具保存带 ROI 和面积判定信息的图片，其他工具继续沿用原始 HALCON 图片保存方式。
+        /// </summary>
+        private void SaveInspectionImage(HObject image, ToolModel tool, string savefilename)
+        {
+            if (tool?.TestMode == TestModes.面积)
+            {
+                try
+                {
+                    using (Bitmap annotated = CreateAreaAnnotatedBitmap(image, tool))
+                    {
+                        annotated?.Save(savefilename, ImageFormat.Jpeg);
+                    }
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    WriteDetailLog($"[面积图片标注] 标注保存失败，回退原图：工具={tool.Index}，原因={ex.Message}");
+                }
+            }
+
+            HOperatorSet.WriteImage(image, "jpg", 0, savefilename);
         }
 
         // 点检定时器
@@ -3278,7 +3359,7 @@ namespace F7_L12_Position_Detect.ViewModel
                                     Directory.CreateDirectory(dir);
                                 }
 
-                                HOperatorSet.WriteImage(Image, "jpg", 0, savefilename);
+                                SaveInspectionImage(Image, tool, savefilename);
                                 WriteDetailLog($"[图片保存] 规格={GetImageSpecificationName()} 结果={resultFolder} 路径={savefilename}");
                             }
                         }
