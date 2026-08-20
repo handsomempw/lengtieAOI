@@ -44,6 +44,7 @@ namespace F7_L12_Position_Detect.View
                 requestedReceivers = await authService.RequestPasswordAsync(reason, cancellationToken) ?? Array.Empty<Receiver>();
                 if (requestedReceivers.Count == 0)
                 {
+                    DynamicPasswordAuditLogger.Write(authService.AuditId, "申请结果", "界面未找到可审批管理员");
                     requestStatusTextBlock.Text = "未找到可审批管理员";
                     NoticeBox.Show("未找到可审批管理员，请检查认证服务或接收人工号配置", "提示", MessageBoxIcon.Warning, true, 6000);
                     return;
@@ -56,10 +57,12 @@ namespace F7_L12_Position_Detect.View
             }
             catch (OperationCanceledException)
             {
+                DynamicPasswordAuditLogger.Write(authService.AuditId, "申请取消", "界面操作已取消");
                 requestStatusTextBlock.Text = "申请已取消";
             }
             catch (Exception ex)
             {
+                DynamicPasswordAuditLogger.Write(authService.AuditId, "申请界面异常", ex.Message);
                 requestStatusTextBlock.Text = "申请失败";
                 NoticeBox.Show($"申请动态密码失败：{ex.Message}", "错误", MessageBoxIcon.Error, true, 6000);
             }
@@ -76,6 +79,7 @@ namespace F7_L12_Position_Detect.View
             {
                 if (requestedReceivers.Count == 0)
                 {
+                    DynamicPasswordAuditLogger.Write(authService.AuditId, "验证拒绝", "尚未完成动态密码申请");
                     NoticeBox.Show("请先申请动态密码", "提示", MessageBoxIcon.Warning, true, 5000);
                     return;
                 }
@@ -83,6 +87,7 @@ namespace F7_L12_Position_Detect.View
                 string password = (passwordBox.Password ?? string.Empty).Trim();
                 if (password.Length != 6 || password.Any(character => character < '0' || character > '9'))
                 {
+                    DynamicPasswordAuditLogger.Write(authService.AuditId, "验证拒绝", "输入格式不符合六位数字要求");
                     NoticeBox.Show("动态密码格式应为 6 位数字", "提示", MessageBoxIcon.Warning, true, 5000);
                     return;
                 }
@@ -103,10 +108,12 @@ namespace F7_L12_Position_Detect.View
             }
             catch (OperationCanceledException)
             {
+                DynamicPasswordAuditLogger.Write(authService.AuditId, "验证取消", "界面操作已取消");
                 requestStatusTextBlock.Text = "验证已取消";
             }
             catch (Exception ex)
             {
+                DynamicPasswordAuditLogger.Write(authService.AuditId, "验证界面异常", ex.Message);
                 requestStatusTextBlock.Text = "验证异常";
                 NoticeBox.Show($"验证动态密码失败：{ex.Message}", "错误", MessageBoxIcon.Error, true, 6000);
             }
@@ -118,6 +125,7 @@ namespace F7_L12_Position_Detect.View
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
+            DynamicPasswordAuditLogger.Write(authService.AuditId, "授权窗口关闭", "操作者取消授权窗口");
             DialogResult = false;
         }
     }

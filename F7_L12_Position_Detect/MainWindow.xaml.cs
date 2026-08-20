@@ -186,7 +186,9 @@ namespace F7_L12_Position_Detect
         {
             if (vml.Main.DataModel.Settingmodel.permission)
             {
+                string auditId = vml.Main.DataModel.Settingmodel.PermissionAuditId;
                 bool saved = TrySaveBeforePermissionClose();
+                DynamicPasswordAuditLogger.Write(auditId, "权限关闭", $"方式=手动, 工程保存={(saved ? "成功" : "失败")}");
                 vml.Main.DataModel.Settingmodel.permission = false;
                 DisposeAoiPermissionAuthService();
                 NoticeBox.Show(
@@ -244,6 +246,7 @@ namespace F7_L12_Position_Detect
 
                     aoiPermissionCts = cts;
                     aoiPermissionAuthService = service;
+                    settingModel.PermissionAuditId = service.AuditId;
                     cts = null;
                     service = null;
 
@@ -262,6 +265,8 @@ namespace F7_L12_Position_Detect
                             }
 
                             bool saved = TrySaveBeforePermissionClose();
+                            string auditId = vml.Main.DataModel.Settingmodel.PermissionAuditId;
+                            DynamicPasswordAuditLogger.Write(auditId, "权限关闭", $"方式=密码过期, 工程保存={(saved ? "成功" : "失败")}");
                             vml.Main.DataModel.Settingmodel.permission = false;
                             DisposeAoiPermissionAuthService();
                             NoticeBox.Show(
@@ -283,6 +288,7 @@ namespace F7_L12_Position_Detect
                     settingModel.PermissionRequestedReceivers = string.Join(", ",
                         window.RequestedReceivers.Select(receiver => $"{receiver.ReceiverName}({receiver.ReceiverNo})"));
                     settingModel.permission = true;
+                    DynamicPasswordAuditLogger.Write(settingModel.PermissionAuditId, "授权开启", $"授权人={settingModel.PermissionAuthorizerName}({settingModel.PermissionAuthorizerNo}), 权限等级={settingModel.PermissionPrivilegeLevel}, 有效期={settingModel.PermissionPeriodMinutes}分钟, 原因={settingModel.PermissionReason}");
                     vml.Main.writeLog($"[动态密码][授权] 验证通过：授权人={settingModel.PermissionAuthorizerName}({settingModel.PermissionAuthorizerNo}), 权限等级={settingModel.PermissionPrivilegeLevel}, 有效期={settingModel.PermissionPeriodMinutes}分钟", true);
                     NoticeBox.Show($"动态密码验证通过，编辑权限有效期为 {authSetting.PeriodMinutes} 分钟", "提示", MessageBoxIcon.Success, true, 4000);
                 }
@@ -332,6 +338,7 @@ namespace F7_L12_Position_Detect
             }
 
             settingModel.PermissionGrantedAt = DateTime.Now;
+            settingModel.PermissionAuditId = DynamicPasswordAuditLogger.CreateAuditId();
             settingModel.PermissionAuthorizerName = "开发调试";
             settingModel.PermissionAuthorizerNo = "DEBUG";
             settingModel.PermissionPrivilegeLevel = 0;
@@ -340,6 +347,7 @@ namespace F7_L12_Position_Detect
             settingModel.PermissionRequestedReceivers = string.Empty;
             settingModel.permission = true;
 
+            DynamicPasswordAuditLogger.Write(settingModel.PermissionAuditId, "授权开启", "方式=本地开发调试, 授权人=开发调试(DEBUG)");
             vml.Main.writeLog("[动态密码][开发调试] 已启用本地 AOI 编辑权限：配置已开启，当前 DEBUG 会话使用本地授权", true);
             NoticeBox.Show("Debug 调试会话已启用本地编辑权限", "提示", MessageBoxIcon.Info, true, 4000);
             return true;
@@ -427,6 +435,7 @@ namespace F7_L12_Position_Detect
                     settingModel.PermissionPrivilegeLevel = 0;
                     settingModel.PermissionPeriodMinutes = 0;
                     settingModel.PermissionReason = string.Empty;
+                    settingModel.PermissionAuditId = string.Empty;
                 }
 
                 var processModel = vml?.Main?.DataModel?.Processmodel;
@@ -451,7 +460,11 @@ namespace F7_L12_Position_Detect
             vml.Main.SaveProcessmodel();
             vml.Main.SaveRecordModel();
             vml.Main.SaveSettingModel();
-            vml.Main.SavePrjXmls();
+            bool projectSaved = vml.Main.SavePrjXmls();
+            DynamicPasswordAuditLogger.Write(
+                vml.Main.DataModel.Settingmodel.PermissionAuditId,
+                "权限关闭",
+                $"方式=软件退出, 工程保存={(projectSaved ? "成功" : "失败")}");
             vml.Main.DataModel.Settingmodel.permission = false;
             DisposeAoiPermissionAuthService();
 

@@ -98,6 +98,12 @@ namespace F7_L12_Position_Detect.Model
 
         [XmlIgnore]
         public string PermissionReason { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 当前动态密码授权会话的审计关联编号。运行时字段不写入工程 XML，权限关闭后清空。
+        /// </summary>
+        [XmlIgnore]
+        public string PermissionAuditId { get; set; } = string.Empty;
         #endregion
 
         #region 通讯配置

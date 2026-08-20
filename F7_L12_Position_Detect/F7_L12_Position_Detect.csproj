@@ -135,6 +135,7 @@
     <Compile Include="Model\Tool\ToolModel.cs" />
     <Compile Include="Service\MESService.cs" />
     <Compile Include="Service\DynamicPasswordAuthService.cs" />
+    <Compile Include="Service\DynamicPasswordAuditLogger.cs" />
     <Compile Include="SettingForm.xaml.cs">
       <DependentUpon>SettingForm.xaml</DependentUpon>
     </Compile>

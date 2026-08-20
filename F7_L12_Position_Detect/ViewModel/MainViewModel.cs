@@ -2588,20 +2588,20 @@ namespace F7_L12_Position_Detect.ViewModel
                 string auditContext = $"工程={projectName}, 工具序号={editingIndex + 1}, 工具名称={toolName}, 授权人={authorizerName}({authorizerNo}), 授权时间={grantedAt}, 原因={settingModel.PermissionReason}, 权限等级={settingModel.PermissionPrivilegeLevel}, 有效期={settingModel.PermissionPeriodMinutes}分钟, 接收人={settingModel.PermissionRequestedReceivers}";
                 if (changes.Count == 0)
                 {
-                    WriteDetailLog($"[动态密码][参数审查] 工程保存完成，未检测到参数修改：{auditContext}");
+                    DynamicPasswordAuditLogger.Write(settingModel.PermissionAuditId, "参数审查", $"工程保存完成, 未检测到参数修改, {auditContext}");
                 }
                 else
                 {
+                    DynamicPasswordAuditLogger.Write(settingModel.PermissionAuditId, "参数审查", $"工程保存完成, 参数变更={changes.Count}, {auditContext}");
                     writeLog($"[动态密码][参数审查] 工程={projectName}, 工具序号={editingIndex + 1}, 参数变更={changes.Count}", false);
-                    WriteDetailLog($"[动态密码][参数审查] 工程保存完成，参数变更={changes.Count}：{auditContext}");
                     foreach (string change in changes.Take(100))
                     {
-                        WriteDetailLog($"[动态密码][参数审查][变更] {change}");
+                        DynamicPasswordAuditLogger.Write(settingModel.PermissionAuditId, "参数变更", change);
                     }
 
                     if (changes.Count > 100)
                     {
-                        WriteDetailLog($"[动态密码][参数审查][变更] 变更项共 {changes.Count} 条，详细日志仅保留前 100 条");
+                        DynamicPasswordAuditLogger.Write(settingModel.PermissionAuditId, "参数变更", $"变更项共 {changes.Count} 条，审计日志仅保留前 100 条");
                     }
                 }
 
@@ -2610,7 +2610,8 @@ namespace F7_L12_Position_Detect.ViewModel
             }
             catch (Exception ex)
             {
-                WriteDetailLog($"[动态密码][参数审查] 审查记录失败：{ex.Message}");
+                DynamicPasswordAuditLogger.Write(DataModel?.Settingmodel?.PermissionAuditId, "参数审查异常", ex.Message);
+                writeLog($"[动态密码][参数审查] 审查记录失败：{ex.Message}", true);
             }
         }
 

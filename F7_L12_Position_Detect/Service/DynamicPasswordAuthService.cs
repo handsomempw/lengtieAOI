@@ -19,6 +19,11 @@ namespace F7_L12_Position_Detect.Service
         private readonly string equipmentNumber;
         private bool disposed;
 
+        /// <summary>
+        /// 本次动态密码申请、验证和权限回收共用的审计关联编号。
+        /// </summary>
+        public string AuditId { get; }
+
         public event EventHandler PasswordExpired;
 
         public DynamicPasswordAuthService(DynamicPasswordAuthenticationSetting setting, string equipmentNumber)
@@ -30,6 +35,7 @@ namespace F7_L12_Position_Detect.Service
             }
 
             this.equipmentNumber = equipmentNumber;
+            AuditId = DynamicPasswordAuditLogger.CreateAuditId();
             dynamicPassword = new DynamicPassword(false);
             dynamicPassword.PasswordExpired += OnPasswordExpired;
         }
@@ -42,12 +48,27 @@ namespace F7_L12_Position_Detect.Service
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ValidateSetting();
+                DynamicPasswordAuditLogger.Write(AuditId, "申请开始", $"应用={setting.ApplicationName}, 权限等级={setting.PrivilegeLevel}, 有效期={setting.PeriodMinutes}分钟, 原因={reason}");
+                try
+                {
+                    List<Receiver> receivers = string.IsNullOrWhiteSpace(setting.ReceiverNo)
+                        ? dynamicPassword.RequestPassword(equipmentNumber, setting.ApplicationName, setting.PrivilegeLevel, setting.PeriodMinutes, reason)
+                        : dynamicPassword.RequestPasswordManualReceiver(setting.ReceiverNo, equipmentNumber, setting.ApplicationName, setting.PrivilegeLevel, setting.PeriodMinutes, reason);
 
-                List<Receiver> receivers = string.IsNullOrWhiteSpace(setting.ReceiverNo)
-                    ? dynamicPassword.RequestPassword(equipmentNumber, setting.ApplicationName, setting.PrivilegeLevel, setting.PeriodMinutes, reason)
-                    : dynamicPassword.RequestPasswordManualReceiver(setting.ReceiverNo, equipmentNumber, setting.ApplicationName, setting.PrivilegeLevel, setting.PeriodMinutes, reason);
-
-                return (IReadOnlyList<Receiver>)(receivers ?? new List<Receiver>());
+                    receivers = receivers ?? new List<Receiver>();
+                    DynamicPasswordAuditLogger.Write(AuditId, "申请结果", $"结果={(receivers.Count > 0 ? "成功" : "未找到接收人")}, 接收人数={receivers.Count}");
+                    return (IReadOnlyList<Receiver>)receivers;
+                }
+                catch (OperationCanceledException)
+                {
+                    DynamicPasswordAuditLogger.Write(AuditId, "申请取消", "操作已取消");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    DynamicPasswordAuditLogger.Write(AuditId, "申请失败", ex.Message);
+                    throw;
+                }
             }, cancellationToken);
         }
 
@@ -59,13 +80,28 @@ namespace F7_L12_Position_Detect.Service
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ValidateSetting();
-
-                dynamic result = dynamicPassword.VerifyPassword(equipmentNumber, setting.ApplicationName, password);
-                return new DynamicPasswordVerifyInfo(
-                    result != null && result.VerifyStatus,
-                    result != null ? (string)(result.VerifyMessage ?? string.Empty) : "验证失败（无返回结果）",
-                    result != null ? (string)(result.AuthorizerName ?? string.Empty) : string.Empty,
-                    result != null ? (string)(result.AuthorizerNo ?? string.Empty) : string.Empty);
+                DynamicPasswordAuditLogger.Write(AuditId, "验证开始", $"应用={setting.ApplicationName}");
+                try
+                {
+                    dynamic result = dynamicPassword.VerifyPassword(equipmentNumber, setting.ApplicationName, password);
+                    var verifyInfo = new DynamicPasswordVerifyInfo(
+                        result != null && result.VerifyStatus,
+                        result != null ? (string)(result.VerifyMessage ?? string.Empty) : "验证失败（无返回结果）",
+                        result != null ? (string)(result.AuthorizerName ?? string.Empty) : string.Empty,
+                        result != null ? (string)(result.AuthorizerNo ?? string.Empty) : string.Empty);
+                    DynamicPasswordAuditLogger.Write(AuditId, "验证结果", $"结果={(verifyInfo.Verified ? "成功" : "失败")}, 授权人={verifyInfo.AuthorizerName}({verifyInfo.AuthorizerNo}), 原因={verifyInfo.Message}");
+                    return verifyInfo;
+                }
+                catch (OperationCanceledException)
+                {
+                    DynamicPasswordAuditLogger.Write(AuditId, "验证取消", "操作已取消");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    DynamicPasswordAuditLogger.Write(AuditId, "验证异常", ex.Message);
+                    throw;
+                }
             }, cancellationToken);
         }
 
@@ -87,6 +123,7 @@ namespace F7_L12_Position_Detect.Service
 
         private void OnPasswordExpired(object sender, EventArgs e)
         {
+            DynamicPasswordAuditLogger.Write(AuditId, "密码过期", "认证服务通知授权会话到期");
             PasswordExpired?.Invoke(this, EventArgs.Empty);
         }
 
