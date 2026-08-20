@@ -3720,6 +3720,23 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
+        /// 获取当前生产图片的规格名称。dev-mpw 沿用工程配方作为规格身份，
+        /// 规格目录和文件名前缀使用同一值，空工程名时保留可检索的 UNKNOWN_SPEC 兜底。
+        /// </summary>
+        /// <returns>完成文件名清理和长度限制的规格名称。</returns>
+        private string GetImageSpecificationName()
+        {
+            string specification = SanitizeFileNamePart(DataModel?.Settingmodel?.Name);
+            if (string.IsNullOrEmpty(specification))
+            {
+                WriteDetailLog("[图片保存] 当前工程名称为空，使用UNKNOWN_SPEC作为规格目录和文件名前缀");
+                return "UNKNOWN_SPEC";
+            }
+
+            return LimitFileNamePart(specification, 48);
+        }
+
+        /// <summary>
         /// 控制动态文件名片段长度。超长内容保留前缀和稳定哈希，兼顾现场可读性与 Windows 路径长度限制。
         /// </summary>
         private static string LimitFileNamePart(string value, int maxLength)
@@ -3830,14 +3847,16 @@ namespace F7_L12_Position_Detect.ViewModel
                 matchedTools.Select(tool =>
                     $"{tool.Index:00}_{SanitizeFileNamePart(tool.Name)}_P{tool.ProductPositionNO}_{tool.ToolStatus}"));
             string toolSummary = LimitFileNamePart(fullToolSummary, 48);
+            string specification = GetImageSpecificationName();
 
             string fileName =
+                $"{specification}-" +
                 $"{(string.IsNullOrEmpty(sn) ? "NOSN" : sn)}-" +
                 $"{(string.IsNullOrEmpty(command) ? "NOCMD" : command)}-" +
                 $"{(string.IsNullOrEmpty(camera) ? "NOCAM" : camera)}-" +
                 $"{(string.IsNullOrEmpty(toolSummary) ? "NOTOOL" : toolSummary)}-" +
                 $"{now:yyyyMMddHHmmssFFF}-{frameSequence:D6}.jpg";
-            string directory = Path.Combine(imageSaveSetting.ImageSaveDir, now.ToString("yyyyMMdd"), resultFolder);
+            string directory = Path.Combine(imageSaveSetting.ImageSaveDir, specification, now.ToString("yyyyMMdd"), resultFolder);
             Directory.CreateDirectory(directory);
             string savePath = Path.Combine(directory, fileName);
 
