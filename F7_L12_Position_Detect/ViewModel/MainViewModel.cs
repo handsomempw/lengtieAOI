@@ -236,7 +236,8 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 为面积工具生成带 ROI 和结果文字的图片副本。坐标使用原图像素坐标，避免把界面缩放坐标写入生产图片。
+        /// 为面积工具生成带 ROI 和结果文字的图片副本。文字固定在原图左上角，使用与 Busbar AOI 一致的绿色透明标注，
+        /// 避免 ROI 靠近边缘或图片缩放后遮挡检测值；坐标保持原图像素坐标，避免把界面缩放坐标写入生产图片。
         /// </summary>
         private Bitmap CreateAreaAnnotatedBitmap(HObject image, ToolModel tool)
         {
@@ -250,11 +251,12 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 Hobject2Bitmap.HobjectToBitmap24(image, out source);
                 var annotated = new Bitmap(source.Width, source.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                int margin = Math.Max(20, Math.Min(60, annotated.Height / 80));
+                int fontSize = Math.Max(28, Math.Min(48, annotated.Height / 45));
                 using (Graphics graphics = Graphics.FromImage(annotated))
                 using (var roiPen = new System.Drawing.Pen(tool.ToolStatus == ToolStatus.OK ? Color.LimeGreen : Color.Red, 4f))
-                using (var textFont = new System.Drawing.Font("Microsoft YaHei", 18f, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Pixel))
-                using (var textBrush = new SolidBrush(tool.ToolStatus == ToolStatus.OK ? Color.LimeGreen : Color.Red))
-                using (var textBackground = new SolidBrush(Color.FromArgb(180, Color.Black)))
+                using (var textFont = new System.Drawing.Font("Microsoft YaHei", fontSize, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Pixel))
+                using (var textBrush = new SolidBrush(Color.Green))
                 {
                     graphics.DrawImageUnscaled(source, 0, 0);
 
@@ -267,20 +269,17 @@ namespace F7_L12_Position_Detect.ViewModel
                         graphics.DrawRectangle(roiPen, left, top, right - left, bottom - top);
                     }
 
-                    string statusText = tool.ToolStatus == ToolStatus.OK ? "OK" : tool.ToolStatus.ToString();
                     string resultText = string.Format(
                         CultureInfo.InvariantCulture,
-                        "面积: {0} px^2  范围: [{1}, {2}]  结果: {3}",
+                        "指令={0}\r\n工具={1:00}-{2}\r\n面积={3} px²\r\n范围={4}~{5} px²\r\n结果={6}",
+                        tool.Command ?? string.Empty,
+                        tool.Index,
+                        tool.Name ?? string.Empty,
                         tool.ActualDimension,
                         tool.MinDimension,
                         tool.MaxDimension,
-                        statusText);
-                    SizeF textSize = graphics.MeasureString(resultText, textFont);
-                    float textX = Math.Max(0, Math.Min(left, annotated.Width - textSize.Width - 8));
-                    float textY = top >= textSize.Height + 8 ? top - textSize.Height - 8 : Math.Min(bottom + 8, annotated.Height - textSize.Height - 8);
-                    textY = Math.Max(0, textY);
-                    graphics.FillRectangle(textBackground, textX, textY, textSize.Width + 8, textSize.Height + 4);
-                    graphics.DrawString(resultText, textFont, textBrush, textX + 4, textY + 2);
+                        tool.ToolStatus);
+                    graphics.DrawString(resultText, textFont, textBrush, margin, margin);
                 }
 
                 return annotated;

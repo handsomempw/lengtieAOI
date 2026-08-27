@@ -186,128 +186,17 @@ namespace F7_L12_Position_Detect
         {
             if (vml.Main.DataModel.Settingmodel.permission)
             {
-                string auditId = vml.Main.DataModel.Settingmodel.PermissionAuditId;
-                bool saved = TrySaveBeforePermissionClose();
-                DynamicPasswordAuditLogger.Write(auditId, "权限关闭", $"方式=手动, 工程保存={(saved ? "成功" : "失败")}");
                 vml.Main.DataModel.Settingmodel.permission = false;
-                DisposeAoiPermissionAuthService();
-                NoticeBox.Show(
-                    saved ? "编辑权限已关闭，已保存工具配置" : "编辑权限已关闭，工具配置保存失败，请查看日志",
-                    "提示",
-                    saved ? MessageBoxIcon.Success : MessageBoxIcon.Warning,
-                    true,
-                    5000);
                 return;
             }
 
-            if (TryEnableDebugPermission())
+            InputPassword passwordWindow = new InputPassword("faracheck")
             {
-                return;
-            }
-
-            var settingModel = vml.Main.DataModel.Settingmodel;
-            var authSetting = settingModel.DynamicPasswordAuth;
-            if (authSetting == null || !authSetting.Enabled)
+                Owner = this
+            };
+            if (passwordWindow.ShowDialog() == true)
             {
-                NoticeBox.Show("动态密码认证未启用，请检查系统配置", "提示", MessageBoxIcon.Warning, true, 5000);
-                return;
-            }
-
-            string equipmentNumber = settingModel.ReportWorkConfig?.EquipmentNumber;
-            if (string.IsNullOrWhiteSpace(equipmentNumber))
-            {
-                NoticeBox.Show("设备编号未配置，请先在报工配置中填写设备编号", "提示", MessageBoxIcon.Warning, true, 5000);
-                return;
-            }
-
-            var permissionButton = sender as Button;
-            if (permissionButton != null)
-            {
-                permissionButton.IsEnabled = false;
-            }
-
-            try
-            {
-                DisposeAoiPermissionAuthService();
-
-                CancellationTokenSource cts = new CancellationTokenSource();
-                DynamicPasswordAuthService service = new DynamicPasswordAuthService(authSetting, equipmentNumber);
-                try
-                {
-                    var window = new View.DynamicPasswordAuthWindow(service, "AOI 工具编辑/参数修改", cts.Token)
-                    {
-                        Owner = this
-                    };
-
-                    if (window.ShowDialog() != true || window.VerifyInfo == null || !window.VerifyInfo.Verified)
-                    {
-                        return;
-                    }
-
-                    aoiPermissionCts = cts;
-                    aoiPermissionAuthService = service;
-                    settingModel.PermissionAuditId = service.AuditId;
-                    cts = null;
-                    service = null;
-
-                    aoiPermissionExpiredHandler = (s, args) =>
-                    {
-                        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
-                        {
-                            return;
-                        }
-
-                        Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            if (!vml.Main.DataModel.Settingmodel.permission)
-                            {
-                                return;
-                            }
-
-                            bool saved = TrySaveBeforePermissionClose();
-                            string auditId = vml.Main.DataModel.Settingmodel.PermissionAuditId;
-                            DynamicPasswordAuditLogger.Write(auditId, "权限关闭", $"方式=密码过期, 工程保存={(saved ? "成功" : "失败")}");
-                            vml.Main.DataModel.Settingmodel.permission = false;
-                            DisposeAoiPermissionAuthService();
-                            NoticeBox.Show(
-                                saved ? "动态密码已过期，编辑权限已关闭并保存工具配置" : "动态密码已过期，编辑权限已关闭，工具配置保存失败，请查看日志",
-                                "提示",
-                                MessageBoxIcon.Warning,
-                                true,
-                                6000);
-                        }));
-                    };
-                    aoiPermissionAuthService.PasswordExpired += aoiPermissionExpiredHandler;
-
-                    settingModel.PermissionGrantedAt = DateTime.Now;
-                    settingModel.PermissionAuthorizerName = window.VerifyInfo.AuthorizerName;
-                    settingModel.PermissionAuthorizerNo = window.VerifyInfo.AuthorizerNo;
-                    settingModel.PermissionPrivilegeLevel = authSetting.PrivilegeLevel;
-                    settingModel.PermissionPeriodMinutes = authSetting.PeriodMinutes;
-                    settingModel.PermissionReason = "AOI 工具编辑/参数修改";
-                    settingModel.PermissionRequestedReceivers = string.Join(", ",
-                        window.RequestedReceivers.Select(receiver => $"{receiver.ReceiverName}({receiver.ReceiverNo})"));
-                    settingModel.permission = true;
-                    DynamicPasswordAuditLogger.Write(settingModel.PermissionAuditId, "授权开启", $"授权人={settingModel.PermissionAuthorizerName}({settingModel.PermissionAuthorizerNo}), 权限等级={settingModel.PermissionPrivilegeLevel}, 有效期={settingModel.PermissionPeriodMinutes}分钟, 原因={settingModel.PermissionReason}");
-                    vml.Main.writeLog($"[动态密码][授权] 验证通过：授权人={settingModel.PermissionAuthorizerName}({settingModel.PermissionAuthorizerNo}), 权限等级={settingModel.PermissionPrivilegeLevel}, 有效期={settingModel.PermissionPeriodMinutes}分钟", true);
-                    NoticeBox.Show($"动态密码验证通过，编辑权限有效期为 {authSetting.PeriodMinutes} 分钟", "提示", MessageBoxIcon.Success, true, 4000);
-                }
-                finally
-                {
-                    service?.Dispose();
-                    cts?.Dispose();
-                }
-            }
-            catch (Exception ex)
-            {
-                NoticeBox.Show($"动态密码认证失败：{ex.Message}", "错误", MessageBoxIcon.Error, true, 6000);
-            }
-            finally
-            {
-                if (permissionButton != null)
-                {
-                    permissionButton.IsEnabled = true;
-                }
+                vml.Main.DataModel.Settingmodel.permission = true;
             }
         }
 
