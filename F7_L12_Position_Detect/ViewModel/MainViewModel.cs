@@ -291,27 +291,57 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 保存检测图片。面积工具保存带 ROI 和面积判定信息的图片，其他工具继续沿用原始 HALCON 图片保存方式。
+        /// 保存检测图片。原图沿用日期下的 OK 或 NG 目录及既有文件名；面积工具的 ROI、面积判定标注图
+        /// 进入日期下的“标注图/OK”或“标注图/NG”目录，并与原图共享规格、SN、工具、判定和采集时间。
+        /// 其他工具继续保存原始 HALCON 图片。
         /// </summary>
-        private void SaveInspectionImage(HObject image, ToolModel tool, string savefilename)
+        /// <param name="image">当前相机周期的原始 HALCON 图像。</param>
+        /// <param name="tool">当前已完成判定的工具。</param>
+        /// <param name="originalImagePath">按现有归档规则生成的原图 JPG 路径。</param>
+        /// <returns>实际保存的图片路径，供明细日志记录。</returns>
+        private IReadOnlyList<string> SaveInspectionImages(HObject image, ToolModel tool, string originalImagePath)
         {
+            HOperatorSet.WriteImage(image, "jpg", 0, originalImagePath);
+
             if (tool?.TestMode == TestModes.面积)
             {
+                string annotatedImagePath = BuildAnnotatedImagePath(originalImagePath);
+                string annotatedDirectory = Path.GetDirectoryName(annotatedImagePath);
+                if (!Directory.Exists(annotatedDirectory))
+                {
+                    Directory.CreateDirectory(annotatedDirectory);
+                }
                 try
                 {
                     using (Bitmap annotated = CreateAreaAnnotatedBitmap(image, tool))
                     {
-                        annotated?.Save(savefilename, ImageFormat.Jpeg);
+                        annotated.Save(annotatedImagePath, ImageFormat.Jpeg);
                     }
-                    return;
                 }
                 catch (Exception ex)
                 {
-                    WriteDetailLog($"[面积图片标注] 标注保存失败，回退原图：工具={tool.Index}，原因={ex.Message}");
+                    WriteDetailLog($"[面积图片标注] 标注保存失败，标注图位置保留原图：工具={tool.Index}，原因={ex.Message}");
+                    HOperatorSet.WriteImage(image, "jpg", 0, annotatedImagePath);
                 }
+
+                return new[] { originalImagePath, annotatedImagePath };
             }
 
-            HOperatorSet.WriteImage(image, "jpg", 0, savefilename);
+            return new[] { originalImagePath };
+        }
+
+        /// <summary>
+        /// 为同一次面积检测生成独立的标注图路径。原图保持日期下的结果目录，标注图进入日期下的
+        /// “标注图/结果”目录；两者文件名一致，便于现场按规格、SN、工具和时间戳配对核查。
+        /// </summary>
+        /// <param name="originalImagePath">包含规格、SN、工具、判定和采集时间的原图 JPG 路径。</param>
+        /// <returns>位于独立标注图目录、文件名与原图一致的完整路径。</returns>
+        private static string BuildAnnotatedImagePath(string originalImagePath)
+        {
+            string resultDirectory = Path.GetDirectoryName(originalImagePath);
+            string dateDirectory = Path.GetDirectoryName(resultDirectory);
+            string resultFolder = Path.GetFileName(resultDirectory);
+            return Path.Combine(dateDirectory, "标注图", resultFolder, Path.GetFileName(originalImagePath));
         }
 
         // 点检定时器
@@ -3359,8 +3389,8 @@ namespace F7_L12_Position_Detect.ViewModel
                                     Directory.CreateDirectory(dir);
                                 }
 
-                                SaveInspectionImage(Image, tool, savefilename);
-                                WriteDetailLog($"[图片保存] 规格={GetImageSpecificationName()} 结果={resultFolder} 路径={savefilename}");
+                                IReadOnlyList<string> savedImagePaths = SaveInspectionImages(Image, tool, savefilename);
+                                WriteDetailLog($"[图片保存] 规格={GetImageSpecificationName()} 结果={resultFolder} 路径={string.Join(";", savedImagePaths)}");
                             }
                         }
                         catch (Exception ex)
