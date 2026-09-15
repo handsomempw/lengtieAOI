@@ -13,6 +13,8 @@ namespace F7_L12_Position_Detect.ViewModel
         private const string InspectionRecipeConfigFileName = "点检配置.xml";
         private bool _inspectionRecipeScanInProgress;
         private bool _inspectionRecipeConfigLoadFailed;
+        private readonly object _inspectionConfigurationLogLock = new object();
+        private string _lastLoggedInspectionConfigurationError = string.Empty;
         private InspectionRecipeConfig _currentInspectionRecipeConfig = new InspectionRecipeConfig();
         private InspectionRecipeConfig _editableInspectionRecipeConfig = new InspectionRecipeConfig();
 
@@ -197,6 +199,41 @@ namespace F7_L12_Position_Detect.ViewModel
             }
 
             return ValidateInspectionRecipeConfig(CurrentInspectionRecipeConfig);
+        }
+
+        /// <summary>
+        /// 记录点检配置状态变化。配置轮询会频繁调用生产门禁，因此相同错误只记录一次，配置恢复时补充一条恢复日志。
+        /// </summary>
+        /// <param name="configurationError">当前配置错误；空字符串表示配置恢复有效。</param>
+        private void LogInspectionConfigurationErrorIfChanged(string configurationError)
+        {
+            string normalizedError = (configurationError ?? string.Empty).Trim();
+            bool changed;
+            lock (_inspectionConfigurationLogLock)
+            {
+                changed = !string.Equals(
+                    _lastLoggedInspectionConfigurationError,
+                    normalizedError,
+                    StringComparison.Ordinal);
+                if (changed)
+                {
+                    _lastLoggedInspectionConfigurationError = normalizedError;
+                }
+            }
+
+            if (!changed)
+            {
+                return;
+            }
+
+            string projectName = DataModel?.Settingmodel?.Name ?? string.Empty;
+            if (string.IsNullOrEmpty(normalizedError))
+            {
+                writeLog($"[点检配方] 工程={projectName}，点检配置已恢复有效", false);
+                return;
+            }
+
+            writeLog($"[点检配方] 工程={projectName}，配置无效：{normalizedError}", true);
         }
 
         /// <summary>
