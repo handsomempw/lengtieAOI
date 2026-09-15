@@ -264,7 +264,7 @@ namespace F7_L12_Position_Detect.Model
         // 点检相关配置
         private string _okInspectionSN = "OK_INSPECTION";
         /// <summary>
-        /// OK点检专用SN。扫描到该SN时进入OK点检流程，跳过普通产品的工单、工序和点检到期门禁。
+        /// 旧版本全局OK点检SN，仅在工程缺少“点检配置.xml”时作为首次迁移来源。配方文件生成后，扫码流程读取当前工程维护的OK点检SN。
         /// </summary>
         [XmlElement("OK点检SN码")]
         public string OKInspectionSN
@@ -279,7 +279,7 @@ namespace F7_L12_Position_Detect.Model
 
         private string _ngInspectionSN = "NG_INSPECTION";
         /// <summary>
-        /// NG点检专用SN。扫描到该SN时进入NG点检流程，跳过普通产品的工单、工序和点检到期门禁。
+        /// 旧版本全局NG点检SN，仅在工程缺少“点检配置.xml”时作为首次迁移来源。配方文件生成后，扫码流程读取当前工程维护的NG点检SN。
         /// </summary>
         [XmlElement("NG点检SN码")]
         public string NGInspectionSN
@@ -294,7 +294,7 @@ namespace F7_L12_Position_Detect.Model
 
         private DateTime _lastInspectionTime = DateTime.MinValue;
         /// <summary>
-        /// OK和NG点检全部完成的时间。该值随配置保存，是主界面倒计时、弹窗提醒和普通产品作业门禁的共同时间依据。
+        /// 旧版本全局点检完成时间，仅在工程缺少“点检配置.xml”时作为首次迁移来源。配方文件生成后，倒计时、提醒和生产门禁读取当前工程的完成时间。
         /// </summary>
         [XmlElement("上次点检完成时间")]
         public DateTime LastInspectionTime

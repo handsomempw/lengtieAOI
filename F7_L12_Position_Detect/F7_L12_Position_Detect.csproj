@@ -130,6 +130,7 @@
     <Compile Include="Model\RecordModel.cs" />
     <Compile Include="Model\SettingModel.cs" />
     <Compile Include="Model\Setting\ImageSaveSetting.cs" />
+    <Compile Include="Model\Setting\InspectionRecipeConfig.cs" />
     <Compile Include="Model\Setting\DynamicPasswordAuthenticationSetting.cs" />
     <Compile Include="Model\Setting\TcpSetting.cs" />
     <Compile Include="Model\Tool\ToolModel.cs" />
@@ -140,6 +141,7 @@
       <DependentUpon>SettingForm.xaml</DependentUpon>
     </Compile>
     <Compile Include="ViewModel\MainViewModel.cs" />
+    <Compile Include="ViewModel\MainViewModel.InspectionRecipe.cs" />
     <Compile Include="ViewModel\ViewModelLocator.cs" />
     <Compile Include="View\InitPositionWindow.xaml.cs">
       <DependentUpon>InitPositionWindow.xaml</DependentUpon>
@@ -155,6 +157,9 @@
     </Compile>
     <Compile Include="View\InspectionWindow.xaml.cs">
       <DependentUpon>InspectionWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="View\InspectionRecipeConfigWindow.xaml.cs">
+      <DependentUpon>InspectionRecipeConfigWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="View\WorkOrderInputWindow.xaml.cs">
       <DependentUpon>WorkOrderInputWindow.xaml</DependentUpon>
@@ -186,6 +191,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="View\InitPositionWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="View\InspectionRecipeConfigWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

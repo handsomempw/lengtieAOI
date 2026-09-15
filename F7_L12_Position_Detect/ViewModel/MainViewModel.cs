@@ -1144,6 +1144,13 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <param name="scanCode">扫码内容</param>
         public async Task ProcessScanCodeWithMESAsync(string scanCode)
         {
+            if (_inspectionRecipeScanInProgress)
+            {
+                writeLog("扫码/MES处理尚未结束，本次扫码已忽略", false);
+                return;
+            }
+
+            _inspectionRecipeScanInProgress = true;
             try
             {
                 // 更新扫码状态为处理中
@@ -1174,13 +1181,26 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     // 检查是否是点检SN码（转换后的SN码）
                     string sn = scanResult.SN;
-                    string okSN = DataModel.Settingmodel.ReportWorkConfig.OKInspectionSN;
-                    string ngSN = DataModel.Settingmodel.ReportWorkConfig.NGInspectionSN;
+                    string inspectionConfigurationError = GetCurrentInspectionRecipeConfigurationError();
+                    if (!string.IsNullOrEmpty(inspectionConfigurationError))
+                    {
+                        UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "点检配置无效");
+                        UIBeginInvoke(new Action(() =>
+                        {
+                            writeLog($"[点检配方无效] 工程={DataModel.Settingmodel.Name}，{inspectionConfigurationError}；本次扫码已拦截", true);
+                        }));
+                        return;
+                    }
 
-                    if (sn == okSN || sn == ngSN)
+                    string okSN = CurrentInspectionRecipeConfig.OKInspectionSN;
+                    string ngSN = CurrentInspectionRecipeConfig.NGInspectionSN;
+
+                    bool matchesOKInspection = InspectionRecipeSnEquals(sn, okSN);
+                    bool matchesNGInspection = InspectionRecipeSnEquals(sn, ngSN);
+                    if (matchesOKInspection || matchesNGInspection)
                     {
                         // 进入点检模式
-                        string type = sn == okSN ? "OK" : "NG";
+                        string type = matchesOKInspection ? "OK" : "NG";
                         UIInvoke(() =>
                         {
                             DataModel.Processmodel.IsInspectionMode = true;
@@ -1268,6 +1288,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 {
                     writeLog($"扫码处理异常: {ex.Message}");
                 }));
+            }
+            finally
+            {
+                _inspectionRecipeScanInProgress = false;
             }
         }
 
@@ -1878,6 +1902,14 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 if (DataModel.Settingmodel.permission)
                 {
+                    string switchBlockReason = GetProjectSwitchBlockReason();
+                    if (!string.IsNullOrEmpty(switchBlockReason))
+                    {
+                        NoticeBox.Show($"当前无法新建工程：{switchBlockReason}", "工程切换", MessageBoxIcon.Warning, true, 6000);
+                        Prjs_selectedindex();
+                        return;
+                    }
+
                     if (MessageBoxX.Show("是否确定新建工程?", "提示", MessageBoxButton.YesNo, MessageBoxIcon.Question, DefaultButton.NoCancel) == MessageBoxResult.Yes)
                     {
                         newPrj newPrj = new newPrj();
@@ -1904,8 +1936,10 @@ namespace F7_L12_Position_Detect.ViewModel
 
                             #region 新建工程
                             Directory.CreateDirectory(prjdir);
+                            ResetRuntimeForProjectInspectionChange();
                             DataModel.Settingmodel.Name = prjname;
                             DataModel.Processmodel.Tools.Clear();
+                            LoadInspectionRecipeConfiguration();
                             //ClearToolStatus();
                             #endregion
 
@@ -2315,16 +2349,30 @@ namespace F7_L12_Position_Detect.ViewModel
         public void Load_Prj()
         {
             BackupCurrentProjectFilesBeforeLoad();
+            LoadInspectionRecipeConfiguration();
             LoadPrjXmls();
             CheckPrj();
             Prjs_selectedindex();
             //ClearToolStatus();
         }
-        public void Load_Prj(string PrjName)
+        public bool Load_Prj(string PrjName)
         {
+            string switchBlockReason = GetProjectSwitchBlockReason();
+            if (!string.IsNullOrEmpty(switchBlockReason))
+            {
+                NoticeBox.Show($"当前无法切换工程：{switchBlockReason}", "工程切换", MessageBoxIcon.Warning, true, 6000);
+                writeLog($"[工程切换] 已拦截，目标工程={PrjName}，原因={switchBlockReason}", false);
+                Prjs_selectedindex();
+                return false;
+            }
+
+            ResetRuntimeForProjectInspectionChange();
             DataModel.Settingmodel.Name = PrjName;
             Load_Prj();
-
+            UpdateInspectionCountdown();
+            CheckInspectionStatus();
+            writeLog($"[工程切换] 当前工程={PrjName}，点检配方已加载", false);
+            return true;
         }
 
         /// <summary>
@@ -4431,7 +4479,7 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <returns>true表示普通产品作业需要先完成点检；false表示普通产品可继续走工单、工序和视觉检测门禁。</returns>
         private bool IsInspectionRequired()
         {
-            var lastTime = DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime;
+            var lastTime = CurrentInspectionRecipeConfig.LastInspectionTime;
             if (lastTime == DateTime.MinValue)
             {
                 return false;
@@ -4474,6 +4522,12 @@ namespace F7_L12_Position_Detect.ViewModel
         /// <returns>空字符串表示点检周期有效；非空文本表示普通产品需要先完成点检。</returns>
         private string ValidateInspectionGateForProduction(string sn)
         {
+            string configurationError = GetCurrentInspectionRecipeConfigurationError();
+            if (!string.IsNullOrEmpty(configurationError))
+            {
+                return $"[点检配方无效] 工程={DataModel.Settingmodel.Name}，{configurationError}；普通产品已拦截。";
+            }
+
             if (!IsInspectionRequired())
             {
                 return string.Empty;
@@ -4510,13 +4564,27 @@ namespace F7_L12_Position_Detect.ViewModel
         /// </summary>
         private void CheckInspectionStatus()
         {
-            var lastTime = DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime;
+            string configurationError = GetCurrentInspectionRecipeConfigurationError();
+            if (!string.IsNullOrEmpty(configurationError))
+            {
+                UpdateInspectionStatusMessage($"点检配置无效：{configurationError}");
+                if (_inspectionWindow != null)
+                {
+                    App.Current.Dispatcher.BeginInvoke(new Action(CloseInspectionWindow));
+                }
+                return;
+            }
+
+            var lastTime = CurrentInspectionRecipeConfig.LastInspectionTime;
             if (lastTime == DateTime.MinValue)
             {
                 // 首次运行，设置为当前时间
                 lastTime = DateTime.Now;
-                DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime = lastTime;
-                SaveSettingModel();
+                if (!SaveCurrentRecipeInspectionTime(lastTime))
+                {
+                    UpdateInspectionStatusMessage("当前配方点检时间保存失败，请检查工程配置");
+                    return;
+                }
             }
             
             bool isOverdue = IsInspectionRequired();
@@ -4549,7 +4617,13 @@ namespace F7_L12_Position_Detect.ViewModel
         /// </summary>
         private void UpdateInspectionCountdown()
         {
-            var lastTime = DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime;
+            if (!string.IsNullOrEmpty(GetCurrentInspectionRecipeConfigurationError()))
+            {
+                DataModel.Processmodel.TimeToNextInspection = TimeSpan.Zero;
+                return;
+            }
+
+            var lastTime = CurrentInspectionRecipeConfig.LastInspectionTime;
             if (lastTime == DateTime.MinValue)
             {
                 DataModel.Processmodel.TimeToNextInspection = TimeSpan.FromHours(InspectionIntervalHours);
@@ -4600,6 +4674,14 @@ namespace F7_L12_Position_Detect.ViewModel
         /// </summary>
         public void StartOKInspection()
         {
+            string configurationError = GetCurrentInspectionRecipeConfigurationError();
+            if (!string.IsNullOrEmpty(configurationError))
+            {
+                UpdateInspectionStatusMessage($"点检配置无效：{configurationError}");
+                writeLog($"无法启动OK点检：工程={DataModel.Settingmodel.Name}，{configurationError}", true);
+                return;
+            }
+
             DataModel.Processmodel.IsInspectionMode = true;
             DataModel.Processmodel.InspectionType = "OK";
             DataModel.Processmodel.OKInspectionCompleted = false;
@@ -4613,6 +4695,14 @@ namespace F7_L12_Position_Detect.ViewModel
         /// </summary>
         public void StartNGInspection()
         {
+            string configurationError = GetCurrentInspectionRecipeConfigurationError();
+            if (!string.IsNullOrEmpty(configurationError))
+            {
+                UpdateInspectionStatusMessage($"点检配置无效：{configurationError}");
+                writeLog($"无法启动NG点检：工程={DataModel.Settingmodel.Name}，{configurationError}", true);
+                return;
+            }
+
             DataModel.Processmodel.IsInspectionMode = true;
             DataModel.Processmodel.InspectionType = "NG";
             DataModel.Processmodel.NGInspectionCompleted = false;
@@ -4644,10 +4734,15 @@ namespace F7_L12_Position_Detect.ViewModel
             if (DataModel.Processmodel.OKInspectionCompleted && 
                 DataModel.Processmodel.NGInspectionCompleted)
             {
+                if (!SaveCurrentRecipeInspectionTime(DateTime.Now))
+                {
+                    UpdateInspectionStatusMessage("点检结果已完成，当前配方完成时间保存失败；普通生产继续保持拦截");
+                    writeLog($"[点检配方] 工程={DataModel.Settingmodel.Name}完成时间保存失败，点检周期未重置", true);
+                    return;
+                }
+
                 DataModel.Processmodel.IsInspectionMode = false;
                 DataModel.Processmodel.InspectionType = null;
-                DataModel.Settingmodel.ReportWorkConfig.LastInspectionTime = DateTime.Now;
-                SaveSettingModel();
                 UpdateInspectionCountdown();
                 CloseInspectionWindow();
                 UpdateInspectionStatusMessage("✅ 点检全部完成，计时已重置");

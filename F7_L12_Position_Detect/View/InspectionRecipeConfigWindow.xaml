@@ -1,0 +1,63 @@
+<p:WindowX x:Class="F7_L12_Position_Detect.View.InspectionRecipeConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:p="https://opensource.panuon.com/wpf-ui"
+        Title="点检配置" Height="370" Width="540"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        p:WindowXCaption.Height="40"
+        p:WindowXCaption.Background="#2F3B47"
+        p:WindowXCaption.Foreground="White">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="120"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="当前工程" Margin="5" VerticalAlignment="Center" Foreground="DimGray"/>
+        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DataModel.Settingmodel.Name}" Margin="5" VerticalAlignment="Center" FontWeight="Bold"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="OK点检SN" Margin="5" VerticalAlignment="Center" Foreground="DimGray"/>
+        <TextBox Grid.Row="1" Grid.Column="1"
+                 Text="{Binding EditableInspectionRecipeConfig.OKInspectionSN, UpdateSourceTrigger=PropertyChanged}"
+                 IsEnabled="{Binding DataModel.Settingmodel.permission}"
+                 Margin="5" Padding="7" FontSize="13"/>
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="NG点检SN" Margin="5" VerticalAlignment="Center" Foreground="DimGray"/>
+        <TextBox Grid.Row="2" Grid.Column="1"
+                 Text="{Binding EditableInspectionRecipeConfig.NGInspectionSN, UpdateSourceTrigger=PropertyChanged}"
+                 IsEnabled="{Binding DataModel.Settingmodel.permission}"
+                 Margin="5" Padding="7" FontSize="13"/>
+
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="上次完成" Margin="5" VerticalAlignment="Center" Foreground="DimGray"/>
+        <TextBlock Grid.Row="3" Grid.Column="1"
+                   Text="{Binding CurrentInspectionRecipeConfig.LastInspectionTimeText}"
+                   Margin="5" VerticalAlignment="Center"/>
+
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="配置状态" Margin="5" VerticalAlignment="Center" Foreground="DimGray"/>
+        <TextBlock Grid.Row="4" Grid.Column="1"
+                   Text="{Binding CurrentInspectionRecipeConfig.StatusText}"
+                   Margin="5" VerticalAlignment="Center" TextWrapping="Wrap" Foreground="#B45F06"/>
+
+        <Border Grid.Row="5" Grid.ColumnSpan="2" BorderBrush="#D5D9DE" BorderThickness="0,1,0,0" Margin="5,12,5,4"/>
+
+        <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="保存"
+                    Click="Save_Click"
+                    IsEnabled="{Binding DataModel.Settingmodel.permission}"
+                    MinWidth="90" Height="32" Margin="5"
+                    Background="#176B4D" Foreground="White"/>
+            <Button Content="关闭" Click="Close_Click" MinWidth="90" Height="32" Margin="5"/>
+        </StackPanel>
+    </Grid>
+</p:WindowX>

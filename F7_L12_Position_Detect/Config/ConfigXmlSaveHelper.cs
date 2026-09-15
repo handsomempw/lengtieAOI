@@ -418,7 +418,7 @@ namespace F7_L12_Position_Detect.Config
         {
             yield return filename;
 
-            if (IsConfigurationFile(filename))
+            if (IsConfigurationFile(filename) || IsInspectionRecipeConfigFile(filename))
             {
                 yield return GetRecoveryFilePath(filename, BackupExtension);
                 yield return GetRecoveryFilePath(filename, LastGoodExtension);
@@ -434,6 +434,11 @@ namespace F7_L12_Position_Detect.Config
             string directory = Path.GetDirectoryName(filename);
             return !string.IsNullOrWhiteSpace(directory)
                 && string.Equals(new DirectoryInfo(directory).Name, "配置", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsInspectionRecipeConfigFile(string filename)
+        {
+            return string.Equals(Path.GetFileName(filename), "点检配置.xml", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GetRecoveryFilePath(string filename, string extension)
