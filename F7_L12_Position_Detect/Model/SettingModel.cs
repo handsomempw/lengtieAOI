@@ -338,7 +338,7 @@ namespace F7_L12_Position_Detect.Model
 
         private string _okInspectionSN = "OK_INSPECTION";
         /// <summary>
-        /// OK点检样件在MES中的最终绑定产品SN。扫码经MES实时解析并确认该SN后进入OK点检，点检链路跳过工序校验和正常报工。
+        /// 旧版本全局OK点检SN，仅在工程缺少“点检配置.xml”时作为首次迁移来源。配方文件生成后，扫码及MES身份确认读取当前工程维护的OK点检SN。
         /// </summary>
         [XmlElement("OK点检SN码")]
         public string OKInspectionSN
@@ -353,7 +353,7 @@ namespace F7_L12_Position_Detect.Model
 
         private string _ngInspectionSN = "NG_INSPECTION";
         /// <summary>
-        /// NG点检样件在MES中的最终绑定产品SN。扫码经MES实时解析并确认该SN后进入NG点检，点检链路跳过工序校验和正常报工。
+        /// 旧版本全局NG点检SN，仅在工程缺少“点检配置.xml”时作为首次迁移来源。配方文件生成后，扫码及MES身份确认读取当前工程维护的NG点检SN。
         /// </summary>
         [XmlElement("NG点检SN码")]
         public string NGInspectionSN
@@ -368,7 +368,7 @@ namespace F7_L12_Position_Detect.Model
 
         private DateTime _lastInspectionTime = DateTime.MinValue;
         /// <summary>
-        /// 最近一轮OK和NG点检全部完成的时间。倒计时和普通产品到期门禁共同使用该时间，首次部署或无效时间按已经到期处理。
+        /// 旧版本全局点检完成时间，仅在工程缺少“点检配置.xml”时作为首次迁移来源。配方文件生成后，倒计时、提醒和生产门禁读取当前工程的完成时间。
         /// </summary>
         [XmlElement("上次点检时间")]
         public DateTime LastInspectionTime

@@ -195,6 +195,10 @@
                 <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="5">工程名称</TextBlock>
                 <ComboBox Grid.Column="1" IsEditable="False" SelectedIndex="{Binding DataModel.Settingmodel .prjselected,UpdateSourceTrigger=PropertyChanged}"  p:ComboBoxHelper.CornerRadius="15,0,0,15" Padding="15,0" ItemsSource="{Binding DataModel.Settingmodel.Prjs}" />
                 <Button Grid.Column="2" x:Name="ChangePrj" p:ButtonHelper.CornerRadius="0,15,15,0" Background="#101010" Foreground="WhiteSmoke"  Click="ChangePrj_Click" >切换工程</Button>
+                <Button Grid.Column="3" Margin="8,0,0,0" Padding="14,0"
+                        Background="#176B4D" Foreground="White"
+                        p:ButtonHelper.CornerRadius="4"
+                        Click="InspectionRecipeConfig_Click">点检配置</Button>
             </Grid>
         </Grid>
 

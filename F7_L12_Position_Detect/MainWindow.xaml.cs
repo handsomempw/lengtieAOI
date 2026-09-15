@@ -488,15 +488,27 @@ namespace F7_L12_Position_Detect
         {
             try
             {
-                vml.Main.Load_Prj(vml.Main.DataModel.Settingmodel.Prjs[vml.Main.DataModel.Settingmodel.prjselected]);
-                vml.Main.InitHwindow(cameractr.GetHwindow().HalconWindow);
-                vml.Main.InitShm();
+                if (vml.Main.Load_Prj(vml.Main.DataModel.Settingmodel.Prjs[vml.Main.DataModel.Settingmodel.prjselected]))
+                {
+                    vml.Main.InitHwindow(cameractr.GetHwindow().HalconWindow);
+                    vml.Main.InitShm();
+                }
 
             }
             catch (Exception ex)
             {
                 NoticeBox.Show($"工程加载错误:{ex.ToString()}", "错误", MessageBoxIcon.Error, true, 5000);
             }
+        }
+
+        /// <summary>
+        /// 打开当前工程的点检标准件配置窗口。窗口使用编辑副本，保存成功后才更新扫码流程使用的配方。
+        /// </summary>
+        private void InspectionRecipeConfig_Click(object sender, RoutedEventArgs e)
+        {
+            vml.Main.PrepareInspectionRecipeConfigEdit();
+            var window = new InspectionRecipeConfigWindow { Owner = this };
+            window.ShowDialog();
         }
 
         /// <summary>
