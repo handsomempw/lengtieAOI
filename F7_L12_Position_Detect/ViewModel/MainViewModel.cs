@@ -1218,6 +1218,19 @@ namespace F7_L12_Position_Detect.ViewModel
                         return;
                     }
 
+                    // 普通产品使用生产检测身份；本轮OK/NG完成进度和点检有效期继续由原有门禁管理。
+                    UIInvoke(() =>
+                    {
+                        bool wasInspectionMode = DataModel.Processmodel.IsInspectionMode;
+                        string previousInspectionType = DataModel.Processmodel.InspectionType;
+                        DataModel.Processmodel.IsInspectionMode = false;
+                        DataModel.Processmodel.InspectionType = null;
+                        if (wasInspectionMode)
+                        {
+                            writeLog($"[点检模式退出] 已识别普通产品SN={sn}，退出{previousInspectionType}点检模式，继续生产准入校验", false);
+                        }
+                    });
+
                     // 点检SN已经在上方进入点检流程；这里处理普通产品，点检到期时停在工单、工序和视觉检测之前。
                     string inspectionError = ValidateInspectionGateForProduction(scanResult.SN);
                     if (!string.IsNullOrEmpty(inspectionError))
