@@ -796,6 +796,8 @@ namespace F7_L12_Position_Detect.ViewModel
             public string CameraSerial { get; }
             public int? ExposureTime { get; }
             public string ProductSerialNumber { get; }
+            /// <summary>回图受理时冻结的点检标准件期望类别；普通生产和照片测试使用空值。</summary>
+            public string InspectionExpectedResult { get; }
             public long CaptureSessionId { get; }
             public long CaptureRequestId { get; }
             public bool IsProduction { get; }
@@ -810,13 +812,15 @@ namespace F7_L12_Position_Detect.ViewModel
                 long captureSessionId,
                 long captureRequestId,
                 bool isProduction,
-                int manualToolIndex)
+                int manualToolIndex,
+                string inspectionExpectedResult = null)
             {
                 ExecutionId = executionId;
                 Command = command ?? string.Empty;
                 CameraSerial = cameraSerial;
                 ExposureTime = exposureTime;
                 ProductSerialNumber = productSerialNumber ?? string.Empty;
+                InspectionExpectedResult = inspectionExpectedResult ?? string.Empty;
                 CaptureSessionId = captureSessionId;
                 CaptureRequestId = captureRequestId;
                 IsProduction = isProduction;
@@ -830,7 +834,8 @@ namespace F7_L12_Position_Detect.ViewModel
                 int? exposureTime,
                 string productSerialNumber,
                 long captureSessionId,
-                long captureRequestId)
+                long captureRequestId,
+                string inspectionExpectedResult)
             {
                 return new FrameProcessingContext(
                     executionId,
@@ -841,7 +846,8 @@ namespace F7_L12_Position_Detect.ViewModel
                     captureSessionId,
                     captureRequestId,
                     true,
-                    -1);
+                    -1,
+                    inspectionExpectedResult);
             }
 
             public static FrameProcessingContext Manual(string command, int toolIndex)
@@ -1158,7 +1164,8 @@ namespace F7_L12_Position_Detect.ViewModel
                     _activeExposureTime,
                     DataModel.Processmodel.CurrentProductSN,
                     imageEvent.CaptureSessionId,
-                    imageEvent.CaptureRequestId);
+                    imageEvent.CaptureRequestId,
+                    DataModel.Processmodel.IsInspectionMode ? DataModel.Processmodel.InspectionType : null);
                 dropReason = string.Empty;
                 return true;
             }
@@ -3844,9 +3851,10 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 按“一次受理回图对应一个 JPEG”保存检测证据。全部工具 OK 时进入 OK 目录；任一工具为 NG、NG2 或未完成状态时整帧进入 NG 目录。
+        /// 按“一次受理回图对应一个 JPEG”保存检测证据。普通生产按整帧实际结果及存图开关归档；
+        /// 点检强制保存到“点检/规格/日期/期望OK或NG”，文件名保留标准件类别与实际工具结果，便于追溯误判。
         /// </summary>
-        /// <returns>本帧实际写入 JPEG 时返回 true；保存开关关闭或本帧无匹配工具时返回 false。</returns>
+        /// <returns>本帧实际写入 JPEG 时返回 true；图像、工具或保存配置缺失，以及普通生产对应存图开关关闭时返回 false。</returns>
         private bool SaveFrameImage(HObject image, IList<ToolModel> matchedTools, FrameProcessingContext context)
         {
             if (image == null || matchedTools == null || matchedTools.Count == 0)
@@ -3855,8 +3863,11 @@ namespace F7_L12_Position_Detect.ViewModel
             }
 
             bool frameOk = matchedTools.All(tool => tool.ToolStatus == ToolStatus.OK);
+            string expectedResult = context?.InspectionExpectedResult;
+            bool isInspectionImage = expectedResult == "OK" || expectedResult == "NG";
             var imageSaveSetting = DataModel?.Settingmodel?.ImageSaveSetting;
-            if (imageSaveSetting == null || (frameOk && !imageSaveSetting.SaveOK) || (!frameOk && !imageSaveSetting.SaveNG))
+            if (imageSaveSetting == null || (!isInspectionImage
+                && ((frameOk && !imageSaveSetting.SaveOK) || (!frameOk && !imageSaveSetting.SaveNG))))
             {
                 return false;
             }
@@ -3875,15 +3886,19 @@ namespace F7_L12_Position_Detect.ViewModel
                     $"{tool.Index:00}_{SanitizeFileNamePart(tool.Name)}_P{tool.ProductPositionNO}_{tool.ToolStatus}"));
             string toolSummary = LimitFileNamePart(fullToolSummary, 48);
             string specification = GetImageSpecificationName();
+            string inspectionIdentity = isInspectionImage ? $"点检-{expectedResult}标准件-{resultFolder}-" : string.Empty;
 
             string fileName =
                 $"{specification}-" +
+                inspectionIdentity +
                 $"{(string.IsNullOrEmpty(sn) ? "NOSN" : sn)}-" +
                 $"{(string.IsNullOrEmpty(command) ? "NOCMD" : command)}-" +
                 $"{(string.IsNullOrEmpty(camera) ? "NOCAM" : camera)}-" +
                 $"{(string.IsNullOrEmpty(toolSummary) ? "NOTOOL" : toolSummary)}-" +
                 $"{now:yyyyMMddHHmmssFFF}-{frameSequence:D6}.jpg";
-            string directory = Path.Combine(imageSaveSetting.ImageSaveDir, specification, now.ToString("yyyyMMdd"), resultFolder);
+            string directory = isInspectionImage
+                ? Path.Combine(imageSaveSetting.ImageSaveDir, "点检", specification, now.ToString("yyyyMMdd"), expectedResult)
+                : Path.Combine(imageSaveSetting.ImageSaveDir, specification, now.ToString("yyyyMMdd"), resultFolder);
             Directory.CreateDirectory(directory);
             string savePath = Path.Combine(directory, fileName);
 
