@@ -19,6 +19,8 @@ using System.Text;
 using System.Threading;
 using TcpServerHelper;
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.Globalization;
 using System.Reflection;
 using System.Windows.Interop;
 using System.Collections.Generic;
@@ -3851,10 +3853,154 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 按“一次受理回图对应一个 JPEG”保存检测证据。普通生产按整帧实际结果及存图开关归档；
-        /// 点检强制保存到“点检/规格/日期/期望OK或NG”，文件名保留标准件类别与实际工具结果，便于追溯误判。
+        /// 为面积工具生成带 ROI 和结果文字的图片副本。文字固定在原图左上角，使用与冷贴 AOI 一致的绿色透明标注，
+        /// 坐标保持原图像素坐标，避免把界面缩放坐标写入留底图片。
         /// </summary>
-        /// <returns>本帧实际写入 JPEG 时返回 true；图像、工具或保存配置缺失，以及普通生产对应存图开关关闭时返回 false。</returns>
+        private Bitmap CreateAreaAnnotatedBitmap(HObject image, ToolModel tool)
+        {
+            if (image == null || tool == null)
+            {
+                return null;
+            }
+
+            Bitmap source = null;
+            Bitmap annotated = null;
+            try
+            {
+                Hobject2Bitmap.HobjectToBitmap24(image, out source);
+                annotated = new Bitmap(source.Width, source.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                int margin = Math.Max(20, Math.Min(60, annotated.Height / 80));
+                int fontSize = Math.Max(28, Math.Min(48, annotated.Height / 45));
+                using (Graphics graphics = Graphics.FromImage(annotated))
+                using (var roiPen = new System.Drawing.Pen(tool.ToolStatus == ToolStatus.OK ? Color.LimeGreen : Color.Red, 4f))
+                using (var textFont = new System.Drawing.Font("Microsoft YaHei", fontSize, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Pixel))
+                using (var textBrush = new SolidBrush(Color.Green))
+                {
+                    graphics.DrawImageUnscaled(source, 0, 0);
+
+                    int left = Math.Max(0, Math.Min(tool.DimensionROI.Col1, tool.DimensionROI.Col2));
+                    int top = Math.Max(0, Math.Min(tool.DimensionROI.Row1, tool.DimensionROI.Row2));
+                    int right = Math.Min(annotated.Width - 1, Math.Max(tool.DimensionROI.Col1, tool.DimensionROI.Col2));
+                    int bottom = Math.Min(annotated.Height - 1, Math.Max(tool.DimensionROI.Row1, tool.DimensionROI.Row2));
+                    if (right > left && bottom > top)
+                    {
+                        graphics.DrawRectangle(roiPen, left, top, right - left, bottom - top);
+                    }
+
+                    string resultText = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "指令={0}\r\n工具={1:00}-{2}\r\n面积={3} px²\r\n范围={4}~{5} px²\r\n结果={6}",
+                        tool.Command ?? string.Empty,
+                        tool.Index,
+                        tool.Name ?? string.Empty,
+                        tool.ActualDimension,
+                        tool.MinDimension,
+                        tool.MaxDimension,
+                        tool.ToolStatus);
+                    graphics.DrawString(resultText, textFont, textBrush, margin, margin);
+                }
+
+                return annotated;
+            }
+            catch
+            {
+                annotated?.Dispose();
+                throw;
+            }
+            finally
+            {
+                source?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 由原图路径推导面积标注图路径。原图留在日期下的结果目录（生产 OK/NG，点检为期望 OK/NG）；
+        /// 标注图进入同日期下的“标注图/结果”目录。一帧含多个面积工具时，文件名追加工具序号与名称，避免互相覆盖。
+        /// </summary>
+        private static string BuildAnnotatedImagePath(string originalImagePath, ToolModel areaTool)
+        {
+            string resultDirectory = Path.GetDirectoryName(originalImagePath);
+            string dateDirectory = Path.GetDirectoryName(resultDirectory);
+            string resultFolder = Path.GetFileName(resultDirectory);
+            string fileName = Path.GetFileName(originalImagePath);
+            if (areaTool != null)
+            {
+                string toolName = LimitFileNamePart(SanitizeFileNamePart(areaTool.Name), 24);
+                if (string.IsNullOrEmpty(toolName))
+                {
+                    toolName = "NOTOOL";
+                }
+
+                fileName =
+                    $"{Path.GetFileNameWithoutExtension(fileName)}-面积标注-{areaTool.Index:00}-{toolName}.jpg";
+            }
+
+            return Path.Combine(dateDirectory, "标注图", resultFolder, fileName);
+        }
+
+        /// <summary>
+        /// 为本帧已判定的面积工具写入独立标注图。正常件与点检件共用规则：标注图目录挂在原图日期目录下，
+        /// 结果子目录与原图一致（生产按实际 OK/NG，点检按期望标准件类别）。标注失败时在标注图位置回退保存原图。
+        /// 单个工具写盘失败时记录诊断并继续其余工具，整帧原图已由调用方保存。
+        /// </summary>
+        /// <returns>实际写入的标注图路径列表。</returns>
+        private IReadOnlyList<string> SaveAreaAnnotatedImages(HObject image, IList<ToolModel> matchedTools, string originalImagePath)
+        {
+            var savedPaths = new List<string>();
+            if (image == null || matchedTools == null || string.IsNullOrEmpty(originalImagePath))
+            {
+                return savedPaths;
+            }
+
+            foreach (ToolModel tool in matchedTools.Where(t => t?.TestMode == TestModes.面积))
+            {
+                try
+                {
+                    string annotatedImagePath = BuildAnnotatedImagePath(originalImagePath, tool);
+                    string annotatedDirectory = Path.GetDirectoryName(annotatedImagePath);
+                    if (!string.IsNullOrEmpty(annotatedDirectory) && !Directory.Exists(annotatedDirectory))
+                    {
+                        Directory.CreateDirectory(annotatedDirectory);
+                    }
+
+                    try
+                    {
+                        using (Bitmap annotated = CreateAreaAnnotatedBitmap(image, tool))
+                        {
+                            if (annotated == null)
+                            {
+                                WriteDetailLog($"[面积图片标注] 标注生成失败，标注图位置保留原图：工具={tool.Index}");
+                                HOperatorSet.WriteImage(image, "jpg", 0, annotatedImagePath);
+                            }
+                            else
+                            {
+                                annotated.Save(annotatedImagePath, ImageFormat.Jpeg);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteDetailLog($"[面积图片标注] 标注保存失败，标注图位置保留原图：工具={tool.Index}，原因={ex.Message}");
+                        HOperatorSet.WriteImage(image, "jpg", 0, annotatedImagePath);
+                    }
+
+                    savedPaths.Add(annotatedImagePath);
+                }
+                catch (Exception ex)
+                {
+                    WriteDetailLog($"[面积图片标注] 工具={tool.Index}留图失败，继续保存其余工具；原图='{originalImagePath}'，原因={ex.Message}");
+                }
+            }
+
+            return savedPaths;
+        }
+
+        /// <summary>
+        /// 按“一次受理回图对应一个原图 JPEG”保存检测证据；若本帧含面积工具，再按冷贴 AOI 规则额外留底标注图。
+        /// 普通生产按整帧实际结果及存图开关归档；点检强制保存到“点检/规格/日期/期望OK或NG”，
+        /// 文件名保留标准件类别与实际工具结果。标注图进入同日期下的“标注图/结果”目录。
+        /// </summary>
+        /// <returns>本帧实际写入原图 JPEG 时返回 true；图像、工具或保存配置缺失，以及普通生产对应存图开关关闭时返回 false。</returns>
         private bool SaveFrameImage(HObject image, IList<ToolModel> matchedTools, FrameProcessingContext context)
         {
             if (image == null || matchedTools == null || matchedTools.Count == 0)
@@ -3903,9 +4049,12 @@ namespace F7_L12_Position_Detect.ViewModel
             string savePath = Path.Combine(directory, fileName);
 
             HOperatorSet.WriteImage(image, "jpg", 0, savePath);
+            IReadOnlyList<string> annotatedPaths = SaveAreaAnnotatedImages(image, matchedTools, savePath);
+            string annotatedPathText = annotatedPaths.Count > 0 ? string.Join(";", annotatedPaths) : "无";
             WriteDetailLog(
-                $"[图片保存] 一帧一图完成 结果={resultFolder} 指令='{context?.Command}' " +
-                $"相机='{context?.CameraSerial}' 工具数={matchedTools.Count} 工具结果='{fullToolSummary}' 路径='{savePath}'");
+                $"[图片保存] 整帧原图与面积标注归档完成 结果={resultFolder} 指令='{context?.Command}' " +
+                $"相机='{context?.CameraSerial}' 工具数={matchedTools.Count} 工具结果='{fullToolSummary}' " +
+                $"原图='{savePath}' 标注图='{annotatedPathText}'");
             return true;
         }
 
@@ -3929,7 +4078,7 @@ namespace F7_L12_Position_Detect.ViewModel
             long imageSaveElapsedMs = 0;
             var processRecords = new List<string>();
             bool frameProcessingFailed = false;
-            // 同一拍照组的工具复用回图和缩略图，帧尾按整帧结果只保存一个 JPEG。
+            // 同一拍照组复用回图和缩略图，帧尾保存一张原图，并为面积工具分别保存标注图。
             List<ToolModel> matchedTools = new List<ToolModel>();
             try
             {
@@ -4269,7 +4418,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                 }
 
-                #region 保存图片（一次受理回图只保存一个 JPEG）
+                #region 保存图片（整帧原图及面积工具标注图）
                 if (isProduction)
                 {
                     try
@@ -4280,7 +4429,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                     catch (Exception ex)
                     {
-                        writeLog($"视觉->保存照片(一帧一图)失败：{ex}", false);
+                        writeLog($"视觉->保存整帧图片失败：{ex}", false);
                     }
                 }
                 #endregion
