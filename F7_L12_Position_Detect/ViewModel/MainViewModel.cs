@@ -211,10 +211,15 @@ namespace F7_L12_Position_Detect.ViewModel
         }
 
         /// <summary>
-        /// 生成生产检测图片路径。规格目录位于日期目录之前，文件名保留 SN、工具和结果信息，
-        /// 使整目录复制或单张图片脱离原目录后仍可识别规格。
+        /// 生成检测图片路径。普通生产按实际结果归档；点检进入“点检/规格/日期/期望OK或NG”，
+        /// 文件名同时保留标准件类别和实际工具结果，使误判图片仍可按样件身份追溯。
         /// </summary>
-        private string BuildInspectionImagePath(int toolIndex, string resultFolder, DateTime captureTime)
+        /// <param name="toolIndex">当前回图中执行的工具索引。</param>
+        /// <param name="resultFolder">普通生产使用的实际结果分类，取值为 OK 或 NG。</param>
+        /// <param name="captureTime">本张图片的归档时间。</param>
+        /// <param name="inspectionExpectedResult">本帧开始处理时固定的点检标准件期望类别；普通生产使用空值。</param>
+        /// <returns>包含规格、SN、工具及实际结果的完整图片路径。</returns>
+        private string BuildInspectionImagePath(int toolIndex, string resultFolder, DateTime captureTime, string inspectionExpectedResult)
         {
             var tool = DataModel.Processmodel.Tools[toolIndex];
             string specification = GetImageSpecificationName();
@@ -225,14 +230,15 @@ namespace F7_L12_Position_Detect.ViewModel
                 toolName = "NOTOOL";
             }
 
+            bool isInspectionImage = inspectionExpectedResult == "OK" || inspectionExpectedResult == "NG";
+            string inspectionIdentity = isInspectionImage ? $"-点检-{inspectionExpectedResult}标准件" : string.Empty;
             string fileName =
-                $"{specification}-{prefix}-{tool.Index:00}-{toolName}-{tool.ToolStatus}-{captureTime:yyyyMMddHHmmssFFF}.jpg";
-            return Path.Combine(
-                DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir,
-                specification,
-                captureTime.ToString("yyyyMMdd"),
-                resultFolder,
-                fileName);
+                $"{specification}-{prefix}{inspectionIdentity}-{tool.Index:00}-{toolName}-{tool.ToolStatus}-{captureTime:yyyyMMddHHmmssFFF}.jpg";
+            string rootDirectory = DataModel.Settingmodel.ImageSaveSetting.ImageSaveDir;
+            string directory = isInspectionImage
+                ? Path.Combine(rootDirectory, "点检", specification, captureTime.ToString("yyyyMMdd"), inspectionExpectedResult)
+                : Path.Combine(rootDirectory, specification, captureTime.ToString("yyyyMMdd"), resultFolder);
+            return Path.Combine(directory, fileName);
         }
 
         /// <summary>
@@ -3128,6 +3134,11 @@ namespace F7_L12_Position_Detect.ViewModel
         public void OnReceiveProcess(HObject Image, int H, int W)
         {
             HObject processImage = null;
+            // 本帧共用进入处理时的标准件身份，工具结果发送和点检结算后仍按同一身份归档。
+            string inspectionExpectedResult = DataModel.Processmodel.IsInspectionMode
+                ? DataModel.Processmodel.InspectionType
+                : null;
+            bool isInspectionImage = inspectionExpectedResult == "OK" || inspectionExpectedResult == "NG";
 
             try
             {
@@ -3438,12 +3449,12 @@ namespace F7_L12_Position_Detect.ViewModel
                         try
                         {
                             string resultFolder = tool.ToolStatus == ToolStatus.OK ? "OK" : "NG";
-                            bool shouldSave = tool.ToolStatus == ToolStatus.OK
+                            bool shouldSave = isInspectionImage || (tool.ToolStatus == ToolStatus.OK
                                 ? DataModel.Settingmodel.ImageSaveSetting.SaveOK
-                                : DataModel.Settingmodel.ImageSaveSetting.SaveNG;
+                                : DataModel.Settingmodel.ImageSaveSetting.SaveNG);
                             if (shouldSave)
                             {
-                                string savefilename = BuildInspectionImagePath(i, resultFolder, DateTime.Now);
+                                string savefilename = BuildInspectionImagePath(i, resultFolder, DateTime.Now, inspectionExpectedResult);
                                 string dir = Path.GetDirectoryName(savefilename);
                                 if (!Directory.Exists(dir))
                                 {
