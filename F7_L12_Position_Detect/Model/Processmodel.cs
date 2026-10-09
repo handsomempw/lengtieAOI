@@ -224,12 +224,17 @@ namespace F7_L12_Position_Detect.Model
                 {
                     case "扫码成功":
                     case "SN获取成功":
+                    case "母排绑定成功":
+                    case "路径B组装绑定及报工成功":
                     case "工序校验通过":
                         return Brushes.Green;
                     case "扫码失败":
                     case "SN获取失败":
                     case "工序校验失败":
                     case "工单校验失败":
+                    case "路径B组装绑定失败":
+                    case "路径B组装绑定/报工失败":
+                    case "AOI工序校验失败":
                     case "点检到期":
                         return Brushes.Red;
                     case "正在处理...":

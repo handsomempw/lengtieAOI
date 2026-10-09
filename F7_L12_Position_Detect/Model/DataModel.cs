@@ -18,7 +18,17 @@ namespace F7_L12_Position_Detect.Model
         public RecordModel Recordmodel { get; set; } = new RecordModel();
 
         [XmlElement("配置模型")]
-        public SettingModel Settingmodel { get; set; } = new SettingModel();
+        public SettingModel Settingmodel
+        {
+            get { return _settingmodel; }
+            set
+            {
+                _settingmodel = value ?? new SettingModel();
+                RaisePropertyChanged(() => Settingmodel);
+            }
+        }
+
+        private SettingModel _settingmodel = new SettingModel();
 
  
 

@@ -501,6 +501,15 @@ namespace F7_L12_Position_Detect
             }
         }
 
+        /// <summary>
+        /// 维护人员解锁后编辑路径B组装参数。独立窗口按保存操作提交，主界面持续显示本次运行模式。
+        /// </summary>
+        private void BusbarBindingSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (vml?.Main?.DataModel?.Settingmodel?.permission != true) return;
+            new BusbarBindingSettingsWindow(vml.Main) { Owner = this }.ShowDialog();
+        }
+
         // 配置参数变更事件处理
         private void txtStationCode_TextChanged(object sender, TextChangedEventArgs e)
         {

@@ -309,6 +309,7 @@
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
                         <RowDefinition Height="auto"/>
+                        <RowDefinition Height="auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto"/>
@@ -357,9 +358,26 @@
                              Background="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBackground}}"
                              BorderBrush="{Binding DataModel.Settingmodel.permission, Converter={StaticResource Bool2ConfigBorder}}"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="自动报工:" VerticalAlignment="Center"
+                    <Grid Grid.Row="2" Grid.ColumnSpan="4" Margin="5,3"
+                          ToolTip="{Binding BusbarBindingConfigurationHint}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="路径B组装:" VerticalAlignment="Center"
+                                   FontSize="12" Foreground="DimGray"/>
+                        <TextBlock Grid.Column="1" Text="{Binding BusbarBindingStatusText}"
+                                   Margin="8,0" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"/>
+                        <Button Grid.Column="2" Content="设置" Click="BusbarBindingSettings_Click"
+                                IsEnabled="{Binding DataModel.Settingmodel.permission}"
+                                MinWidth="56" MinHeight="28" Padding="10,4" FontSize="12"
+                                ToolTip="解锁后设置路径B组装工序和工位，保存后重启生效"/>
+                    </Grid>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="自动报工:" VerticalAlignment="Center"
                                Margin="5" FontSize="12" Foreground="DimGray"/>
-                    <CheckBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Name="chkEnableAutoReportWork"
+                    <CheckBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Name="chkEnableAutoReportWork"
                               IsChecked="{Binding DataModel.Settingmodel.ReportWorkConfig.EnableAutoReportWork}"
                               IsEnabled="{Binding DataModel.Settingmodel.permission}"
                               Checked="chkEnableAutoReportWork_Checked"

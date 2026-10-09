@@ -1,7 +1,6 @@
 using System;
 using System.Reflection;
 using System.Threading.Tasks;
-using MESAutoLineClient;
 using MES_ORACLE_DATABASE;
 
 namespace F7_L12_Position_Detect.Service
@@ -11,6 +10,23 @@ namespace F7_L12_Position_Detect.Service
     /// </summary>
     public class MESService
     {
+        /// <summary>
+        /// 读取 MES_ORACLE_DATABASE 已初始化的最新客户端。绑定服务只通过反射调用稳定的字符串接口，
+        /// 这样部署 DLL 返回值从旧版 Message 迁移到新版 Data 时不影响流程代码。
+        /// </summary>
+        public static object GetInitializedAutoLineClient()
+        {
+            var field = typeof(MES_ORACLE_DATABASE.MES_ORACLE_DATABASE)
+                .GetField("client", BindingFlags.NonPublic | BindingFlags.Static);
+            object client = field?.GetValue(null);
+            if (client != null) return client;
+
+            // 兼容旧版数据库封装未暴露静态客户端的部署包，仍优先使用项目当前引用的 DLL。
+            Type clientType = Type.GetType("MESAutoLineClient.AutoLineClient, MESAutoLineClient");
+            MethodInfo create = clientType?.GetMethod("Create", BindingFlags.Public | BindingFlags.Static,
+                null, new[] { typeof(string) }, null);
+            return create?.Invoke(null, new object[] { "http://mes-equip.efara.cn" });
+        }
         /// <summary>
         /// 扫码处理结果。
         /// </summary>
@@ -107,20 +123,28 @@ namespace F7_L12_Position_Detect.Service
             {
                 var clientField = typeof(MES_ORACLE_DATABASE.MES_ORACLE_DATABASE)
                     .GetField("client", BindingFlags.NonPublic | BindingFlags.Static);
-                var client = clientField?.GetValue(null) as AutoLineClient;
+                var client = clientField?.GetValue(null);
                 if (client == null)
                 {
                     errorMessage = "AutoLineClient 未初始化";
                     return string.Empty;
                 }
 
-                var result = client.GetLastBindingProductSerialNumberOfPartBarcode(barcode);
-                if (result != null && result.Success && !string.IsNullOrWhiteSpace(result.Data))
+                var method = client.GetType().GetMethod("GetLastBindingProductSerialNumberOfPartBarcode", new[] { typeof(string) });
+                if (method == null)
                 {
-                    return result.Data.Trim();
+                    errorMessage = "AutoLineClient 未提供最终绑定 SN 接口";
+                    return string.Empty;
+                }
+                var result = method.Invoke(client, new object[] { barcode });
+                bool success = result?.GetType().GetProperty("Success")?.GetValue(result, null) is bool ok && ok;
+                string data = Convert.ToString(result?.GetType().GetProperty("Data")?.GetValue(result, null));
+                if (success && !string.IsNullOrWhiteSpace(data))
+                {
+                    return data.Trim();
                 }
 
-                errorMessage = result?.Message ?? "最外层 SN 为空";
+                errorMessage = Convert.ToString(result?.GetType().GetProperty("Message")?.GetValue(result, null)) ?? "最外层 SN 为空";
                 return string.Empty;
             }
             catch (Exception ex)

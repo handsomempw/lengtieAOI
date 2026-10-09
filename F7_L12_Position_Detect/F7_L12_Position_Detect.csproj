@@ -67,8 +67,8 @@
     <Reference Include="HslCommunication">
       <HintPath>dll\HslCommunication.dll</HintPath>
     </Reference>
-    <Reference Include="MESAutoLineClient, Version=1.0.121.19002, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\MESAutoLineClient.1.0.121.19002\lib\net40\MESAutoLineClient.dll</HintPath>
+    <Reference Include="MESAutoLineClient, Version=1.0.166.23188, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\MESAutoLineClient.1.0.166.23188\lib\net40\MESAutoLineClient.dll</HintPath>
     </Reference>
     <Reference Include="MES_ORACLE_DATABASE, Version=2025.6.4.1106, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
@@ -133,8 +133,11 @@
     <Compile Include="Model\Setting\InspectionRecipeConfig.cs" />
     <Compile Include="Model\Setting\DynamicPasswordAuthenticationSetting.cs" />
     <Compile Include="Model\Setting\TcpSetting.cs" />
+    <Compile Include="Model\BusbarBindingConfig.cs" />
     <Compile Include="Model\Tool\ToolModel.cs" />
     <Compile Include="Service\MESService.cs" />
+    <Compile Include="Service\BusbarMesGateway.cs" />
+    <Compile Include="Service\BusbarBindingService.cs" />
     <Compile Include="Service\DynamicPasswordAuthService.cs" />
     <Compile Include="Service\DynamicPasswordAuditLogger.cs" />
     <Compile Include="SettingForm.xaml.cs">
@@ -142,6 +145,7 @@
     </Compile>
     <Compile Include="ViewModel\MainViewModel.cs" />
     <Compile Include="ViewModel\MainViewModel.InspectionRecipe.cs" />
+    <Compile Include="ViewModel\MainViewModel.BusbarSettings.cs" />
     <Compile Include="ViewModel\ViewModelLocator.cs" />
     <Compile Include="View\InitPositionWindow.xaml.cs">
       <DependentUpon>InitPositionWindow.xaml</DependentUpon>
@@ -163,6 +167,9 @@
     </Compile>
     <Compile Include="View\WorkOrderInputWindow.xaml.cs">
       <DependentUpon>WorkOrderInputWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="View\BusbarBindingSettingsWindow.xaml.cs">
+      <DependentUpon>BusbarBindingSettingsWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="View\ModelWindow.xaml.cs">
       <DependentUpon>ModelWindow.xaml</DependentUpon>
@@ -195,6 +202,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="View\InspectionRecipeConfigWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="View\BusbarBindingSettingsWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
