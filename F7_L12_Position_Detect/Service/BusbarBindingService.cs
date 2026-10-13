@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 namespace F7_L12_Position_Detect.Service
 {
     /// <summary>
-    /// 一次母排扫码固定的路径B身份。组装工单、工序、工位和母排码来自同一份扫码会话，
+    /// 一次母排扫码固定的母排组装身份。组装工单、工序、工位和母排码来自同一份扫码会话，
     /// 防止报工期间界面切换工单或路由造成写入参数漂移。
     /// </summary>
     public sealed class BusbarBindingRequest
@@ -19,28 +19,25 @@ namespace F7_L12_Position_Detect.Service
     }
 
     /// <summary>
-    /// 路径B完成后由 MES 分配的最终成品身份。调用方使用该 SN 继续 AOI 工序校验。
+    /// 母排组装完成后由 MES 分配的最终成品身份。调用方使用该 SN 继续 AOI 工序校验与复测。
     /// </summary>
     public sealed class BusbarBindingResult
     {
         public string SN { get; set; }
+        /// <summary>true 表示母排已在 MES 绑定过，本次为 AOI 复测通行，而非首次取号。</summary>
         public bool Reused { get; set; }
     }
 
     /// <summary>
-    /// 执行现场验证过的路径B最简流程（与 MesFlowProbe 成功样本一致）：
-    /// 1) 查组装工位上岗工号；
-    /// 2) SerializedProductAssemble(工单, 空产品SN, 母排原始码, 组装工序, 组装工位, 工号)；
-    /// 3) 读取返回的 ProductSn；
-    /// 4) ReportWorkByProduct(成品SN, 组装工位, 工号, 组装工序, OK)。
-    /// 不在取号前查询本机 pending/completed，也不做关系预判；新母排长码直接取号。
-    /// 若 MES 返回「半成品已绑到[成品SN]」，解析该 SN 后直接补组装报工，避免重复取号。
-    /// 组装工序和工位只服务路径B；AOI 工序由调用方继续使用报工配置。
+    /// 母排组装取号与组装报工，并支持 AOI 复测通行：
+    /// 首次：SerializedProductAssemble → 读 ProductSn → ReportWorkByProduct → 交 AOI；
+    /// 复测：母排已绑定 → 复用成品 SN → 组装报工若已完成则跳过 → 仍返回成品 SN 进入 AOI。
+    /// 不在取号前查询本机 pending/completed；新母排长码直接取号。
     /// </summary>
     public sealed class BusbarBindingService
     {
         private static readonly Regex AlreadyBoundSnRegex = new Regex(
-            @"已绑到[【\[]\s*(?<sn>[A-Za-z0-9\-]+)\s*[】\]]",
+            @"已绑到\s*[【\[]\s*(?<sn>[A-Za-z0-9\-]+)\s*[】\]]",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private readonly IBusbarMesGateway _mes;
@@ -49,35 +46,35 @@ namespace F7_L12_Position_Detect.Service
 
         public BusbarBindingService(IBusbarMesGateway mes, string pendingDirectory, Action<string> log, Action ensureActive)
         {
-            // pendingDirectory 保留构造签名，兼容现有调用方；最简路径不再读写本地断点文件。
+            // pendingDirectory 保留构造签名，兼容现有调用方；本路径不再读写本地断点文件。
             _mes = mes ?? throw new ArgumentNullException(nameof(mes));
             _log = log ?? (_ => { });
             _ensureActive = ensureActive ?? (() => { });
         }
 
         /// <summary>
-        /// 按路径B完成单母排组装取号和组装 OK 报工。
+        /// 完成母排组装取号/复用，并保证组装工序已报工（首次写入，复测可跳过），返回可供 AOI 使用的成品 SN。
         /// </summary>
         /// <param name="request">母排码、目标工单、组装工序码和组装工位号。</param>
-        /// <returns>最终成品 SN；Reused 表示复用了 MES 已绑定关系。</returns>
-        /// <exception cref="InvalidOperationException">参数不完整、上岗无效或 MES 拒绝。</exception>
+        /// <returns>成品 SN；Reused 表示本次走 AOI 复测通行。</returns>
+        /// <exception cref="InvalidOperationException">参数不完整、上岗无效或 MES 拒绝且无法恢复成品 SN。</exception>
         public BusbarBindingResult Resolve(BusbarBindingRequest request)
         {
             ValidateRequest(request);
 
             string employee = QueryEmployee(request.Station);
-            _log($"节点=路径B开始 母排={request.Barcode} 工单={request.WorkOrder} 工序={request.Procedure} 工位={request.Station} 工号={employee}");
+            _log($"节点=母排组装开始 母排={request.Barcode} 工单={request.WorkOrder} 工序={request.Procedure} 工位={request.Station} 工号={employee}");
 
             string finalSn;
             bool reused;
-            if (!TryAssemble(request, employee, out finalSn, out reused))
+            if (!TryResolveProductSn(request, employee, out finalSn, out reused))
             {
-                throw new InvalidOperationException("路径B组装取号失败且未能从 MES 消息恢复成品 SN");
+                throw new InvalidOperationException("母排组装未能得到成品 SN，无法进入 AOI");
             }
 
-            _log($"节点=路径B成品SN就绪 成品SN={finalSn} 是否复用={reused}");
+            _log($"节点=母排组装成品SN就绪 成品SN={finalSn} 是否复用={(reused ? "是(AOI复测通行)" : "否(首次取号)")}");
             EnsureAssemblyReported(finalSn, request, employee, reused);
-            _log($"节点=路径B组装报工完成 成品SN={finalSn} 工序={request.Procedure} 工位={request.Station} 是否复用={reused}");
+            _log($"节点=母排组装段完成 成品SN={finalSn} 工序={request.Procedure} 工位={request.Station} 是否复用={reused}");
             return new BusbarBindingResult { SN = finalSn, Reused = reused };
         }
 
@@ -94,15 +91,14 @@ namespace F7_L12_Position_Detect.Service
         }
 
         /// <summary>
-        /// 调用 SerializedProductAssemble。成功则读 ProductSn；
-        /// 若 MES 表示半成品已绑定，从拒绝消息解析成品 SN 并视为复用。
+        /// 首次取号成功则返回 ProductSn；若 MES 表示已绑定，解析或关系查询成品 SN，供 AOI 复测使用。
         /// </summary>
-        private bool TryAssemble(BusbarBindingRequest request, string employee, out string finalSn, out bool reused)
+        private bool TryResolveProductSn(BusbarBindingRequest request, string employee, out string finalSn, out bool reused)
         {
             finalSn = string.Empty;
             reused = false;
 
-            var assemble = Call("路径B组装取号", "SerializedProductAssemble",
+            var assemble = Call("母排组装取号", "SerializedProductAssemble",
                 request.WorkOrder,
                 string.Empty,
                 request.Barcode,
@@ -113,29 +109,39 @@ namespace F7_L12_Position_Detect.Service
             if (assemble.Success)
             {
                 finalSn = ExtractProductSn(assemble.Data);
-                _log($"节点=路径B取号成功 ProductSn={finalSn} 原始Data类型={(assemble.Data == null ? "null" : assemble.Data.GetType().Name)}");
+                _log($"节点=母排组装取号成功 ProductSn={finalSn} 原始Data类型={(assemble.Data == null ? "null" : assemble.Data.GetType().Name)}");
                 if (string.IsNullOrWhiteSpace(finalSn))
                 {
-                    throw new InvalidOperationException("MES 已响应路径B组装，但未返回 ProductSn");
+                    throw new InvalidOperationException("MES 已响应母排组装，但未返回 ProductSn");
                 }
                 return true;
             }
 
             string message = assemble.Message ?? string.Empty;
-            string boundSn = TryParseAlreadyBoundSn(message);
-            if (!string.IsNullOrWhiteSpace(boundSn))
+            if (!IsAlreadyBoundMessage(message))
             {
-                finalSn = boundSn;
-                reused = true;
-                _log($"节点=路径B取号复用已绑定成品 成品SN={finalSn} MES消息={message}");
-                return true;
+                throw new InvalidOperationException("MES 拒绝或查询失败：" + message);
             }
 
-            throw new InvalidOperationException("MES 拒绝或查询失败：" + message);
+            // AOI 复测：母排已绑定，禁止重复取号，但必须拿出成品 SN 继续后续流程。
+            finalSn = TryParseAlreadyBoundSn(message);
+            if (string.IsNullOrWhiteSpace(finalSn))
+            {
+                finalSn = TryFindBoundProductSnByRelation(request.Barcode);
+            }
+            if (string.IsNullOrWhiteSpace(finalSn))
+            {
+                throw new InvalidOperationException(
+                    "母排已在 MES 绑定，但未能解析成品 SN，无法进入 AOI 复测。MES消息：" + message);
+            }
+
+            reused = true;
+            _log($"节点=母排组装已绑定复用 成品SN={finalSn} 用途=AOI复测通行 MES消息={message}");
+            return true;
         }
 
         /// <summary>
-        /// 对成品执行组装工序 OK 报工。复用场景下若 MES 表示已报工，则跳过重复写入。
+        /// 首次必须组装报工成功；复测时若 MES 表示组装已报工/已过站，则跳过，不阻断进入 AOI。
         /// </summary>
         private void EnsureAssemblyReported(
             string sn,
@@ -143,7 +149,7 @@ namespace F7_L12_Position_Detect.Service
             string employee,
             bool reused)
         {
-            var report = Call("路径B组装报工", "ReportWorkByProduct",
+            var report = Call("母排组装报工", "ReportWorkByProduct",
                 sn,
                 request.Station,
                 employee,
@@ -153,22 +159,53 @@ namespace F7_L12_Position_Detect.Service
                 string.Empty);
             if (report.Success)
             {
-                _log($"节点=路径B组装报工成功 成品SN={sn}");
+                _log($"节点=母排组装报工成功 成品SN={sn}");
                 return;
             }
 
-            if (reused && IsAlreadyReportedMessage(report.Message))
+            string message = report.Message ?? string.Empty;
+            if (reused && IsAssemblyAlreadyDoneMessage(message))
             {
-                _log($"节点=复用成品已完成组装报工 成品SN={sn} MES消息={report.Message}");
+                _log($"节点=AOI复测跳过组装报工 成品SN={sn} MES消息={message}");
                 return;
             }
 
-            throw new InvalidOperationException("MES 拒绝路径B组装报工：" + report.Message);
+            throw new InvalidOperationException("MES 拒绝母排组装报工：" + message);
+        }
+
+        /// <summary>
+        /// 消息未能带出成品 SN 时，用母排关系查询补全，仅服务已绑定后的 AOI 复测。
+        /// </summary>
+        private string TryFindBoundProductSnByRelation(string barcode)
+        {
+            foreach (string method in new[]
+            {
+                "GetLastBindingProductSerialNumberOfPartBarcode",
+                "GetProductSerialNumberByBusbar"
+            })
+            {
+                try
+                {
+                    var reply = Call("母排组装关系补查", method, barcode);
+                    if (!reply.Success) continue;
+                    string sn = ExtractProductSn(reply.Data);
+                    if (!string.IsNullOrWhiteSpace(sn))
+                    {
+                        _log($"节点=母排组装关系补查成功 接口={method} 成品SN={sn}");
+                        return sn;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log($"节点=母排组装关系补查异常 接口={method} 原因={ex.Message}");
+                }
+            }
+            return string.Empty;
         }
 
         private string QueryEmployee(string station)
         {
-            var workers = Call("路径B上岗确认", "QueryCurrentOnWorkListByStationCode", station);
+            var workers = Call("母排组装上岗确认", "QueryCurrentOnWorkListByStationCode", station);
             RequireSuccess(workers);
 
             var records = ToRecords(workers.Data);
@@ -176,9 +213,9 @@ namespace F7_L12_Position_Detect.Service
             string employee = BusbarMesReply.Text(worker, "EmployeeNo");
             if (string.IsNullOrWhiteSpace(employee))
             {
-                throw new InvalidOperationException($"路径B组装工位 {station} 尚无有效上岗人员，请先上岗");
+                throw new InvalidOperationException($"母排组装工位 {station} 尚无有效上岗人员，请先上岗");
             }
-            _log($"节点=路径B上岗确认 工位={station} 工号={employee}");
+            _log($"节点=母排组装上岗确认 工位={station} 工号={employee}");
             return employee;
         }
 
@@ -196,10 +233,6 @@ namespace F7_L12_Position_Detect.Service
             return DateTime.TryParse(Convert.ToString(value), out date) ? date : DateTime.MinValue;
         }
 
-        /// <summary>
-        /// 只认组装返回的 ProductSn；为空时再读 Sn。
-        /// 取号成功后的 ProductSn 即成品身份，不再用物料类别二次否决，避免误拦已分配的 MT 成品号。
-        /// </summary>
         private static string ExtractProductSn(object data)
         {
             if (data == null) return string.Empty;
@@ -216,9 +249,14 @@ namespace F7_L12_Position_Detect.Service
             return match.Success ? match.Groups["sn"].Value.Trim() : string.Empty;
         }
 
-        private static bool IsAlreadyReportedMessage(string message)
+        private static bool IsAlreadyBoundMessage(string message)
         {
-            return ContainsAny(message, "已报工", "重复报工", "已完工", "已过站");
+            return ContainsAny(message, "已绑到", "已经绑定", "已绑定", "重复绑定", "不能重复");
+        }
+
+        private static bool IsAssemblyAlreadyDoneMessage(string message)
+        {
+            return ContainsAny(message, "已报工", "重复报工", "已完工", "已过站", "不能上传", "不允许重复");
         }
 
         private BusbarMesReply Call(string node, string method, params object[] args)

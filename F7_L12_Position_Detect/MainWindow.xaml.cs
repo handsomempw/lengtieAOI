@@ -1,4 +1,4 @@
-﻿using F7_L12_Position_Detect.View;
+using F7_L12_Position_Detect.View;
 using F7_L12_Position_Detect.ViewModel;
 using HalconDotNet;
 using Microsoft.Win32;
@@ -502,7 +502,7 @@ namespace F7_L12_Position_Detect
         }
 
         /// <summary>
-        /// 维护人员解锁后编辑路径B组装参数。独立窗口按保存操作提交，主界面持续显示本次运行模式。
+        /// 维护人员解锁后编辑母排组装参数。独立窗口按保存操作提交，主界面持续显示本次运行模式。
         /// </summary>
         private void BusbarBindingSettings_Click(object sender, RoutedEventArgs e)
         {

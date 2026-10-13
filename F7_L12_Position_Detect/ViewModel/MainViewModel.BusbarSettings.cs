@@ -8,22 +8,22 @@ namespace F7_L12_Position_Detect.ViewModel
 {
     public partial class MainViewModel
     {
-        /// <summary>软件本次启动采用的路径B组装开关，供生产界面显示实际运行模式。</summary>
+        /// <summary>当前扫码实际采用的母排组装开关，保存设置后立即刷新。</summary>
         [XmlIgnore]
         public bool BusbarBindingEnabledAtStartup => BusbarConfig.Enabled;
 
-        /// <summary>主界面显示启动快照；待重启的设置通过说明文字提示维护人员。</summary>
+        /// <summary>主界面显示当前生效的母排组装开关状态。</summary>
         [XmlIgnore]
-        public string BusbarBindingStatusText => BusbarBindingEnabledAtStartup ? "本次开启" : "本次关闭";
+        public string BusbarBindingStatusText => BusbarBindingEnabledAtStartup ? "已开启" : "已关闭";
 
-        /// <summary>区分本次生效状态与下次启动配置，防止保存后误判设备已切换生产模式。</summary>
+        /// <summary>展示当前生效的组装工位和工序，便于现场确认保存后已切换。</summary>
         [XmlIgnore]
         public string BusbarBindingConfigurationHint =>
-            $"{BusbarBindingStatusText}；已保存：{(DataModel.Settingmodel.BusbarBinding?.Enabled == true ? "开启" : "关闭")}。设置保存后重启生效。";
+            $"{BusbarBindingStatusText}；组装工位={BusbarConfig.StationCode}；组装工序={BusbarConfig.ProcedureCode}。设置保存后立即生效。";
 
         /// <summary>
-        /// 维护权限有效时校验并保存绑定配置。运行快照固定到本次启动，失败时恢复原有内存配置，
-        /// 使其他设置保存入口继续使用已确认参数。
+        /// 维护权限有效时校验并保存绑定配置，落盘成功后立即刷新运行快照，下一次扫码按新配置分流。
+        /// 正在进行中的母排组装会话仍沿用其开始时克隆的参数，避免中途切换造成半次写入。
         /// </summary>
         /// <param name="candidate">窗口编辑的绑定开关、工位和工序副本。</param>
         /// <param name="error">校验或保存失败的现场提示；成功时为空。</param>
@@ -33,12 +33,12 @@ namespace F7_L12_Position_Detect.ViewModel
             error = string.Empty;
             if (DataModel.Settingmodel.permission != true)
             {
-                error = "请先解锁界面，再保存路径B组装设置";
+                error = "请先解锁界面，再保存母排组装设置";
                 return false;
             }
 
             var updated = candidate?.Clone();
-            error = updated == null ? "路径B组装设置为空" : updated.Validate();
+            error = updated == null ? "母排组装设置为空" : updated.Validate();
             if (!string.IsNullOrEmpty(error)) return false;
 
             var previous = DataModel.Settingmodel.BusbarBinding;
@@ -52,9 +52,29 @@ namespace F7_L12_Position_Detect.ViewModel
                 return false;
             }
 
-            RaisePropertyChanged(() => BusbarBindingConfigurationHint);
-            writeLog($"[路径B组装配置] 已保存，启用={updated.Enabled}，组装工位={updated.StationCode}，组装工序={updated.ProcedureCode}；重启后生效", true);
+            ApplyBusbarBindingRuntimeConfig(updated, "设置保存");
+            writeLog(
+                $"[母排组装配置] 已保存并立即生效，启用={updated.Enabled}，组装工位={updated.StationCode}，组装工序={updated.ProcedureCode}",
+                true);
             return true;
+        }
+
+        /// <summary>
+        /// 用已确认配置刷新母排组装运行快照，并通知主界面状态文字。
+        /// </summary>
+        /// <param name="source">要生效的配置；为空时按空配置关闭母排组装。</param>
+        /// <param name="reason">触发刷新的来源，写入详细日志便于追溯。</param>
+        private void ApplyBusbarBindingRuntimeConfig(BusbarBindingConfig source, string reason)
+        {
+            _busbarBindingRuntimeConfig = (source ?? new BusbarBindingConfig()).Clone();
+            RaisePropertyChanged(() => BusbarBindingEnabledAtStartup);
+            RaisePropertyChanged(() => BusbarBindingStatusText);
+            RaisePropertyChanged(() => BusbarBindingConfigurationHint);
+
+            string validationError = _busbarBindingRuntimeConfig.Validate();
+            WriteDetailLog(
+                $"[母排组装配置] {reason}：启用={_busbarBindingRuntimeConfig.Enabled}，组装工位={_busbarBindingRuntimeConfig.StationCode}，组装工序={_busbarBindingRuntimeConfig.ProcedureCode}" +
+                (string.IsNullOrEmpty(validationError) ? string.Empty : $"；校验提示={validationError}"));
         }
     }
 }

@@ -183,7 +183,7 @@ namespace F7_L12_Position_Detect.Model
         public ReportWorkConfig ReportWorkConfig { set; get; } = new ReportWorkConfig();
 
         /// <summary>
-        /// 路径B单母排组装配置。该能力默认关闭，只有维护人员解锁后开启并保存，重启后按快照执行。
+        /// 母排组装单母排组装配置。该能力默认关闭，维护人员解锁后开启并保存，保存后立即按新快照执行。
         /// </summary>
         [XmlElement("母排绑定配置")]
         public BusbarBindingConfig BusbarBinding { get; set; } = new BusbarBindingConfig();

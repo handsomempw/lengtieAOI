@@ -81,7 +81,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
         // MES服务实例
         private readonly MESService _mesService = new MESService();
-        // 路径B运行快照固定到启动时读取的配置，维护人员保存后通过重启切换生产路由。
+        // 母排组装运行快照：启动时加载，设置保存后立即刷新；正在进行的扫码会话仍用会话开始时的克隆参数。
         private BusbarBindingConfig _busbarBindingRuntimeConfig = new BusbarBindingConfig();
         private BusbarBindingConfig BusbarConfig => _busbarBindingRuntimeConfig;
         private string _busbarBindingSession;
@@ -90,7 +90,7 @@ namespace F7_L12_Position_Detect.ViewModel
         private string _lastProductSN = string.Empty;
 
         /// <summary>
-        /// 在当前扫码会话中执行路径B组装取号和组装报工。
+        /// 在当前扫码会话中执行母排组装取号和组装报工。
         /// 返回值是 MES SerializedProductAssemble 返回的最终成品 SN，后续流程继续校验 AOI 工序。
         /// </summary>
         private async Task<string> TryBindSingleBusbarAsync(string barcode)
@@ -99,14 +99,14 @@ namespace F7_L12_Position_Detect.ViewModel
             string validationError = config.Validate();
             if (!string.IsNullOrEmpty(validationError))
             {
-                WriteDetailLog($"[路径B] 配置校验失败={validationError}");
+                WriteDetailLog($"[母排组装] 配置校验失败={validationError}");
                 throw new InvalidOperationException(validationError);
             }
 
             string workOrder = (DataModel.Settingmodel.ReportWorkConfig.CurrentWorkOrderCode ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(workOrder))
             {
-                throw new InvalidOperationException("路径B组装工单为空，请先设置当前工单");
+                throw new InvalidOperationException("母排组装工单为空，请先设置当前工单");
             }
 
             object client = MESService.GetInitializedAutoLineClient();
@@ -117,17 +117,17 @@ namespace F7_L12_Position_Detect.ViewModel
             var service = new BusbarBindingService(
                 new BusbarMesGateway(client),
                 null,
-                message => WriteDetailLog($"[路径B][会话={session}] {message}"),
+                message => WriteDetailLog($"[母排组装][会话={session}] {message}"),
                 () =>
                 {
                     if (!string.Equals(_busbarBindingSession, session, StringComparison.Ordinal))
                     {
-                        throw new OperationCanceledException("路径B扫码会话已切换，已停止使用迟到结果");
+                        throw new OperationCanceledException("母排组装扫码会话已切换，已停止使用迟到结果");
                     }
                 });
 
-            WriteDetailLog($"[路径B][会话={session}] 节点=进入 条码={barcode} 工单={workOrder} 工序={config.ProcedureCode} 工位={config.StationCode}");
-            writeLog($"[路径B] 开始组装取号 母排={barcode} 工单={workOrder} 工序={config.ProcedureCode} 工位={config.StationCode}", false);
+            WriteDetailLog($"[母排组装][会话={session}] 节点=进入 条码={barcode} 工单={workOrder} 工序={config.ProcedureCode} 工位={config.StationCode}");
+            writeLog($"[母排组装] 开始组装取号 母排={barcode} 工单={workOrder} 工序={config.ProcedureCode} 工位={config.StationCode}", false);
             try
             {
                 var result = await Task.Run(() => service.Resolve(new BusbarBindingRequest
@@ -137,14 +137,18 @@ namespace F7_L12_Position_Detect.ViewModel
                     Procedure = config.ProcedureCode,
                     Station = config.StationCode
                 }));
-                WriteDetailLog($"[路径B][会话={session}] 节点=完成 成品SN={result.SN} 是否复用={result.Reused}");
-                writeLog($"[路径B] 组装完成 成品SN={result.SN} {(result.Reused ? "（复用已绑定）" : "（新取号）")}", false);
+                WriteDetailLog($"[母排组装][会话={session}] 节点=完成 成品SN={result.SN} 是否复用={result.Reused}");
+                writeLog(
+                    result.Reused
+                        ? $"[母排组装] 已绑定复用成品SN={result.SN}，进入AOI复测"
+                        : $"[母排组装] 组装完成 成品SN={result.SN}（新取号）",
+                    false);
                 return result.SN;
             }
             catch (Exception ex)
             {
                 // 操作员可见失败由外层扫码 catch 统一打出；此处保留会话级详细追溯。
-                WriteDetailLog($"[路径B][会话={session}] 节点=失败 类型={ex.GetType().Name} 原因={ex.Message}");
+                WriteDetailLog($"[母排组装][会话={session}] 节点=失败 类型={ex.GetType().Name} 原因={ex.Message}");
                 throw;
             }
             finally
@@ -1236,10 +1240,10 @@ namespace F7_L12_Position_Detect.ViewModel
                 // 获取工序名称
                 string procedureName = DataModel.Settingmodel.ReportWorkConfig.ProcedureName;
 
-                // 先尝试识别点检条码；普通母排条码即使尚未存在成品 SN，也必须进入路径B取号。
+                // 先尝试识别点检条码；普通母排条码即使尚未存在成品 SN，也必须进入母排组装取号。
                 var scanResult = await _mesService.ProcessScanCodeAsync(scanCode);
 
-                // 普通母排码固定进入路径B。旧解析接口对未组装母排可能返回失败，
+                // 普通母排码固定进入母排组装。旧解析接口对未组装母排可能返回失败，
                 // 该失败只代表当前还没有成品 SN，不能阻断 SerializedProductAssemble。
                 if (BusbarConfig.Enabled)
                 {
@@ -1249,7 +1253,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         (scanResult.Success &&
                          (InspectionRecipeSnEquals(scanResult.SN, CurrentInspectionRecipeConfig.OKInspectionSN) ||
                           InspectionRecipeSnEquals(scanResult.SN, CurrentInspectionRecipeConfig.NGInspectionSN)));
-                    WriteDetailLog($"[路径B] 节点=模式分流 启用=true 原始码={scanCode} 解析SN={scanResult.SN} 旧解析成功={scanResult.Success} 点检码={isInspectionBarcode}");
+                    WriteDetailLog($"[母排组装] 节点=模式分流 启用=true 原始码={scanCode} 解析SN={scanResult.SN} 旧解析成功={scanResult.Success} 点检码={isInspectionBarcode}");
                     if (!isInspectionBarcode)
                     {
                         string boundSn = await TryBindSingleBusbarAsync(scanCode);
@@ -1257,7 +1261,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         {
                             Success = true,
                             SN = boundSn,
-                            StatusMessage = "路径B组装绑定及报工成功"
+                            StatusMessage = "母排组装绑定及报工成功"
                         };
                     }
                 }
@@ -1344,7 +1348,7 @@ namespace F7_L12_Position_Detect.ViewModel
                         return;
                     }
 
-                    // 路径B已用目标成品工单完成组装取号/报工；组件侧工单允许不同，此处跳过扫码工单门禁。
+                    // 母排组装已用目标成品工单完成组装取号/报工；组件侧工单允许不同，此处跳过扫码工单门禁。
                     string workOrderError = BusbarConfig.Enabled ? string.Empty : ValidateScanWorkOrder(scanResult.SN);
                     if (!string.IsNullOrEmpty(workOrderError))
                     {
@@ -1358,7 +1362,7 @@ namespace F7_L12_Position_Detect.ViewModel
 
                     if (BusbarConfig.Enabled)
                     {
-                        WriteDetailLog($"[路径B] 节点=进入AOI校验 SN={scanResult.SN} 工序={procedureName} 工单={DataModel.Settingmodel.ReportWorkConfig.CurrentWorkOrderCode}");
+                        WriteDetailLog($"[母排组装] 节点=进入AOI校验 SN={scanResult.SN} 工序={procedureName} 工单={DataModel.Settingmodel.ReportWorkConfig.CurrentWorkOrderCode}");
                     }
 
                     var validationResult = await _mesService.ValidateProcessAsync(scanResult.SN, procedureName);
@@ -1402,10 +1406,10 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 // 直接更新状态
                 UIInvoke(() => DataModel.Processmodel.ScanCodeStatus = "处理异常");
-                // 日志输出使用BeginInvoke避免阻塞；路径B失败消息本身已含 MES/断点原因，前缀标明阶段便于追溯。
+                // 日志输出使用BeginInvoke避免阻塞；母排组装失败消息本身已含 MES/断点原因，前缀标明阶段便于追溯。
                 UIBeginInvoke(new Action(() =>
                 {
-                    string prefix = BusbarConfig.Enabled ? "扫码处理异常（路径B组装）" : "扫码处理异常";
+                    string prefix = BusbarConfig.Enabled ? "扫码处理异常（母排组装）" : "扫码处理异常";
                     writeLog($"{prefix}: {ex.Message}", true);
                 }));
             }
@@ -2664,16 +2668,7 @@ namespace F7_L12_Position_Detect.ViewModel
             {
                 DataModel.Settingmodel.BusbarBinding = new BusbarBindingConfig();
             }
-            _busbarBindingRuntimeConfig = DataModel.Settingmodel.BusbarBinding.Clone();
-            RaisePropertyChanged(() => BusbarBindingEnabledAtStartup);
-            RaisePropertyChanged(() => BusbarBindingStatusText);
-            RaisePropertyChanged(() => BusbarBindingConfigurationHint);
-            string pathBConfigError = DataModel.Settingmodel.BusbarBinding.Validate();
-            WriteDetailLog($"[路径B配置] 启动加载：启用={DataModel.Settingmodel.BusbarBinding.Enabled}，组装工位={DataModel.Settingmodel.BusbarBinding.StationCode}，组装工序={DataModel.Settingmodel.BusbarBinding.ProcedureCode}");
-            if (DataModel.Settingmodel.BusbarBinding.Enabled && !string.IsNullOrEmpty(pathBConfigError))
-            {
-                WriteDetailLog($"[路径B配置] 启动校验失败：{pathBConfigError}；扫码时将拦截路径B");
-            }
+            ApplyBusbarBindingRuntimeConfig(DataModel.Settingmodel.BusbarBinding, "启动加载");
 
             if (result.RestoredFromBackup)
             {
