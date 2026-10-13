@@ -114,10 +114,9 @@ namespace F7_L12_Position_Detect.ViewModel
 
             string session = Guid.NewGuid().ToString("N");
             _busbarBindingSession = session;
-            string pendingDirectory = Path.Combine(Environment.CurrentDirectory, "日志", "母排绑定待确认");
             var service = new BusbarBindingService(
                 new BusbarMesGateway(client),
-                pendingDirectory,
+                null,
                 message => WriteDetailLog($"[路径B][会话={session}] {message}"),
                 () =>
                 {
@@ -127,7 +126,7 @@ namespace F7_L12_Position_Detect.ViewModel
                     }
                 });
 
-            WriteDetailLog($"[路径B][会话={session}] 节点=进入 条码={barcode} 工单={workOrder} 工序={config.ProcedureCode} 工位={config.StationCode} 断点目录={pendingDirectory}");
+            WriteDetailLog($"[路径B][会话={session}] 节点=进入 条码={barcode} 工单={workOrder} 工序={config.ProcedureCode} 工位={config.StationCode}");
             writeLog($"[路径B] 开始组装取号 母排={barcode} 工单={workOrder} 工序={config.ProcedureCode} 工位={config.StationCode}", false);
             try
             {
@@ -139,13 +138,13 @@ namespace F7_L12_Position_Detect.ViewModel
                     Station = config.StationCode
                 }));
                 WriteDetailLog($"[路径B][会话={session}] 节点=完成 成品SN={result.SN} 是否复用={result.Reused}");
-                writeLog($"[路径B] 组装完成 成品SN={result.SN} {(result.Reused ? "（复用）" : "（新取号）")}", false);
+                writeLog($"[路径B] 组装完成 成品SN={result.SN} {(result.Reused ? "（复用已绑定）" : "（新取号）")}", false);
                 return result.SN;
             }
             catch (Exception ex)
             {
-                // 操作员可见失败由外层扫码 catch 统一打出，这里只保留带断点目录的详细追溯，避免主界面重复两条。
-                WriteDetailLog($"[路径B][会话={session}] 节点=失败 类型={ex.GetType().Name} 原因={ex.Message} 断点目录={pendingDirectory}");
+                // 操作员可见失败由外层扫码 catch 统一打出；此处保留会话级详细追溯。
+                WriteDetailLog($"[路径B][会话={session}] 节点=失败 类型={ex.GetType().Name} 原因={ex.Message}");
                 throw;
             }
             finally
